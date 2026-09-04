@@ -34,6 +34,16 @@ import {
   ShieldCheck,
 } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
+import { useTranslation } from 'react-i18next';
+import {
+  getLanguageCode,
+  translateDonorName,
+  translateCampaignTitle,
+  translateCategory,
+  translateCommunityName,
+  translateStatus,
+} from '../../../src/lib/translateEntity';
+import { DynamicText } from '../../../src/components/DynamicText';
 import { UtrDeskSkeleton } from '../../../src/components/SkeletonLoader';
 
 const { width } = Dimensions.get('window');
@@ -46,6 +56,8 @@ interface ToastInfo {
 export default function UtrApprovedScreen() {
   const { currentRole, activeUser } = useAppState();
   const { colorScheme } = useColorScheme();
+  const { t, i18n } = useTranslation();
+  const lang = getLanguageCode(i18n.language);
   const isDark = colorScheme === 'dark';
 
   const [donations, setDonations] = useState<Donation[]>([]);
@@ -80,10 +92,13 @@ export default function UtrApprovedScreen() {
       const allDonations = await getDonations();
       let filtered = allDonations;
 
-      if (currentRole === 'community_admin' && activeUser?.communityName) {
+      const rawRole = (activeUser?.role || currentRole || '') as string;
+      const isCommAdmin = rawRole.toLowerCase().includes('community');
+      if (isCommAdmin && (activeUser?.communityName || activeUser?.communityId)) {
         filtered = allDonations.filter(
           (d) =>
-            d.communityName?.toLowerCase() === activeUser.communityName?.toLowerCase()
+            (activeUser.communityName && d.communityName?.toLowerCase() === activeUser.communityName?.toLowerCase()) ||
+            (activeUser.communityId && (d as any).communityId === activeUser.communityId)
         );
       }
 
@@ -304,7 +319,7 @@ export default function UtrApprovedScreen() {
                 activeTab === 'pending' ? s.tabBtnTextActive : { color: theme.textSub },
               ]}
             >
-              Pending ({pendingDonations.length})
+              {t('admin.kyc_subtitle', 'Pending')} ({pendingDonations.length})
             </Text>
           </TouchableOpacity>
 
@@ -323,7 +338,7 @@ export default function UtrApprovedScreen() {
                 activeTab === 'verified' ? s.tabBtnTextActive : { color: theme.textSub },
               ]}
             >
-              Verified ({verifiedDonations.length})
+              {t('admin.statActiveMembers', 'Verified')} ({verifiedDonations.length})
             </Text>
           </TouchableOpacity>
 
@@ -342,7 +357,7 @@ export default function UtrApprovedScreen() {
                 activeTab === 'all' ? s.tabBtnTextActive : { color: theme.textSub },
               ]}
             >
-              All ({donations.length})
+              {t('categories.all', 'All')} ({donations.length})
             </Text>
           </TouchableOpacity>
         </View>
@@ -351,10 +366,10 @@ export default function UtrApprovedScreen() {
         <View style={s.sectionHeader}>
           <Text style={[s.sectionTitle, { color: theme.textMain }]}>
             {activeTab === 'pending'
-              ? `Pending UTR Verifications (${filteredDonations.length})`
+              ? `${t('admin.tabUtrAudit', 'Pending UTR Verifications')} (${filteredDonations.length})`
               : activeTab === 'verified'
-                ? `Verified Payments History (${filteredDonations.length})`
-                : `All Payment Records (${filteredDonations.length})`}
+                ? `${t('admin.auditTrail', 'Verified Payments History')} (${filteredDonations.length})`
+                : `${t('admin.tabDonations', 'All Payment Records')} (${filteredDonations.length})`}
           </Text>
         </View>
 
@@ -369,12 +384,12 @@ export default function UtrApprovedScreen() {
               )}
             </View>
             <Text style={[s.emptyTitle, { color: theme.textMain }]}>
-              {activeTab === 'pending' ? 'All Payments Verified!' : 'No Records Found'}
+              {activeTab === 'pending' ? t('admin.all_caught_up', 'All Payments Verified!') : t('admin.no_pending_kyc', 'No Records Found')}
             </Text>
             <Text style={[s.emptySub, { color: theme.textSub }]}>
               {activeTab === 'pending'
-                ? 'There are currently no pending UTR payments waiting for verification.'
-                : 'No payment records match your selected filter or search keyword.'}
+                ? t('admin.no_pending_kyc', 'There are currently no pending UTR payments waiting for verification.')
+                : t('admin.no_pending_kyc', 'No payment records match your selected filter or search keyword.')}
             </Text>
           </View>
         ) : (
@@ -383,6 +398,12 @@ export default function UtrApprovedScreen() {
             const isPending = donation.status === 'pending_verification';
             const isVerified = donation.status === 'verified';
             const isRejected = donation.status === 'rejected';
+
+            const donorDisplayName = translateDonorName(donation.donorName || 'Anonymous Donor', lang);
+            const campaignDisplayName = translateCampaignTitle(donation.campaignTitle || 'General Support Fund', lang);
+            const categoryDisplayName = translateCategory(donation.category || 'General', lang);
+            const communityDisplayName = translateCommunityName(donation.communityName || '', lang);
+            const statusDisplayName = translateStatus(donation.status, lang);
 
             return (
               <View
@@ -417,11 +438,7 @@ export default function UtrApprovedScreen() {
                             : s.statusTextRejected,
                       ]}
                     >
-                      {isPending
-                        ? 'PENDING AUDIT'
-                        : isVerified
-                          ? 'VERIFIED'
-                          : 'REJECTED'}
+                      {statusDisplayName.toUpperCase()}
                     </Text>
                   </View>
 
@@ -436,18 +453,23 @@ export default function UtrApprovedScreen() {
                 {/* Donor & Amount Row */}
                 <View style={s.donorInfoRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[s.donorName, { color: theme.textMain }]} numberOfLines={1}>
-                      {donation.donorName || 'Anonymous Donor'}
-                    </Text>
-                    <Text style={[s.campaignTitle, { color: theme.textSub }]} numberOfLines={1}>
-                      {donation.campaignTitle || 'General Support Fund'}
-                    </Text>
+                    <DynamicText
+                      text={donation.donorName || 'Anonymous Donor'}
+                      style={[s.donorName, { color: theme.textMain }]}
+                      numberOfLines={1}
+                    />
+                    <DynamicText
+                      text={donation.campaignTitle || 'General Support Fund'}
+                      style={[s.campaignTitle, { color: theme.textSub }]}
+                      numberOfLines={1}
+                    />
                     {donation.communityName && (
                       <View style={s.communityRow}>
                         <Building2 color={theme.textSub} size={12} />
-                        <Text style={[s.communityText, { color: theme.textSub }]}>
-                          {donation.communityName}
-                        </Text>
+                        <DynamicText
+                          text={donation.communityName}
+                          style={[s.communityText, { color: theme.textSub }]}
+                        />
                       </View>
                     )}
                   </View>
@@ -457,7 +479,7 @@ export default function UtrApprovedScreen() {
                       ₹{(donation.amountINR || 0).toLocaleString('en-IN')}
                     </Text>
                     <Text style={[s.categoryChip, { color: theme.textSub }]}>
-                      {donation.category || 'General'}
+                      {categoryDisplayName}
                     </Text>
                   </View>
                 </View>
@@ -477,7 +499,7 @@ export default function UtrApprovedScreen() {
                       style={[s.badgeChip, { backgroundColor: '#10b98115' }]}
                     >
                       <ImageIcon color="#10b981" size={12} />
-                      <Text style={[s.badgeChipText, { color: '#10b981' }]}>Receipt Image</Text>
+                      <Text style={[s.badgeChipText, { color: '#10b981' }]}>{t('admin.viewDetails', 'Receipt Image')}</Text>
                     </TouchableOpacity>
                   ) : (
                     <View style={[s.badgeChip, { backgroundColor: isDark ? '#1e293b' : '#f8fafc' }]}>
@@ -498,26 +520,15 @@ export default function UtrApprovedScreen() {
                 {/* Actions Footer */}
                 <View style={[s.cardActions, { borderTopColor: theme.cardBorder }]}>
                   <TouchableOpacity
-                    style={[s.viewDetailsBtn, { backgroundColor: theme.chipIdle }]}
+                    style={[s.viewBtn, { backgroundColor: theme.chipIdle }]}
                     onPress={() => setSelectedDonation(donation)}
                   >
                     <Eye color={theme.textSub} size={14} />
-                    <Text style={[s.viewDetailsText, { color: theme.textMain }]}>
-                      View Details
-                    </Text>
+                    <Text style={[s.viewBtnText, { color: theme.textMain }]}>{t('btn.viewDetails', 'View Details')}</Text>
                   </TouchableOpacity>
 
                   {isPending && (
-                    <View style={s.actionBtnsGroup}>
-                      <TouchableOpacity
-                        style={s.rejectBtn}
-                        onPress={() => handleReject(donation)}
-                        disabled={isProcessing}
-                      >
-                        <XCircle color="#ef4444" size={16} />
-                        <Text style={s.rejectBtnText}>Reject</Text>
-                      </TouchableOpacity>
-
+                    <>
                       <TouchableOpacity
                         style={s.verifyBtn}
                         onPress={() => handleVerify(donation)}
@@ -527,26 +538,21 @@ export default function UtrApprovedScreen() {
                           <ActivityIndicator color="#fff" size="small" />
                         ) : (
                           <>
-                            <CheckCircle2 color="#fff" size={16} />
-                            <Text style={s.verifyBtnText}>Verify</Text>
+                            <CheckCircle2 color="#fff" size={14} />
+                            <Text style={s.verifyBtnText}>{t('btn.approve', 'Verify')}</Text>
                           </>
                         )}
                       </TouchableOpacity>
-                    </View>
-                  )}
 
-                  {isVerified && (
-                    <View style={s.verifiedTag}>
-                      <CheckCircle2 color="#10b981" size={14} />
-                      <Text style={s.verifiedTagText}>Payment Approved</Text>
-                    </View>
-                  )}
-
-                  {isRejected && (
-                    <View style={s.rejectedTag}>
-                      <XCircle color="#ef4444" size={14} />
-                      <Text style={s.rejectedTagText}>Rejected</Text>
-                    </View>
+                      <TouchableOpacity
+                        style={s.rejectBtn}
+                        onPress={() => handleReject(donation)}
+                        disabled={isProcessing}
+                      >
+                        <XCircle color="#ef4444" size={14} />
+                        <Text style={s.rejectBtnText}>{t('btn.reject', 'Reject')}</Text>
+                      </TouchableOpacity>
+                    </>
                   )}
                 </View>
               </View>
@@ -586,9 +592,11 @@ export default function UtrApprovedScreen() {
                 <View style={s.modalGrid}>
                   <View style={[s.modalGridItem, { backgroundColor: isDark ? '#131d2e' : '#f8fafc', borderColor: theme.cardBorder }]}>
                     <Text style={s.gridLabel}>DONOR NAME</Text>
-                    <Text style={[s.gridValue, { color: theme.textMain }]} numberOfLines={1}>
-                      {selectedDonation.donorName || 'Anonymous'}
-                    </Text>
+                    <DynamicText
+                      text={selectedDonation.donorName || 'Anonymous'}
+                      style={[s.gridValue, { color: theme.textMain }]}
+                      numberOfLines={1}
+                    />
                   </View>
 
                   <View style={[s.modalGridItem, { backgroundColor: isDark ? '#131d2e' : '#f8fafc', borderColor: theme.cardBorder }]}>
@@ -614,20 +622,22 @@ export default function UtrApprovedScreen() {
 
                   <View style={[s.modalGridItemFull, { backgroundColor: isDark ? '#131d2e' : '#f8fafc', borderColor: theme.cardBorder }]}>
                     <Text style={s.gridLabel}>TARGET CAMPAIGN</Text>
-                    <Text style={[s.gridValue, { color: theme.textMain }]}>
-                      {selectedDonation.campaignTitle || 'General Support Fund'}
-                    </Text>
+                    <DynamicText
+                      text={selectedDonation.campaignTitle || 'General Support Fund'}
+                      style={[s.gridValue, { color: theme.textMain }]}
+                    />
                     <Text style={[s.gridSub, { color: theme.textSub }]}>
-                      Category: {selectedDonation.category || 'General'}
+                      Category: {translateCategory(selectedDonation.category || 'General', lang)}
                     </Text>
                   </View>
 
                   {selectedDonation.communityName && (
                     <View style={[s.modalGridItemFull, { backgroundColor: isDark ? '#131d2e' : '#f8fafc', borderColor: theme.cardBorder }]}>
                       <Text style={s.gridLabel}>COMMUNITY</Text>
-                      <Text style={[s.gridValue, { color: theme.textMain }]}>
-                        {selectedDonation.communityName}
-                      </Text>
+                      <DynamicText
+                        text={selectedDonation.communityName}
+                        style={[s.gridValue, { color: theme.textMain }]}
+                      />
                     </View>
                   )}
 

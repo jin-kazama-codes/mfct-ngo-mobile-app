@@ -12,20 +12,31 @@ import {
   Clock, PlusCircle, Trash2, CheckCircle2, Flame, Heart, Zap,
   TrendingUp, Eye, Edit3, Check, X, Upload, FileText, AlertTriangle,
   Building2, ArrowLeft, Image as ImageIcon, Plus, ChevronDown, ChevronUp,
-  Camera
+  Camera, Sparkles, HandHeart
 } from 'lucide-react-native';
 import { CampaignCardSkeleton } from '../../src/components/SkeletonLoader';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  getLanguageCode,
+  translateCategory,
+  translateCity,
+  translateState,
+  translateCommunityName,
+  translateCampaignTitle,
+  translateRole,
+  translateStatus,
+} from '../../src/lib/translateEntity';
+import DynamicText from '../../src/components/DynamicText';
 
 const CATEGORIES: DonationCategory[] = [
-  'Medical', 'Education', 'Food', 'Zakat', 'Emergency Relief',
-  'Marriage', 'Shelter', 'Disability Support', 'Orphan Support', 'General'
+  'Medical', 'Education', 'Marriage', 'Food', 'Janazah'
 ];
 
 export default function ManageCampaignsScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = getLanguageCode(i18n.language);
   const { currentRole, activeUser, handleCampaignUpdated } = useAppState();
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -52,13 +63,12 @@ export default function ManageCampaignsScreen() {
   const [selectedCommunityId, setSelectedCommunityId] = useState('');
   const [goalINR, setGoalINR] = useState('');
   const [beneficiaryName, setBeneficiaryName] = useState('');
-  const [beneficiaryRelation, setBeneficiaryRelation] = useState('Self');
+  const [beneficiaryRelation, setBeneficiaryRelation] = useState('');
   const [daysLeft, setDaysLeft] = useState('30');
   const [story, setStory] = useState('');
 
-  // Main Image Upload state (from phone)
-  const [mainImage, setMainImage] = useState('');
-  const [mainImageFileName, setMainImageFileName] = useState('');
+  // Multiple Campaign Cover & Gallery Photos state
+  const [coverImages, setCoverImages] = useState<{ title: string; url: string; size?: string }[]>([]);
 
   // Multiple Documents / Medical Estimates state (from phone)
   const [documents, setDocuments] = useState<{ title: string; url: string; verifiedBy: string; size?: string }[]>([]);
@@ -67,6 +77,8 @@ export default function ManageCampaignsScreen() {
   const [pickerTarget, setPickerTarget] = useState<'mainImage' | 'medicalDocuments' | null>(null);
 
   const [isZakatEligible, setIsZakatEligible] = useState(true);
+  const [isSadqaEligible, setIsSadqaEligible] = useState(false);
+  const [isFitrahEligible, setIsFitrahEligible] = useState(false);
   const [isUrgent, setIsUrgent] = useState(false);
 
   const isAdmin = currentRole === 'super_admin' || currentRole === 'executive_admin';
@@ -106,13 +118,14 @@ export default function ManageCampaignsScreen() {
     setSelectedCommunityId(activeUser?.communityId || (communities[0]?.id ?? 'comm_bareilly_hq'));
     setGoalINR('');
     setBeneficiaryName('');
-    setBeneficiaryRelation('Self');
+    setBeneficiaryRelation('');
     setDaysLeft('30');
     setStory('');
-    setMainImage('');
-    setMainImageFileName('');
+    setCoverImages([]);
     setDocuments([]);
     setIsZakatEligible(true);
+    setIsSadqaEligible(false);
+    setIsFitrahEligible(false);
     setIsUrgent(false);
     setShowCommunityDropdown(false);
     setActiveSubTab('create');
@@ -126,14 +139,20 @@ export default function ManageCampaignsScreen() {
     setSelectedCommunityId(c.communityId);
     setGoalINR(c.goalINR.toString());
     setBeneficiaryName(c.beneficiaryName || '');
-    setBeneficiaryRelation(c.beneficiaryRelation || 'Self');
+    setBeneficiaryRelation(c.beneficiaryRelation || '');
     setDaysLeft(c.daysLeft?.toString() || '30');
     setStory(c.story || '');
-    setMainImage(c.mainImage || '');
-    setMainImageFileName(c.mainImage ? 'campaign_cover.jpg' : '');
+    const existingImgs = [c.mainImage, ...(c.galleryImages || [])].filter(Boolean);
+    setCoverImages(existingImgs.map((url, idx) => ({
+      url,
+      title: idx === 0 ? 'Main Cover Photo' : `Gallery Photo #${idx + 1}`,
+      size: 'Uploaded Photo',
+    })));
     setDocuments(c.documents || []);
-    setIsZakatEligible(c.isZakatEligible);
-    setIsUrgent(c.isUrgent);
+    setIsZakatEligible(c.isZakatEligible ?? false);
+    setIsSadqaEligible(c.isSadqaEligible ?? false);
+    setIsFitrahEligible(c.isFitrahEligible ?? false);
+    setIsUrgent(c.isUrgent ?? false);
     setShowCommunityDropdown(false);
     setActiveSubTab('create');
   };
@@ -153,16 +172,18 @@ export default function ManageCampaignsScreen() {
         }
 
         const result = await ImagePicker.launchCameraAsync({
-          allowsEditing: target === 'mainImage',
-          aspect: target === 'mainImage' ? [16, 9] : undefined,
           quality: 0.8,
         });
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
           const asset = result.assets[0];
           if (target === 'mainImage') {
-            setMainImage(asset.uri);
-            setMainImageFileName(asset.fileName || `cover_${Date.now()}.jpg`);
+            const newPhoto = {
+              title: asset.fileName || (coverImages.length === 0 ? 'Main Cover Photo' : `Campaign Photo #${coverImages.length + 1}`),
+              url: asset.uri,
+              size: asset.fileSize ? `${Math.round(asset.fileSize / 1024)} KB` : 'Camera Photo',
+            };
+            setCoverImages(prev => [...prev, newPhoto]);
           } else {
             const newDoc = {
               title: asset.fileName || `medical_estimate_${documents.length + 1}.jpg`,
@@ -182,17 +203,18 @@ export default function ManageCampaignsScreen() {
 
         const result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images'],
-          allowsEditing: target === 'mainImage',
-          allowsMultipleSelection: target === 'medicalDocuments',
-          aspect: target === 'mainImage' ? [16, 9] : undefined,
+          allowsMultipleSelection: true,
           quality: 0.8,
         });
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
           if (target === 'mainImage') {
-            const asset = result.assets[0];
-            setMainImage(asset.uri);
-            setMainImageFileName(asset.fileName || `cover_${Date.now()}.jpg`);
+            const newPhotos = result.assets.map((asset, idx) => ({
+              title: asset.fileName || (coverImages.length === 0 && idx === 0 ? 'Main Cover Photo' : `Campaign Photo #${coverImages.length + idx + 1}`),
+              url: asset.uri,
+              size: asset.fileSize ? `${Math.round(asset.fileSize / 1024)} KB` : 'Gallery Photo',
+            }));
+            setCoverImages(prev => [...prev, ...newPhotos]);
           } else {
             const newDocs = result.assets.map((asset, idx) => ({
               title: asset.fileName || `medical_doc_${documents.length + idx + 1}.jpg`,
@@ -225,7 +247,8 @@ export default function ManageCampaignsScreen() {
         city: 'Bareilly'
       };
 
-      const finalMainImage = mainImage.trim() || 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80';
+      const finalMainImage = coverImages[0]?.url || 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80';
+      const finalGalleryImages = coverImages.slice(1).map(img => img.url);
 
       if (editingCampaignId) {
         // Update existing campaign
@@ -236,12 +259,15 @@ export default function ManageCampaignsScreen() {
           communityName: selectedComm.name,
           city: selectedComm.city || 'Bareilly',
           beneficiaryName: beneficiaryName.trim() || 'Community Beneficiary',
-          beneficiaryRelation: beneficiaryRelation.trim() || 'Self',
+          beneficiaryRelation: beneficiaryRelation.trim() || '',
           goalINR: Number(goalINR) || 100000,
           daysLeft: Number(daysLeft) || 30,
           isZakatEligible,
+          isSadqaEligible,
+          isFitrahEligible,
           isUrgent,
           mainImage: finalMainImage,
+          galleryImages: finalGalleryImages,
           story: story.trim(),
           documents,
         });
@@ -256,18 +282,22 @@ export default function ManageCampaignsScreen() {
           communityName: selectedComm.name,
           city: selectedComm.city || 'Bareilly',
           beneficiaryName: beneficiaryName.trim() || 'Community Beneficiary',
-          beneficiaryRelation: beneficiaryRelation.trim() || 'Self',
+          beneficiaryRelation: beneficiaryRelation.trim() || '',
           goalINR: Number(goalINR) || 100000,
           raisedINR: 0,
           donorsCount: 0,
           daysLeft: Number(daysLeft) || 30,
           isVerified: isAdmin,
           isZakatEligible,
+          isSadqaEligible,
+          isFitrahEligible,
           isUrgent,
           mainImage: finalMainImage,
+          galleryImages: finalGalleryImages,
           story: story.trim(),
           documents,
           createdDate: new Date().toISOString(),
+          createdBy: activeUser?.id || 'admin',
           status: isAdmin ? 'active' : 'pending_approval',
         });
         if (handleCampaignUpdated) handleCampaignUpdated(created);
@@ -353,7 +383,7 @@ export default function ManageCampaignsScreen() {
         >
           <Heart color={activeSubTab === 'list' ? '#fff' : colors.textSecondary} size={15} />
           <Text style={[styles.tabText, { color: activeSubTab === 'list' ? '#fff' : colors.textSecondary }]}>
-            Campaigns ({campaigns.length})
+            {t('tabs.campaigns', 'Campaigns')} ({campaigns.length})
           </Text>
         </TouchableOpacity>
 
@@ -368,7 +398,7 @@ export default function ManageCampaignsScreen() {
         >
           <PlusCircle color={activeSubTab === 'create' ? '#fff' : colors.textSecondary} size={15} />
           <Text style={[styles.tabText, { color: activeSubTab === 'create' ? '#fff' : colors.textSecondary }]}>
-            {editingCampaignId ? 'Edit Campaign' : '+ Create Campaign'}
+            {editingCampaignId ? t('admin.update_campaign', 'Edit Campaign') : `+ ${t('admin.publish_campaign', 'Create Campaign')}`}
           </Text>
         </TouchableOpacity>
       </View>
@@ -384,13 +414,17 @@ export default function ManageCampaignsScreen() {
             {campaigns.length === 0 ? (
               <View style={styles.emptyState}>
                 <Heart color={colors.textMuted} size={48} />
-                <Text style={[styles.emptyStateTitle, { color: colors.textPrimary }]}>No Campaigns Found</Text>
+                <Text style={[styles.emptyStateTitle, { color: colors.textPrimary }]}>
+                  {t('campaigns.no_results', 'No Campaigns Found')}
+                </Text>
                 <Text style={[styles.emptyStateSub, { color: colors.textSecondary }]}>
-                  Create your first community campaign to start receiving contributions.
+                  {t('home.no_campaigns', 'Create your first community campaign to start receiving contributions.')}
                 </Text>
                 <TouchableOpacity onPress={handleOpenCreate} style={styles.emptyActionBtn}>
                   <PlusCircle color="#fff" size={16} />
-                  <Text style={styles.emptyActionBtnText}>Create Campaign</Text>
+                  <Text style={styles.emptyActionBtnText}>
+                    {t('admin.publish_campaign', 'Create Campaign')}
+                  </Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -418,27 +452,53 @@ export default function ManageCampaignsScreen() {
                       {/* Badges Overlay */}
                       <View style={styles.badgeOverlay}>
                         <View style={[styles.categoryBadge, { backgroundColor: colors.primary }]}>
-                          <Text style={styles.categoryBadgeText}>{c.category}</Text>
+                          <Text style={styles.categoryBadgeText}>
+                            {translateCategory(c.category, lang)}
+                          </Text>
                         </View>
 
                         {isPending && (
                           <View style={[styles.statusTag, { backgroundColor: colors.warning }]}>
                             <Clock color="#fff" size={11} />
-                            <Text style={styles.statusTagText}>Pending</Text>
+                            <Text style={styles.statusTagText}>
+                              {translateStatus('pending', lang)}
+                            </Text>
                           </View>
                         )}
 
                         {c.isUrgent && (
                           <View style={[styles.statusTag, { backgroundColor: colors.danger }]}>
                             <Flame color="#fff" size={11} />
-                            <Text style={styles.statusTagText}>Urgent</Text>
+                            <Text style={styles.statusTagText}>
+                              {translateCategory('Urgent', lang)}
+                            </Text>
                           </View>
                         )}
 
                         {c.isZakatEligible && (
                           <View style={[styles.statusTag, { backgroundColor: '#8b5cf6' }]}>
                             <Zap color="#fff" size={11} />
-                            <Text style={styles.statusTagText}>Zakat</Text>
+                            <Text style={styles.statusTagText}>
+                              {translateCategory('Zakat', lang)}
+                            </Text>
+                          </View>
+                        )}
+
+                        {c.isSadqaEligible && (
+                          <View style={[styles.statusTag, { backgroundColor: '#0d9488' }]}>
+                            <Heart color="#fff" size={11} />
+                            <Text style={styles.statusTagText}>
+                              {translateCategory('Sadqa', lang)}
+                            </Text>
+                          </View>
+                        )}
+
+                        {c.isFitrahEligible && (
+                          <View style={[styles.statusTag, { backgroundColor: '#d97706' }]}>
+                            <Sparkles color="#fff" size={11} />
+                            <Text style={styles.statusTagText}>
+                              {translateCategory('Fitra', lang)}
+                            </Text>
                           </View>
                         )}
                       </View>
@@ -448,21 +508,30 @@ export default function ManageCampaignsScreen() {
                     <View style={styles.cardContent}>
                       <View style={styles.metaTopRow}>
                         <Text style={[styles.communityMetaText, { color: colors.textSecondary }]}>
-                          {c.communityName || 'Bareilly Central'} {c.city ? `• ${c.city}` : ''}
+                          {translateCommunityName(c.communityName || 'Bareilly Central', lang)} {c.city ? `• ${translateCity(c.city, lang)}` : ''}
                         </Text>
                         <Text style={[styles.daysLeftText, { color: colors.textSecondary }]}>
-                          {c.daysLeft || 30} days left
+                          {c.daysLeft || 30} {t('campaigns.days_left', 'days left')}
                         </Text>
                       </View>
 
-                      <Text style={[styles.campaignTitle, { color: colors.textPrimary }]} numberOfLines={2}>
-                        {c.title}
-                      </Text>
+                      <DynamicText
+                        text={c.title}
+                        lang={lang}
+                        fallback={translateCampaignTitle(c.title, lang)}
+                        style={[styles.campaignTitle, { color: colors.textPrimary }]}
+                        numberOfLines={2}
+                      />
 
                       {c.beneficiaryName ? (
                         <Text style={[styles.beneficiaryText, { color: colors.textSecondary }]}>
-                          Beneficiary: <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{c.beneficiaryName}</Text>
-                          {c.beneficiaryRelation ? ` (${c.beneficiaryRelation})` : ''}
+                          {t('campaign_details.beneficiary', 'Beneficiary')}:{' '}
+                          <DynamicText
+                            text={c.beneficiaryName}
+                            lang={lang}
+                            style={{ fontWeight: '700', color: colors.textPrimary }}
+                          />
+                          {c.beneficiaryRelation ? ` (${translateRole(c.beneficiaryRelation, lang)})` : ''}
                         </Text>
                       ) : null}
 
@@ -473,7 +542,7 @@ export default function ManageCampaignsScreen() {
                             ₹{(c.raisedINR || 0).toLocaleString('en-IN')}
                           </Text>
                           <Text style={[styles.goalText, { color: colors.textSecondary }]}>
-                            Goal: ₹{c.goalINR.toLocaleString('en-IN')} ({pct}%)
+                            {t('campaign_details.goal', 'Goal')}: ₹{c.goalINR.toLocaleString('en-IN')} ({pct}%)
                           </Text>
                         </View>
                         <View style={[styles.progressTrack, { backgroundColor: colors.cardBgAlt }]}>
@@ -486,7 +555,7 @@ export default function ManageCampaignsScreen() {
                         <View style={[styles.docNotice, { backgroundColor: colors.cardBgAlt, borderColor: colors.border }]}>
                           <FileText color={colors.primary} size={14} />
                           <Text style={[styles.docNoticeText, { color: colors.textSecondary }]}>
-                            {c.documents.length} verified estimate/document(s) attached
+                            {c.documents.length} {t('campaign_details.verified_docs', 'verified estimate/document(s) attached')}
                           </Text>
                         </View>
                       )}
@@ -501,7 +570,9 @@ export default function ManageCampaignsScreen() {
                               style={[styles.actionBtn, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}
                             >
                               <Check color={colors.primary} size={14} />
-                              <Text style={[styles.actionBtnText, { color: colors.primary }]}>Approve</Text>
+                              <Text style={[styles.actionBtnText, { color: colors.primary }]}>
+                                {t('btn.approve', 'Approve')}
+                              </Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
@@ -510,7 +581,9 @@ export default function ManageCampaignsScreen() {
                               style={[styles.actionBtn, { backgroundColor: colors.dangerLight, borderColor: colors.danger }]}
                             >
                               <X color={colors.danger} size={14} />
-                              <Text style={[styles.actionBtnText, { color: colors.danger }]}>Reject</Text>
+                              <Text style={[styles.actionBtnText, { color: colors.danger }]}>
+                                {t('btn.reject', 'Reject')}
+                              </Text>
                             </TouchableOpacity>
                           </>
                         )}
@@ -520,7 +593,9 @@ export default function ManageCampaignsScreen() {
                           style={[styles.actionBtn, { backgroundColor: colors.cardBgAlt, borderColor: colors.border }]}
                         >
                           <Edit3 color={colors.textSecondary} size={14} />
-                          <Text style={[styles.actionBtnText, { color: colors.textPrimary }]}>Edit</Text>
+                          <Text style={[styles.actionBtnText, { color: colors.textPrimary }]}>
+                            {t('admin.update_campaign', 'Edit')}
+                          </Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -528,7 +603,9 @@ export default function ManageCampaignsScreen() {
                           style={[styles.actionBtn, { backgroundColor: colors.dangerLight, borderColor: colors.danger }]}
                         >
                           <Trash2 color={colors.danger} size={14} />
-                          <Text style={[styles.actionBtnText, { color: colors.danger }]}>Delete</Text>
+                          <Text style={[styles.actionBtnText, { color: colors.danger }]}>
+                            {t('btn.reject', 'Delete')}
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -546,10 +623,12 @@ export default function ManageCampaignsScreen() {
 
           {/* Campaign Title */}
           <View style={styles.fieldBlock}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Campaign Title *</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
+              {t('admin.campaign_title', 'Campaign Title *')}
+            </Text>
             <TextInput
               style={[styles.textInput, { backgroundColor: colors.inputBg, borderColor: colors.border, color: colors.textPrimary }]}
-              placeholder="e.g. Urgent Dialysis & Kidney Treatment Support"
+              placeholder={t('admin.campaign_title_placeholder', 'e.g. Urgent Dialysis & Kidney Treatment Support')}
               placeholderTextColor={colors.textMuted}
               value={title}
               onChangeText={setTitle}
@@ -558,7 +637,9 @@ export default function ManageCampaignsScreen() {
 
           {/* Category Chips */}
           <View style={styles.fieldBlock}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Donation Category *</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
+              {t('admin.campaign_category')}
+            </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {CATEGORIES.map((cat) => {
                 const isSelected = category === cat;
@@ -574,7 +655,7 @@ export default function ManageCampaignsScreen() {
                     ]}
                   >
                     <Text style={[styles.categoryChipText, { color: isSelected ? '#fff' : colors.textSecondary }]}>
-                      {cat}
+                      {translateCategory(cat, lang)}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -584,7 +665,9 @@ export default function ManageCampaignsScreen() {
 
           {/* ── Community Dropdown ── */}
           <View style={styles.fieldBlock}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Community *</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
+              {t('admin.tabCommunityHub', 'Community *')}
+            </Text>
             <TouchableOpacity
               onPress={() => setShowCommunityDropdown(!showCommunityDropdown)}
               style={[
@@ -596,11 +679,11 @@ export default function ManageCampaignsScreen() {
                 <Building2 color={colors.primary} size={18} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.dropdownSelectedText, { color: colors.textPrimary }]} numberOfLines={1}>
-                    {selectedCommunity ? selectedCommunity.name : 'Select Community'}
+                    {selectedCommunity ? translateCommunityName(selectedCommunity.name, lang) : t('admin.select_community', 'Select Community')}
                   </Text>
                   {selectedCommunity?.city ? (
                     <Text style={[styles.dropdownSelectedSub, { color: colors.textSecondary }]}>
-                      {selectedCommunity.city} {selectedCommunity.state ? `, ${selectedCommunity.state}` : ''}
+                      {translateCity(selectedCommunity.city, lang)} {selectedCommunity.state ? `, ${translateState(selectedCommunity.state, lang)}` : ''}
                     </Text>
                   ) : null}
                 </View>
@@ -637,10 +720,10 @@ export default function ManageCampaignsScreen() {
                             { color: isSelected ? colors.primary : colors.textPrimary }
                           ]}
                         >
-                          {comm.name}
+                          {translateCommunityName(comm.name, lang)}
                         </Text>
                         <Text style={[styles.dropdownItemSub, { color: colors.textSecondary }]}>
-                          {comm.city} {comm.state ? `• ${comm.state}` : ''}
+                          {translateCity(comm.city, lang)} {comm.state ? `• ${translateState(comm.state, lang)}` : ''}
                         </Text>
                       </View>
                       {isSelected && <Check color={colors.primary} size={16} />}
@@ -653,7 +736,9 @@ export default function ManageCampaignsScreen() {
 
           {/* Goal Amount */}
           <View style={styles.fieldBlock}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Goal Amount (₹) *</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
+              {t('admin.campaign_goal', 'Goal Amount (₹) *')}
+            </Text>
             <TextInput
               style={[styles.textInput, { backgroundColor: colors.inputBg, borderColor: colors.border, color: colors.textPrimary }]}
               placeholder="e.g. 250000"
@@ -664,34 +749,39 @@ export default function ManageCampaignsScreen() {
             />
           </View>
 
-          {/* Beneficiary Name & Relation */}
-          <View style={styles.twoColRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Beneficiary Name</Text>
-              <TextInput
-                style={[styles.textInput, { backgroundColor: colors.inputBg, borderColor: colors.border, color: colors.textPrimary }]}
-                placeholder="e.g. Mohd Rashid"
-                placeholderTextColor={colors.textMuted}
-                value={beneficiaryName}
-                onChangeText={setBeneficiaryName}
-              />
-            </View>
-            <View style={{ width: 12 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Relation</Text>
-              <TextInput
-                style={[styles.textInput, { backgroundColor: colors.inputBg, borderColor: colors.border, color: colors.textPrimary }]}
-                placeholder="e.g. Self / Father"
-                placeholderTextColor={colors.textMuted}
-                value={beneficiaryRelation}
-                onChangeText={setBeneficiaryRelation}
-              />
-            </View>
+          {/* Beneficiary Name */}
+          <View style={styles.fieldBlock}>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
+              {t('admin.beneficiary_name', 'Beneficiary Name')}
+            </Text>
+            <TextInput
+              style={[styles.textInput, { backgroundColor: colors.inputBg, borderColor: colors.border, color: colors.textPrimary }]}
+              placeholder={t('admin.beneficiary_name_placeholder', 'e.g. Mohd Rashid')}
+              placeholderTextColor={colors.textMuted}
+              value={beneficiaryName}
+              onChangeText={setBeneficiaryName}
+            />
+          </View>
+
+          {/* Beneficiary Relation */}
+          <View style={styles.fieldBlock}>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
+              {t('admin.beneficiary_relation', 'Relation')}
+            </Text>
+            <TextInput
+              style={[styles.textInput, { backgroundColor: colors.inputBg, borderColor: colors.border, color: colors.textPrimary }]}
+              placeholder={t('admin.beneficiary_relation_placeholder', 'e.g. Self / Father')}
+              placeholderTextColor={colors.textMuted}
+              value={beneficiaryRelation}
+              onChangeText={setBeneficiaryRelation}
+            />
           </View>
 
           {/* Days Left */}
           <View style={styles.fieldBlock}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Campaign Duration (Days)</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
+              {t('admin.campaign_duration', 'Campaign Duration (Days)')}
+            </Text>
             <TextInput
               style={[styles.textInput, { backgroundColor: colors.inputBg, borderColor: colors.border, color: colors.textPrimary }]}
               placeholder="e.g. 30"
@@ -704,14 +794,16 @@ export default function ManageCampaignsScreen() {
 
           {/* Full Story / Description */}
           <View style={styles.fieldBlock}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Full Story / Situation Details *</Text>
+            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
+              {t('admin.campaign_story', 'Full Story / Situation Details *')}
+            </Text>
             <TextInput
               style={[
                 styles.textInput,
                 styles.textArea,
                 { backgroundColor: colors.inputBg, borderColor: colors.border, color: colors.textPrimary }
               ]}
-              placeholder="Describe the medical situation, hospital diagnosis, family condition, and required aid..."
+              placeholder={t('admin.campaign_story_placeholder', 'Describe the medical situation, hospital diagnosis, family condition, and required aid...')}
               placeholderTextColor={colors.textMuted}
               multiline
               textAlignVertical="top"
@@ -720,70 +812,86 @@ export default function ManageCampaignsScreen() {
             />
           </View>
 
-          {/* ── MAIN CAMPAIGN COVER PHOTO (CAMERA & GALLERY) ── */}
+          {/* ── MAIN CAMPAIGN COVER & GALLERY PHOTOS (MULTIPLE CAMERA & GALLERY) ── */}
           <View style={styles.fieldBlock}>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
-              Campaign Main Cover Photo
-            </Text>
-
-            {!mainImage ? (
+            <View style={styles.labelWithActionRow}>
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
+                {t('admin.cover_photo_title', 'Campaign Main Cover & Photos')} ({coverImages.length})
+              </Text>
               <TouchableOpacity
                 onPress={() => setPickerTarget('mainImage')}
-                style={[
-                  styles.docUploadDropzone,
-                  {
-                    backgroundColor: colors.cardBgAlt,
-                    borderColor: colors.border
-                  }
-                ]}
+                style={[styles.addInlineBtn, { backgroundColor: colors.primaryLight }]}
                 activeOpacity={0.7}
               >
-                <View style={[styles.uploadIconCircle, { backgroundColor: colors.primaryLight }]}>
-                  <Camera color={colors.primary} size={20} />
-                </View>
-                <Text style={[styles.docDropzoneTitle, { color: colors.textPrimary }]}>
-                  Upload Campaign Main Image
-                </Text>
-                <Text style={[styles.docDropzoneSub, { color: colors.textSecondary }]}>
-                  Take photo or choose from gallery (JPG, PNG)
+                <Plus color={colors.primary} size={14} />
+                <Text style={[styles.addInlineBtnText, { color: colors.primary }]}>
+                  {t('admin.add_photo', 'Add / Snap')}
                 </Text>
               </TouchableOpacity>
-            ) : (
-              <View
-                style={[
-                  styles.attachedImageCard,
-                  { backgroundColor: colors.cardBg, borderColor: colors.border }
-                ]}
-              >
-                <Image source={{ uri: mainImage }} style={styles.attachedImageThumbnail} resizeMode="cover" />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={[styles.docListTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                    {mainImageFileName || 'Selected Cover Photo'}
-                  </Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
-                    <CheckCircle2 color={colors.primary} size={12} />
-                    <Text style={[styles.docListSub, { color: colors.primary, marginTop: 0 }]}>
-                      Cover photo ready
-                    </Text>
+            </View>
+
+            {/* Photo Upload Area Dropzone */}
+            <TouchableOpacity
+              onPress={() => setPickerTarget('mainImage')}
+              style={[
+                styles.docUploadDropzone,
+                {
+                  backgroundColor: coverImages.length > 0 ? colors.primaryLight : colors.cardBgAlt,
+                  borderColor: coverImages.length > 0 ? colors.primary : colors.border,
+                },
+              ]}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.uploadIconCircle, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ecfdf5' }]}>
+                <Camera color={colors.primary} size={20} />
+              </View>
+              <Text style={[styles.docDropzoneTitle, { color: coverImages.length > 0 ? colors.primary : colors.textPrimary }]}>
+                {coverImages.length > 0
+                  ? `✓ ${coverImages.length} ${t('admin.photos_attached', 'Photo(s) Selected')}`
+                  : t('admin.upload_cover_photo', 'Upload Campaign Main Image')}
+              </Text>
+              <Text style={[styles.docDropzoneSub, { color: colors.textSecondary }]}>
+                {t('admin.upload_cover_photo_sub', 'Take photo or choose from gallery (JPG, PNG)')}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Attached Photos List with Thumbnails */}
+            {coverImages.length > 0 && (
+              <View style={{ marginTop: 10, gap: 8 }}>
+                {coverImages.map((img, idx) => (
+                  <View
+                    key={idx}
+                    style={[
+                      styles.attachedDocCard,
+                      { backgroundColor: colors.cardBg, borderColor: idx === 0 ? colors.primary : colors.border },
+                    ]}
+                  >
+                    <Image source={{ uri: img.url }} style={styles.attachedDocThumbnail} resizeMode="cover" />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={[styles.docListTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                          {img.title}
+                        </Text>
+                        {idx === 0 && (
+                          <View style={{ backgroundColor: colors.primaryLight, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                            <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '800' }}>
+                              ★ {t('admin.cover_badge', 'Cover')}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={[styles.docListSub, { color: colors.textSecondary }]}>
+                        {idx === 0 ? t('admin.cover_photo_ready', 'Cover photo ready') : (img.size || `Gallery Photo #${idx + 1}`)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setCoverImages(prev => prev.filter((_, i) => i !== idx))}
+                      style={[styles.docRemoveBtn, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2' }]}
+                    >
+                      <Trash2 color={colors.danger} size={15} />
+                    </TouchableOpacity>
                   </View>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <TouchableOpacity
-                    onPress={() => setPickerTarget('mainImage')}
-                    style={[styles.docChangeBtn, { backgroundColor: colors.cardBgAlt, borderColor: colors.border }]}
-                  >
-                    <Camera color={colors.primary} size={15} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setMainImage('');
-                      setMainImageFileName('');
-                    }}
-                    style={[styles.docRemoveBtn, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2' }]}
-                  >
-                    <Trash2 color={colors.danger} size={15} />
-                  </TouchableOpacity>
-                </View>
+                ))}
               </View>
             )}
           </View>
@@ -792,7 +900,7 @@ export default function ManageCampaignsScreen() {
           <View style={styles.fieldBlock}>
             <View style={styles.labelWithActionRow}>
               <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
-                Attach Medical Estimates / Documents ({documents.length})
+                {t('admin.attach_docs_title', 'Attach Medical Estimates / Documents')} ({documents.length})
               </Text>
               <TouchableOpacity
                 onPress={() => setPickerTarget('medicalDocuments')}
@@ -800,7 +908,9 @@ export default function ManageCampaignsScreen() {
                 activeOpacity={0.7}
               >
                 <Plus color={colors.primary} size={14} />
-                <Text style={[styles.addInlineBtnText, { color: colors.primary }]}>Add / Scan</Text>
+                <Text style={[styles.addInlineBtnText, { color: colors.primary }]}>
+                  {t('admin.add_scan', 'Add / Scan')}
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -821,11 +931,11 @@ export default function ManageCampaignsScreen() {
               </View>
               <Text style={[styles.docDropzoneTitle, { color: documents.length > 0 ? colors.primary : colors.textPrimary }]}>
                 {documents.length > 0
-                  ? `✓ ${documents.length} Medical Document(s) Attached`
-                  : 'Upload Hospital Estimates, Bills or Prescription Reports'}
+                  ? `✓ ${documents.length} ${t('admin.docs_attached', 'Medical Document(s) Attached')}`
+                  : t('admin.upload_docs_placeholder', 'Upload Hospital Estimates, Bills or Prescription Reports')}
               </Text>
               <Text style={[styles.docDropzoneSub, { color: colors.textSecondary }]}>
-                Camera scan or select multiple files/photos from gallery
+                {t('admin.upload_docs_sub', 'Camera scan or select multiple files/photos from gallery')}
               </Text>
             </TouchableOpacity>
 
@@ -861,13 +971,16 @@ export default function ManageCampaignsScreen() {
             )}
           </View>
 
-          {/* Switches Box */}
+          {/* Eligibility & Priority Switches Box */}
           <View style={[styles.switchContainer, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+            {/* Zakat Eligible */}
             <View style={styles.switchRow}>
               <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={[styles.switchTitle, { color: colors.textPrimary }]}>Zakat Eligible</Text>
+                <Text style={[styles.switchTitle, { color: colors.textPrimary }]}>
+                  {lang === 'hi' ? 'ज़कात पात्र' : lang === 'ur' ? 'زکوٰۃ کے اہل' : t('admin.zakat_eligible', 'Zakat Eligible')}
+                </Text>
                 <Text style={[styles.switchSub, { color: colors.textSecondary }]}>
-                  Beneficiary qualifies under Shariah guidelines for Zakat fund allocation
+                  {lang === 'hi' ? 'ज़कात नियमों के अनुरूप (Shariah compliance)' : lang === 'ur' ? 'شرعی زکوٰۃ کے شرائط پر پورا اترتا ہے' : t('admin.zakat_eligible_desc', 'Meets Shariah Zakat compliance rules')}
                 </Text>
               </View>
               <Switch
@@ -877,11 +990,48 @@ export default function ManageCampaignsScreen() {
               />
             </View>
 
-            <View style={[styles.switchRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 14, marginTop: 6 }]}>
+            {/* Sadqa Eligible */}
+            <View style={[styles.switchRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 14, marginTop: 10 }]}>
               <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={[styles.switchTitle, { color: colors.textPrimary }]}>Urgent Appeal</Text>
+                <Text style={[styles.switchTitle, { color: colors.textPrimary }]}>
+                  {lang === 'hi' ? 'सदका पात्र' : lang === 'ur' ? 'صدقہ کے اہل' : t('admin.sadqa_eligible', 'Sadqa Eligible')}
+                </Text>
                 <Text style={[styles.switchSub, { color: colors.textSecondary }]}>
-                  Immediate emergency or critical intensive care requirement
+                  {lang === 'hi' ? 'सामान्य सदका व खैरात स्वीकार्य' : lang === 'ur' ? 'عام صدقہ اور خیرات کے لیے درست' : t('admin.sadqa_eligible_desc', 'Accepts general Sadaqah & voluntary charity')}
+                </Text>
+              </View>
+              <Switch
+                value={isSadqaEligible}
+                onValueChange={setIsSadqaEligible}
+                trackColor={{ true: '#0d9488', false: colors.border }}
+              />
+            </View>
+
+            {/* Fitrah Eligible */}
+            <View style={[styles.switchRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 14, marginTop: 10 }]}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={[styles.switchTitle, { color: colors.textPrimary }]}>
+                  {lang === 'hi' ? 'फ़ितरा पात्र' : lang === 'ur' ? 'فطرہ کے اہل' : t('admin.fitrah_eligible', 'Fitrah Eligible')}
+                </Text>
+                <Text style={[styles.switchSub, { color: colors.textSecondary }]}>
+                  {lang === 'hi' ? 'ईद-उल-फ़ित्र फ़ितरा व फ़िद्या पात्र' : lang === 'ur' ? 'صدقۃ الفطر اور فدیہ کے مستحقین کے لیے' : t('admin.fitrah_eligible_desc', 'Eligible for Fitrah & Fidya contributions')}
+                </Text>
+              </View>
+              <Switch
+                value={isFitrahEligible}
+                onValueChange={setIsFitrahEligible}
+                trackColor={{ true: '#d97706', false: colors.border }}
+              />
+            </View>
+
+            {/* Urgent Priority */}
+            <View style={[styles.switchRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 14, marginTop: 10 }]}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={[styles.switchTitle, { color: colors.textPrimary }]}>
+                  {lang === 'hi' ? 'अति आवश्यक (इमरजेंसी)' : lang === 'ur' ? 'انتہائی ہنگامی (ارجنٹ)' : t('admin.urgent_appeal', 'Urgent Priority')}
+                </Text>
+                <Text style={[styles.switchSub, { color: colors.textSecondary }]}>
+                  {lang === 'hi' ? 'अस्पताल / जीवन रक्षा हेतु तत्काल' : lang === 'ur' ? 'ہسپتال / جان بچانے کے لیے فوری' : t('admin.urgent_appeal_desc', 'Immediate hospital / critical life threat')}
                 </Text>
               </View>
               <Switch
@@ -898,7 +1048,9 @@ export default function ManageCampaignsScreen() {
               onPress={() => setActiveSubTab('list')}
               style={[styles.cancelFormBtn, { backgroundColor: colors.cardBgAlt, borderColor: colors.border }]}
             >
-              <Text style={[styles.cancelFormBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+              <Text style={[styles.cancelFormBtnText, { color: colors.textSecondary }]}>
+                {t('common.cancel', 'Cancel')}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -916,7 +1068,7 @@ export default function ManageCampaignsScreen() {
                 <>
                   <CheckCircle2 color="#fff" size={18} />
                   <Text style={styles.submitFormBtnText}>
-                    {editingCampaignId ? 'Update Campaign' : 'Publish Campaign'}
+                    {editingCampaignId ? t('admin.update_campaign', 'Update Campaign') : t('admin.publish_campaign', 'Publish Campaign')}
                   </Text>
                 </>
               )}
@@ -938,9 +1090,11 @@ export default function ManageCampaignsScreen() {
               <AlertTriangle color={colors.danger} size={28} />
             </View>
 
-            <Text style={[styles.modalHeading, { color: colors.textPrimary }]}>Delete Campaign?</Text>
+            <Text style={[styles.modalHeading, { color: colors.textPrimary }]}>
+              {t('admin.delete_campaign_title', 'Delete Campaign?')}
+            </Text>
             <Text style={[styles.modalDescription, { color: colors.textSecondary }]}>
-              This action cannot be undone. Are you sure you want to permanently delete "{deleteConfirmItem?.title}"?
+              {t('admin.delete_campaign_desc', 'This action cannot be undone. Are you sure you want to permanently delete this campaign?')}
             </Text>
 
             <View style={styles.modalButtonsRow}>
@@ -949,7 +1103,9 @@ export default function ManageCampaignsScreen() {
                 disabled={processingId === deleteConfirmItem?.id}
                 style={[styles.modalCancelBtn, { backgroundColor: colors.cardBgAlt, borderColor: colors.border }]}
               >
-                <Text style={[styles.modalCancelBtnText, { color: colors.textPrimary }]}>Cancel</Text>
+                <Text style={[styles.modalCancelBtnText, { color: colors.textPrimary }]}>
+                  {t('common.cancel', 'Cancel')}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -960,7 +1116,9 @@ export default function ManageCampaignsScreen() {
                 {processingId === deleteConfirmItem?.id ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Text style={styles.modalDeleteBtnText}>Yes, Delete</Text>
+                  <Text style={styles.modalDeleteBtnText}>
+                    {t('btn.reject', 'Yes, Delete')}
+                  </Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -985,8 +1143,8 @@ export default function ManageCampaignsScreen() {
               <View style={styles.sheetHeader}>
                 <Text style={[styles.sheetTitle, { color: colors.textPrimary }]}>
                   {pickerTarget === 'mainImage'
-                    ? 'Upload Campaign Cover Image'
-                    : 'Attach Medical Estimates / Documents'}
+                    ? t('admin.cover_photo_title', 'Campaign Main Cover & Photos')
+                    : t('admin.attach_docs_title', 'Attach Medical Estimates / Documents')}
                 </Text>
                 <TouchableOpacity onPress={() => setPickerTarget(null)} style={[styles.closeBtn, { backgroundColor: colors.cardBgAlt }]}>
                   <X color={colors.textSecondary} size={18} />
@@ -1002,9 +1160,11 @@ export default function ManageCampaignsScreen() {
                   <View style={[styles.optionIconCircle, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.2)' : '#ecfdf5' }]}>
                     <Camera color={colors.primary} size={24} />
                   </View>
-                  <Text style={[styles.optionTitle, { color: colors.textPrimary }]}>Use Camera</Text>
+                  <Text style={[styles.optionTitle, { color: colors.textPrimary }]}>
+                    {t('admin.camera_option', 'Use Camera')}
+                  </Text>
                   <Text style={[styles.optionSub, { color: colors.textSecondary }]}>
-                    {pickerTarget === 'mainImage' ? 'Take cover photo' : 'Scan document / receipt'}
+                    {pickerTarget === 'mainImage' ? t('admin.camera_cover_sub', 'Snap photo with camera') : t('admin.camera_doc_sub', 'Scan document / receipt')}
                   </Text>
                 </TouchableOpacity>
 
@@ -1016,9 +1176,11 @@ export default function ManageCampaignsScreen() {
                   <View style={[styles.optionIconCircle, { backgroundColor: isDark ? 'rgba(37, 99, 235, 0.2)' : '#eff6ff' }]}>
                     <ImageIcon color="#2563eb" size={24} />
                   </View>
-                  <Text style={[styles.optionTitle, { color: colors.textPrimary }]}>From Gallery</Text>
+                  <Text style={[styles.optionTitle, { color: colors.textPrimary }]}>
+                    {t('admin.gallery_option', 'From Gallery')}
+                  </Text>
                   <Text style={[styles.optionSub, { color: colors.textSecondary }]}>
-                    {pickerTarget === 'mainImage' ? 'Select single image' : 'Pick multiple images/docs'}
+                    {pickerTarget === 'mainImage' ? t('admin.gallery_doc_sub', 'Pick single or multiple photos') : t('admin.gallery_doc_sub', 'Pick multiple images/docs')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1027,7 +1189,9 @@ export default function ManageCampaignsScreen() {
                 onPress={() => setPickerTarget(null)}
                 style={[styles.cancelBtn, { backgroundColor: colors.cardBgAlt }]}
               >
-                <Text style={[styles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                <Text style={[styles.cancelBtnText, { color: colors.textSecondary }]}>
+                  {t('common.cancel', 'Cancel')}
+                </Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>

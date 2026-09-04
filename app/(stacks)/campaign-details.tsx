@@ -15,6 +15,17 @@ import { useTranslation } from 'react-i18next';
 import { getCampaignById } from '../../src/services/campaignService';
 import { Campaign } from '../../src/types';
 import {
+  getLanguageCode,
+  translateCategory,
+  translateCity,
+  translateCommunityName,
+  translateCampaignTitle,
+  translateCampaignStory,
+  translateRole,
+  translateAdminName,
+} from '../../src/lib/translateEntity';
+import { useDynamicTranslatedText } from '../../src/lib/autoTranslate';
+import {
   ArrowLeft,
   Share2,
   ShieldCheck,
@@ -31,12 +42,26 @@ import {
 } from 'lucide-react-native';
 
 export default function CampaignDetailsScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = getLanguageCode(i18n.language);
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
 
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const displayTitle = useDynamicTranslatedText(
+    campaign ? translateCampaignTitle(campaign.title, lang) : '',
+    lang
+  );
+  const displayStory = useDynamicTranslatedText(
+    campaign ? translateCampaignStory(campaign.story, lang) : '',
+    lang
+  );
+  const displayBeneficiaryName = useDynamicTranslatedText(
+    campaign ? campaign.beneficiaryName || '' : '',
+    lang
+  );
 
   useEffect(() => {
     async function loadCampaign() {
@@ -103,6 +128,10 @@ export default function CampaignDetailsScreen() {
   }
 
   const percentRaised = Math.min(100, Math.round((campaign.raisedINR / campaign.goalINR) * 100)) || 0;
+  const displayCat = translateCategory(campaign.category, lang);
+  const displayComm = translateCommunityName(campaign.communityName, lang);
+  const displayCity = translateCity(campaign.city, lang);
+  const displayRelation = translateRole(campaign.beneficiaryRelation, lang);
 
   return (
     <View className="flex-1 bg-slate-50 dark:bg-slate-950">
@@ -118,7 +147,7 @@ export default function CampaignDetailsScreen() {
           numberOfLines={1}
           className="flex-1 text-center mx-3 font-bold text-sm text-slate-900 dark:text-white"
         >
-          {campaign.category} Relief
+          {displayCat}
         </Text>
         <TouchableOpacity
           onPress={handleShare}
@@ -139,25 +168,37 @@ export default function CampaignDetailsScreen() {
           <View className="absolute top-3 left-3 flex-row flex-wrap gap-1.5">
             <View className="bg-white/90 dark:bg-slate-900/90 px-2.5 py-1 rounded-md shadow-sm">
               <Text className="text-slate-900 dark:text-white font-extrabold text-[10px] uppercase">
-                {campaign.category}
+                {displayCat}
               </Text>
             </View>
             {campaign.isZakatEligible && (
               <View className="bg-amber-500 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
                 <Sparkles color="#ffffff" size={10} />
-                <Text className="text-white font-bold text-[10px] ml-1">Zakat Eligible</Text>
+                <Text className="text-white font-bold text-[10px] ml-1">{translateCategory('Zakat', lang)}</Text>
+              </View>
+            )}
+            {campaign.isSadqaEligible && (
+              <View className="bg-teal-600 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
+                <Heart color="#ffffff" size={10} />
+                <Text className="text-white font-bold text-[10px] ml-1">{translateCategory('Sadqa', lang)}</Text>
+              </View>
+            )}
+            {campaign.isFitrahEligible && (
+              <View className="bg-amber-600 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
+                <Sparkles color="#ffffff" size={10} />
+                <Text className="text-white font-bold text-[10px] ml-1">{translateCategory('Fitra', lang)}</Text>
               </View>
             )}
             {campaign.isUrgent && (
               <View className="bg-red-600 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
                 <Flame color="#ffffff" size={10} />
-                <Text className="text-white font-bold text-[10px] ml-1">Urgent</Text>
+                <Text className="text-white font-bold text-[10px] ml-1">{translateCategory('Urgent', lang)}</Text>
               </View>
             )}
             {campaign.isVerified && (
               <View className="bg-emerald-700 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
                 <ShieldCheck color="#ffffff" size={10} />
-                <Text className="text-white font-bold text-[10px] ml-1">Verified Aid</Text>
+                <Text className="text-white font-bold text-[10px] ml-1">{t('campaign_details.verified_aid', 'Verified Aid')}</Text>
               </View>
             )}
           </View>
@@ -169,12 +210,12 @@ export default function CampaignDetailsScreen() {
             <View className="flex-row items-center mb-1.5">
               <Building2 color="#059669" size={14} />
               <Text className="text-emerald-700 dark:text-emerald-400 font-bold text-xs ml-1.5">
-                {campaign.communityName} • {campaign.city}
+                {displayComm} • {displayCity}
               </Text>
             </View>
 
             <Text className="text-lg font-black text-slate-900 dark:text-white leading-6 mb-3">
-              {campaign.title}
+              {displayTitle || campaign.title}
             </Text>
 
             {/* Financial Progress */}
@@ -185,7 +226,7 @@ export default function CampaignDetailsScreen() {
                     ₹{campaign.raisedINR?.toLocaleString('en-IN')}
                   </Text>
                   <Text className="text-[11px] text-slate-400">
-                    raised of ₹{campaign.goalINR?.toLocaleString('en-IN')} goal
+                    {t('campaign_details.raised_of', 'raised of')} ₹{campaign.goalINR?.toLocaleString('en-IN')} {t('campaign_details.goal', 'goal')}
                   </Text>
                 </View>
                 <Text className="text-lg font-black text-emerald-600 dark:text-emerald-400">
@@ -205,13 +246,13 @@ export default function CampaignDetailsScreen() {
                 <View className="flex-row items-center">
                   <Users color="#64748b" size={14} />
                   <Text className="text-xs text-slate-600 dark:text-slate-400 ml-1.5 font-semibold">
-                    {campaign.donorsCount} Supporters
+                    {campaign.donorsCount} {t('campaign_details.supporters', 'Supporters')}
                   </Text>
                 </View>
                 <View className="flex-row items-center">
                   <Clock color="#eab308" size={14} />
                   <Text className="text-xs text-amber-600 dark:text-amber-400 ml-1.5 font-semibold">
-                    {campaign.daysLeft} Days Left
+                    {campaign.daysLeft} {t('campaigns.days_left', 'Days Left')}
                   </Text>
                 </View>
               </View>
@@ -221,20 +262,20 @@ export default function CampaignDetailsScreen() {
           {/* Beneficiary Background & Story */}
           <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
             <Text className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">
-              Beneficiary Background & Story
+              {t('campaign_details.beneficiary_story', 'Beneficiary Background & Story')}
             </Text>
 
             <View className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 mb-3">
               <Text className="font-extrabold text-xs text-slate-900 dark:text-white">
-                Beneficiary: {campaign.beneficiaryName}
+                {t('campaign_details.beneficiary', 'Beneficiary')}: {displayBeneficiaryName || campaign.beneficiaryName}
               </Text>
               <Text className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Relationship / Role: {campaign.beneficiaryRelation}
+                {t('campaign_details.relationship', 'Relationship / Role')}: {displayRelation}
               </Text>
             </View>
 
             <Text className="text-xs text-slate-700 dark:text-slate-300 leading-5">
-              {campaign.story || 'No extended story provided for this campaign.'}
+              {displayStory || campaign.story || t('campaign_details.no_story', 'No extended story provided for this campaign.')}
             </Text>
           </View>
 
@@ -243,11 +284,11 @@ export default function CampaignDetailsScreen() {
             <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
               <View className="flex-row justify-between items-center mb-3">
                 <Text className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-                  Verified Medical Estimates & Docs ({campaign.documents.length})
+                  {t('campaign_details.verified_docs', 'Verified Medical Estimates & Docs')} ({campaign.documents.length})
                 </Text>
                 <View className="bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
                   <Text className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
-                    Audit Verified
+                    {t('campaign_details.audit_verified', 'Audit Verified')}
                   </Text>
                 </View>
               </View>
@@ -268,7 +309,7 @@ export default function CampaignDetailsScreen() {
                         {doc.title}
                       </Text>
                       <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        {doc.size || 'Attached Scan'} • Verified by {doc.verifiedBy || 'HQ Admin'}
+                        {(doc as any).size || 'Attached Scan'} • {t('campaign_details.verified_by', 'Verified by')} {translateAdminName(doc.verifiedBy, lang) || 'HQ Admin'}
                       </Text>
                     </View>
                     <CheckCircle2 color="#059669" size={16} />
@@ -325,7 +366,7 @@ export default function CampaignDetailsScreen() {
           className="flex-1 bg-emerald-600 py-3.5 rounded-xl items-center justify-center flex-row shadow-md"
         >
           <Heart color="#ffffff" size={16} fill="#ffffff" />
-          <Text className="text-white font-black text-sm ml-2">Donate Now</Text>
+          <Text className="text-white font-black text-sm ml-2">{t('home.donate_now', 'Donate Now')}</Text>
         </TouchableOpacity>
       </View>
     </View>

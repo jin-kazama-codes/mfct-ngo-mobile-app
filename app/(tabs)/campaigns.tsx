@@ -13,8 +13,16 @@ import { getCampaigns, getEmergencyCampaigns } from '../../src/services/campaign
 import { Campaign } from '../../src/types';
 import { Search, Heart, Clock, Flame, ShieldCheck, Sparkles } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
+import {
+  getLanguageCode,
+  translateCategory,
+  translateCity,
+  translateCommunityName,
+  translateCampaignTitle,
+} from '../../src/lib/translateEntity';
+import DynamicText from '../../src/components/DynamicText';
 
-const CATEGORIES = ['All', 'Urgent', 'Zakat', 'Medical', 'Education', 'Food', 'Marriage', 'Janazah', 'Emergency Relief'];
+const CATEGORIES = ['All', 'Urgent', 'Zakat', 'Sadqa', 'Fitra', 'Medical', 'Education', 'Food', 'Marriage', 'Janazah', 'Emergency Relief'];
 
 // Theme-adaptive Campaign Card Skeleton
 function CampaignCardSkeleton() {
@@ -54,7 +62,8 @@ function CampaignCardSkeleton() {
 }
 
 export default function CampaignsScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = getLanguageCode(i18n.language);
   const router = useRouter();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,17 +93,28 @@ export default function CampaignsScreen() {
   };
 
   const filtered = campaigns.filter((c) => {
+    const tTitle = translateCampaignTitle(c.title, lang);
+    const tComm = translateCommunityName(c.communityName, lang);
+    const tCity = translateCity(c.city, lang);
+
     const matchSearch =
       (c.title || '').toLowerCase().includes(search.toLowerCase()) ||
+      tTitle.toLowerCase().includes(search.toLowerCase()) ||
       (c.communityName || '').toLowerCase().includes(search.toLowerCase()) ||
+      tComm.toLowerCase().includes(search.toLowerCase()) ||
       (c.beneficiaryName || '').toLowerCase().includes(search.toLowerCase()) ||
-      (c.city || '').toLowerCase().includes(search.toLowerCase());
+      (c.city || '').toLowerCase().includes(search.toLowerCase()) ||
+      tCity.toLowerCase().includes(search.toLowerCase());
     const matchCat =
       selectedCategory === 'All' ||
       (selectedCategory === 'Urgent'
         ? c.isUrgent
         : selectedCategory === 'Zakat'
         ? c.isZakatEligible
+        : selectedCategory === 'Sadqa'
+        ? c.isSadqaEligible
+        : selectedCategory === 'Fitra'
+        ? c.isFitrahEligible
         : c.category === selectedCategory);
     return matchSearch && matchCat;
   });
@@ -109,7 +129,7 @@ export default function CampaignsScreen() {
           <Search color="#94a3b8" size={18} />
           <TextInput
             className="flex-1 text-slate-900 dark:text-white text-sm"
-            placeholder="Search campaigns by cause or area..."
+            placeholder={t('campaigns.search_placeholder', 'Search campaigns by cause or area...')}
             placeholderTextColor="#94a3b8"
             value={search}
             onChangeText={setSearch}
@@ -140,7 +160,7 @@ export default function CampaignsScreen() {
                   selectedCategory === cat ? 'text-white' : 'text-slate-600 dark:text-slate-400'
                 }`}
               >
-                {cat}
+                {translateCategory(cat, lang)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -166,90 +186,65 @@ export default function CampaignsScreen() {
           {filtered.length === 0 ? (
             <View className="items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 my-4">
               <Text className="text-slate-500 dark:text-slate-400 text-base font-semibold">
-                No campaigns found
+                {t('campaigns.no_results', 'No campaigns found')}
               </Text>
             </View>
           ) : (
-            filtered.map((campaign) => (
-              <View
-                key={campaign.id}
-                className="bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm"
-              >
-                {/* Image */}
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/(stacks)/campaign-details',
-                      params: { id: campaign.id },
-                    })
-                  }
-                  className="relative"
-                >
-                  <Image
-                    source={{ uri: campaign.mainImage }}
-                    className="w-full h-44"
-                    resizeMode="cover"
-                  />
-                  <View className="absolute top-2 left-2 flex-row gap-1">
-                    {campaign.isUrgent && (
-                      <View className="bg-red-500 px-2 py-0.5 rounded-full flex-row items-center gap-1">
-                        <Flame color="#fff" size={12} />
-                        <Text className="text-white text-xs font-bold">Urgent</Text>
-                      </View>
-                    )}
-                    {campaign.isZakatEligible && (
-                      <View className="bg-emerald-500 px-2 py-0.5 rounded-full">
-                        <Text className="text-white text-xs font-bold">Zakat</Text>
-                      </View>
-                    )}
-                  </View>
-                </TouchableOpacity>
+            filtered.map((campaign) => {
+              const displayTitle = translateCampaignTitle(campaign.title, lang);
+              const displayCat = translateCategory(campaign.category, lang);
+              const displayComm = translateCommunityName(campaign.communityName, lang);
+              const displayCity = translateCity(campaign.city, lang);
 
-                {/* Content */}
-                <View className="p-4">
-                  <Text className="text-xs text-slate-500 dark:text-slate-400 mb-1">{campaign.category}</Text>
+              return (
+                <View
+                  key={campaign.id}
+                  className="bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm"
+                >
+                  {/* Image */}
                   <TouchableOpacity
+                    activeOpacity={0.9}
                     onPress={() =>
                       router.push({
                         pathname: '/(stacks)/campaign-details',
                         params: { id: campaign.id },
                       })
                     }
+                    className="relative"
                   >
-                    <Text className="text-base font-bold text-slate-900 dark:text-white mb-1" numberOfLines={2}>
-                      {campaign.title}
-                    </Text>
-                  </TouchableOpacity>
-                  <Text className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-                    {campaign.communityName} • {campaign.city}
-                  </Text>
-
-                  {/* Progress Bar */}
-                  <View className="bg-slate-100 dark:bg-slate-800 rounded-full h-2 mb-2">
-                    <View
-                      className="bg-emerald-500 rounded-full h-2"
-                      style={{ width: `${progress(campaign)}%` }}
+                    <Image
+                      source={{ uri: campaign.mainImage }}
+                      className="w-full h-44"
+                      resizeMode="cover"
                     />
-                  </View>
-
-                  <View className="flex-row justify-between items-center mb-3">
-                    <View>
-                      <Text className="text-emerald-600 dark:text-emerald-400 font-extrabold text-sm">
-                        ₹{campaign.raisedINR.toLocaleString('en-IN')}
-                      </Text>
-                      <Text className="text-[10px] text-slate-400">
-                        of ₹{campaign.goalINR.toLocaleString('en-IN')}
-                      </Text>
+                    <View className="absolute top-2 left-2 flex-row flex-wrap gap-1">
+                      {campaign.isUrgent && (
+                        <View className="bg-red-500 px-2 py-0.5 rounded-full flex-row items-center gap-1">
+                          <Flame color="#fff" size={12} />
+                          <Text className="text-white text-xs font-bold">{translateCategory('Urgent', lang)}</Text>
+                        </View>
+                      )}
+                      {campaign.isZakatEligible && (
+                        <View className="bg-emerald-500 px-2 py-0.5 rounded-full">
+                          <Text className="text-white text-xs font-bold">{translateCategory('Zakat', lang)}</Text>
+                        </View>
+                      )}
+                      {campaign.isSadqaEligible && (
+                        <View className="bg-teal-600 px-2 py-0.5 rounded-full">
+                          <Text className="text-white text-xs font-bold">{translateCategory('Sadqa', lang)}</Text>
+                        </View>
+                      )}
+                      {campaign.isFitrahEligible && (
+                        <View className="bg-amber-600 px-2 py-0.5 rounded-full">
+                          <Text className="text-white text-xs font-bold">{translateCategory('Fitra', lang)}</Text>
+                        </View>
+                      )}
                     </View>
-                    <View className="flex-row items-center gap-1">
-                      <Clock color="#94a3b8" size={12} />
-                      <Text className="text-xs text-slate-500 font-semibold">{campaign.daysLeft}d left</Text>
-                    </View>
-                  </View>
+                  </TouchableOpacity>
 
-                  {/* Two Buttons: Details & Donate Now */}
-                  <View className="flex-row items-center gap-2 pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                  {/* Content */}
+                  <View className="p-4">
+                    <Text className="text-xs text-slate-500 dark:text-slate-400 mb-1">{displayCat}</Text>
                     <TouchableOpacity
                       onPress={() =>
                         router.push({
@@ -257,31 +252,79 @@ export default function CampaignsScreen() {
                           params: { id: campaign.id },
                         })
                       }
-                      className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 items-center justify-center border border-slate-200 dark:border-slate-700"
                     >
-                      <Text className="text-slate-800 dark:text-slate-200 font-bold text-xs">
-                        Details
-                      </Text>
+                      <DynamicText
+                        text={campaign.title}
+                        lang={lang}
+                        fallback={displayTitle}
+                        className="text-base font-bold text-slate-900 dark:text-white mb-1"
+                        numberOfLines={2}
+                      />
                     </TouchableOpacity>
+                    <Text className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                      <DynamicText text={campaign.communityName} lang={lang} fallback={displayComm} />
+                      {campaign.city ? ' • ' : ''}
+                      {campaign.city ? <DynamicText text={campaign.city} lang={lang} fallback={displayCity} /> : null}
+                    </Text>
 
-                    <TouchableOpacity
-                      onPress={() =>
-                        router.push({
-                          pathname: '/(stacks)/donation',
-                          params: { campaignId: campaign.id, initialCategory: campaign.category },
-                        })
-                      }
-                      className="flex-1 py-2.5 rounded-xl bg-emerald-600 items-center justify-center flex-row shadow-sm"
-                    >
-                      <Heart color="#ffffff" size={13} fill="#ffffff" />
-                      <Text className="text-white font-bold text-xs ml-1.5">
-                        Donate Now
-                      </Text>
-                    </TouchableOpacity>
+                    {/* Progress Bar */}
+                    <View className="bg-slate-100 dark:bg-slate-800 rounded-full h-2 mb-2">
+                      <View
+                        className="bg-emerald-500 rounded-full h-2"
+                        style={{ width: `${progress(campaign)}%` }}
+                      />
+                    </View>
+
+                    <View className="flex-row justify-between items-center mb-3">
+                      <View>
+                        <Text className="text-emerald-600 dark:text-emerald-400 font-extrabold text-sm">
+                          ₹{campaign.raisedINR.toLocaleString('en-IN')}
+                        </Text>
+                        <Text className="text-[10px] text-slate-400">
+                          {t('home.raised_of', 'of')} ₹{campaign.goalINR.toLocaleString('en-IN')}
+                        </Text>
+                      </View>
+                      <View className="flex-row items-center gap-1">
+                        <Clock color="#94a3b8" size={12} />
+                        <Text className="text-xs text-slate-500 font-semibold">{campaign.daysLeft}{t('campaigns.days_left', 'd left')}</Text>
+                      </View>
+                    </View>
+
+                    {/* Two Buttons: Details & Donate Now */}
+                    <View className="flex-row items-center gap-2 pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                      <TouchableOpacity
+                        onPress={() =>
+                          router.push({
+                            pathname: '/(stacks)/campaign-details',
+                            params: { id: campaign.id },
+                          })
+                        }
+                        className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 items-center justify-center border border-slate-200 dark:border-slate-700"
+                      >
+                        <Text className="text-slate-800 dark:text-slate-200 font-bold text-xs">
+                          {t('common.details', 'Details')}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() =>
+                          router.push({
+                            pathname: '/(stacks)/donation',
+                            params: { campaignId: campaign.id, initialCategory: campaign.category },
+                          })
+                        }
+                        className="flex-1 py-2.5 rounded-xl bg-emerald-600 items-center justify-center flex-row shadow-sm"
+                      >
+                        <Heart color="#ffffff" size={13} fill="#ffffff" />
+                        <Text className="text-white font-bold text-xs ml-1.5">
+                          {t('home.donate_now', 'Donate Now')}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
-              </View>
-            ))
+              );
+            })
           )}
         </ScrollView>
       )}

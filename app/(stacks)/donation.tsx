@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,10 @@ import {
   Alert,
   Linking,
   Share,
+  Platform,
+  KeyboardAvoidingView,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -19,6 +23,15 @@ import { getCampaigns, getCampaignById } from '../../src/services/campaignServic
 import { getAccountDetails } from '../../src/services/adminService';
 import { createDonation, updateCampaignRaised } from '../../src/services/donationService';
 import { Campaign, DonationCategory, AccountDetails, Donation } from '../../src/types';
+import {
+  getLanguageCode,
+  translateCategory,
+  translateCity,
+  translateCommunityName,
+  translateCampaignTitle,
+  translateRole,
+} from '../../src/lib/translateEntity';
+import { DynamicText } from '../../src/components/DynamicText';
 import {
   ArrowLeft,
   Check,
@@ -36,7 +49,7 @@ import {
   X,
 } from 'lucide-react-native';
 
-const PRESET_AMOUNTS = [500, 1000, 2500, 5000, 10000];
+const PRESET_AMOUNTS = [500, 1000, 2100, 2500, 5000, 10000, 25000, 50000];
 const CATEGORIES: DonationCategory[] = [
   'Medical',
   'Education',
@@ -49,13 +62,16 @@ const CATEGORIES: DonationCategory[] = [
 ];
 
 export default function DonationScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = getLanguageCode(i18n.language);
   const router = useRouter();
   const { activeUser } = useAppState();
   const params = useLocalSearchParams<{ campaignId?: string; initialCategory?: string }>();
+  const scrollViewRef = useRef<ScrollView>(null);
 
   // Steps: 1 = Amount/Category, 2 = Payment/UTR, 3 = Success
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [isUtrFocused, setIsUtrFocused] = useState(false);
 
   // Form states
   const [amount, setAmount] = useState<number>(2500);
@@ -201,148 +217,225 @@ export default function DonationScreen() {
         <View className="w-8" />
       </View>
 
-      <ScrollView className="flex-1 p-4" showsVerticalScrollIndicator={false}>
-        {/* STEP 1: Select Amount & Category */}
-        {step === 1 && (
-          <View className="space-y-4">
-            {/* Selected Campaign Card Preview */}
-            {campaign && (
-              <View className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex-row items-center">
-                <Image
-                  source={{ uri: campaign.mainImage }}
-                  className="w-14 h-14 rounded-xl mr-3"
-                  resizeMode="cover"
-                />
-                <View className="flex-1">
-                  <Text className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">
-                    {campaign.category} Relief
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        className="flex-1"
+      >
+        <ScrollView
+          ref={scrollViewRef}
+          className="flex-1 p-4"
+          contentContainerStyle={{ paddingBottom: isUtrFocused ? 360 : 80 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
+          {/* STEP 1: Select Amount & Category */}
+          {step === 1 && (
+            <View className="space-y-4">
+              {/* Campaign Scroller when multiple causes available */}
+              {campaigns.length > 0 && !params.campaignId ? (
+                <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">
+                    Choose Cause / Campaign
                   </Text>
-                  <Text className="font-bold text-slate-900 dark:text-white text-xs leading-4" numberOfLines={2}>
-                    {campaign.title}
-                  </Text>
-                  <Text className="text-[10px] text-slate-400 mt-0.5">
-                    Goal: ₹{campaign.goalINR?.toLocaleString('en-IN')}
-                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 10 }}
+                  >
+                    {campaigns.map((c) => {
+                      const isSelected = campaign?.id === c.id;
+                      return (
+                        <TouchableOpacity
+                          key={c.id}
+                          onPress={() => {
+                            setCampaign(c);
+                            setSelectedCategory(c.category);
+                          }}
+                          className={`p-2.5 rounded-2xl border flex-row items-center w-64 ${
+                            isSelected
+                              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500'
+                              : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700'
+                          }`}
+                        >
+                          <Image
+                            source={{ uri: c.mainImage }}
+                            className="w-12 h-12 rounded-xl mr-2.5"
+                            resizeMode="cover"
+                          />
+                          <View className="flex-1">
+                            <Text className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">
+                              {translateCategory(c.category, lang)}
+                            </Text>
+                            <DynamicText
+                              text={c.title}
+                              className="font-bold text-slate-900 dark:text-white text-xs leading-4"
+                              numberOfLines={1}
+                            />
+                            <Text className="text-[10px] text-slate-400 mt-0.5">
+                              {t('campaign_details.goal', 'Goal')}: ₹{c.goalINR?.toLocaleString('en-IN')}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              ) : campaign ? (
+                /* Selected Campaign Card Preview when passed directly */
+                <View className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex-row items-center">
+                  <Image
+                    source={{ uri: campaign.mainImage }}
+                    className="w-14 h-14 rounded-xl mr-3"
+                    resizeMode="cover"
+                  />
+                  <View className="flex-1">
+                    <Text className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">
+                      {translateCategory(campaign.category, lang)}
+                    </Text>
+                    <DynamicText
+                      text={campaign.title}
+                      className="font-bold text-slate-900 dark:text-white text-xs leading-4"
+                      numberOfLines={2}
+                    />
+                    <Text className="text-[10px] text-slate-400 mt-0.5">
+                      {t('campaign_details.goal', 'Goal')}: ₹{campaign.goalINR?.toLocaleString('en-IN')}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Amount Selection with Horizontal Scroller */}
+              <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">
+                  Select Donation Amount (₹)
+                </Text>
+
+                {/* Preset Buttons Horizontal Scroller */}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 8 }}
+                  className="mb-3"
+                >
+                  {PRESET_AMOUNTS.map((val) => {
+                    const isSelected = amount === val && !customAmount;
+                    return (
+                      <TouchableOpacity
+                        key={val}
+                        onPress={() => {
+                          setAmount(val);
+                          setCustomAmount('');
+                        }}
+                        className={`px-4 py-2.5 rounded-xl border ${
+                          isSelected
+                            ? 'bg-emerald-600 border-emerald-600'
+                            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        <Text
+                          className={`text-xs font-bold ${
+                            isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          ₹{val.toLocaleString('en-IN')}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                {/* Custom Amount Input */}
+                <View className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
+                  <Text className="text-slate-500 font-bold text-sm mr-2">₹</Text>
+                  <TextInput
+                    value={customAmount}
+                    onChangeText={(txt) => {
+                      setCustomAmount(txt);
+                      const num = parseInt(txt, 10);
+                      if (!isNaN(num) && num > 0) setAmount(num);
+                    }}
+                    keyboardType="numeric"
+                    returnKeyType="done"
+                    onSubmitEditing={() => Keyboard.dismiss()}
+                    blurOnSubmit={true}
+                    placeholder="Or enter custom amount"
+                    placeholderTextColor="#94a3b8"
+                    className="flex-1 text-slate-900 dark:text-white text-xs font-bold"
+                  />
                 </View>
               </View>
-            )}
 
-            {/* Amount Selection */}
-            <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
-              <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">
-                Select Donation Amount (₹)
-              </Text>
+              {/* Category Selection Horizontal Scroller */}
+              <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">
+                  Giving Category
+                </Text>
 
-              {/* Preset Buttons */}
-              <View className="flex-row flex-wrap gap-2 mb-3">
-                {PRESET_AMOUNTS.map((val) => {
-                  const isSelected = amount === val && !customAmount;
-                  return (
-                    <TouchableOpacity
-                      key={val}
-                      onPress={() => {
-                        setAmount(val);
-                        setCustomAmount('');
-                      }}
-                      className={`px-4 py-2.5 rounded-xl border ${
-                        isSelected
-                          ? 'bg-emerald-600 border-emerald-600'
-                          : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                      }`}
-                    >
-                      <Text
-                        className={`text-xs font-bold ${
-                          isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-300'
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 8 }}
+                >
+                  {CATEGORIES.map((cat) => {
+                    const isSelected = selectedCategory === cat;
+                    return (
+                      <TouchableOpacity
+                        key={cat}
+                        onPress={() => setSelectedCategory(cat)}
+                        className={`px-3.5 py-2 rounded-xl border ${
+                          isSelected
+                            ? 'bg-emerald-600 border-emerald-600'
+                            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
                         }`}
                       >
-                        ₹{val.toLocaleString('en-IN')}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                        <Text
+                          className={`text-xs font-bold ${
+                            isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          {translateCategory(cat, lang)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
               </View>
 
-              {/* Custom Amount Input */}
-              <View className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2">
-                <Text className="text-slate-500 font-bold text-sm mr-2">₹</Text>
+              {/* Donor Name Input */}
+              <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">
+                  Donor Name (Public Acknowledgement)
+                </Text>
                 <TextInput
-                  value={customAmount}
-                  onChangeText={(txt) => {
-                    setCustomAmount(txt);
-                    const num = parseInt(txt, 10);
-                    if (!isNaN(num) && num > 0) setAmount(num);
-                  }}
-                  keyboardType="numeric"
-                  placeholder="Or enter custom amount"
+                  value={donorName}
+                  onChangeText={setDonorName}
+                  returnKeyType="done"
+                  onSubmitEditing={() => Keyboard.dismiss()}
+                  blurOnSubmit={true}
+                  placeholder="Enter your name or Anonymous"
                   placeholderTextColor="#94a3b8"
-                  className="flex-1 text-slate-900 dark:text-white text-xs font-bold"
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-xs text-slate-900 dark:text-white font-medium"
                 />
               </View>
+
+              {/* Next Button */}
+              <TouchableOpacity
+                onPress={() => {
+                  if (amount <= 0) {
+                    Alert.alert('Invalid Amount', 'Please enter a valid donation amount.');
+                    return;
+                  }
+                  setStep(2);
+                }}
+                className="w-full py-4 bg-emerald-600 rounded-2xl items-center justify-center shadow-md mt-2"
+              >
+                <Text className="text-white font-black text-sm">
+                  Proceed to Pay ₹{amount.toLocaleString('en-IN')}
+                </Text>
+              </TouchableOpacity>
             </View>
-
-            {/* Category Selection */}
-            <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
-              <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3">
-                Giving Category
-              </Text>
-
-              <View className="flex-row flex-wrap gap-2">
-                {CATEGORIES.map((cat) => {
-                  const isSelected = selectedCategory === cat;
-                  return (
-                    <TouchableOpacity
-                      key={cat}
-                      onPress={() => setSelectedCategory(cat)}
-                      className={`px-3 py-2 rounded-xl border ${
-                        isSelected
-                          ? 'bg-emerald-600 border-emerald-600'
-                          : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                      }`}
-                    >
-                      <Text
-                        className={`text-xs font-bold ${
-                          isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-300'
-                        }`}
-                      >
-                        {cat}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* Donor Name Input */}
-            <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
-              <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">
-                Donor Name (Public Acknowledgement)
-              </Text>
-              <TextInput
-                value={donorName}
-                onChangeText={setDonorName}
-                placeholder="Enter your name or Anonymous"
-                placeholderTextColor="#94a3b8"
-                className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-xs text-slate-900 dark:text-white font-medium"
-              />
-            </View>
-
-            {/* Next Button */}
-            <TouchableOpacity
-              onPress={() => {
-                if (amount <= 0) {
-                  Alert.alert('Invalid Amount', 'Please enter a valid donation amount.');
-                  return;
-                }
-                setStep(2);
-              }}
-              className="w-full py-4 bg-emerald-600 rounded-2xl items-center justify-center shadow-md mt-2"
-            >
-              <Text className="text-white font-black text-sm">
-                Proceed to Pay ₹{amount.toLocaleString('en-IN')}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+          )}
 
         {/* STEP 2: UPI & Bank Payment Details + UTR Submission */}
         {step === 2 && (
@@ -414,17 +507,82 @@ export default function DonationScreen() {
 
             {/* Verification Inputs (UTR / Screenshot) */}
             <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
-              <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2">
-                12-Digit UPI Ref / UTR Number
-              </Text>
-              <TextInput
-                value={utrNumber}
-                onChangeText={setUtrNumber}
-                placeholder="e.g. 423987654321"
-                placeholderTextColor="#94a3b8"
-                keyboardType="numeric"
-                className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-xs text-slate-900 dark:text-white font-mono mb-3"
-              />
+              <View className="flex-row items-center justify-between mb-2">
+                <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                  12-Digit UPI Ref / UTR Number
+                </Text>
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-[10px] font-bold text-slate-400">
+                    {utrNumber.length}/12
+                  </Text>
+                  {isUtrFocused && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setIsUtrFocused(false);
+                      }}
+                      className="bg-emerald-600 px-2.5 py-1 rounded-lg"
+                    >
+                      <Text className="text-[10px] font-bold text-white">
+                        Done
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+
+              <View className="relative justify-center mb-2">
+                <TextInput
+                  value={utrNumber}
+                  onChangeText={(txt) => {
+                    setUtrNumber(txt);
+                    // Automatically hide mobile keyboard once 12 digits are entered
+                    if (txt.trim().length >= 12) {
+                      Keyboard.dismiss();
+                      setIsUtrFocused(false);
+                    }
+                  }}
+                  onFocus={() => {
+                    setIsUtrFocused(true);
+                    setTimeout(() => {
+                      scrollViewRef.current?.scrollToEnd({ animated: true });
+                    }, 200);
+                  }}
+                  onBlur={() => setIsUtrFocused(false)}
+                  placeholder="Type 12-digit UTR here"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="number-pad"
+                  returnKeyType="done"
+                  onSubmitEditing={() => {
+                    Keyboard.dismiss();
+                    setIsUtrFocused(false);
+                  }}
+                  blurOnSubmit={true}
+                  className="bg-slate-100 dark:bg-slate-800 border-2 border-emerald-500/70 dark:border-emerald-500 p-3.5 pr-10 rounded-xl text-base text-slate-900 dark:text-white font-mono font-bold tracking-widest"
+                />
+                {utrNumber.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => setUtrNumber('')}
+                    className="absolute right-3 p-1 bg-slate-200 dark:bg-slate-700 rounded-full"
+                  >
+                    <X color="#64748b" size={14} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Large Typed Value Confirmation Display */}
+              {utrNumber.length > 0 && (
+                <View className="bg-emerald-50 dark:bg-emerald-950/60 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800 flex-row items-center justify-between mb-3">
+                  <Text className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">
+                    Typed UTR: <Text className="font-mono font-bold tracking-widest text-emerald-700 dark:text-emerald-200">{utrNumber}</Text>
+                  </Text>
+                  {utrNumber.length >= 12 && (
+                    <View className="bg-emerald-500 rounded-full p-0.5">
+                      <Check color="#ffffff" size={12} />
+                    </View>
+                  )}
+                </View>
+              )}
 
               {/* Upload Screenshot */}
               <TouchableOpacity
@@ -494,31 +652,32 @@ export default function DonationScreen() {
               </View>
 
               <View className="flex-row justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5 mb-2.5">
-                <Text className="text-xs text-slate-400">Amount Paid</Text>
+                <Text className="text-xs text-slate-400">{t('donation.amount_paid', 'Amount Paid')}</Text>
                 <Text className="text-base font-black text-emerald-600 dark:text-emerald-400">
                   ₹{createdDonation?.amountINR?.toLocaleString('en-IN') || amount.toLocaleString('en-IN')}
                 </Text>
               </View>
 
               <View className="flex-row justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5 mb-2.5">
-                <Text className="text-xs text-slate-400">Category</Text>
+                <Text className="text-xs text-slate-400">{t('donation.category', 'Category')}</Text>
                 <Text className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  {createdDonation?.category || selectedCategory}
+                  {translateCategory(createdDonation?.category || selectedCategory, lang)}
                 </Text>
               </View>
 
               <View className="flex-row justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5 mb-2.5">
-                <Text className="text-xs text-slate-400">Donor Name</Text>
-                <Text className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  {createdDonation?.donorName || donorName}
-                </Text>
+                <Text className="text-xs text-slate-400">{t('donation.donor_name', 'Donor Name')}</Text>
+                <DynamicText
+                  text={createdDonation?.donorName || donorName}
+                  className="text-xs font-bold text-slate-800 dark:text-slate-200"
+                />
               </View>
 
               <View className="flex-row justify-between">
-                <Text className="text-xs text-slate-400">Status</Text>
+                <Text className="text-xs text-slate-400">{t('donation.status', 'Status')}</Text>
                 <View className="bg-amber-50 dark:bg-amber-950/80 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800">
                   <Text className="text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                    Pending Verification
+                    {t('donation.pending_verification', 'Pending Verification')}
                   </Text>
                 </View>
               </View>
@@ -541,7 +700,8 @@ export default function DonationScreen() {
             </TouchableOpacity>
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }

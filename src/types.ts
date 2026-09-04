@@ -1,3 +1,5 @@
+export type Language = 'hi' | 'ur' | 'en';
+
 export type UserRole =
   | 'super_admin'
   | 'community_admin'
@@ -31,19 +33,31 @@ export interface User {
   phone: string;
   city: string;
   state: string;
+  address?: string;
   role: UserRole;
   avatar: string;
   communityId: string;
   communityName: string;
   membershipId: string;
   isVerified: boolean;
+  isPremium?: boolean;
   joinDate: string;
   passwordHash?: string;
+  password?: string;
   documentUrl?: string;
+  aadhaarFrontUrl?: string;
+  aadhaarBackUrl?: string;
   paymentMethod?: string;
   paymentUtr?: string;
   paymentScreenshotUrl?: string;
   familiesHelped?: number;
+  religion?: 'Hindu' | 'Muslim' | 'Sikh' | 'Christian' | string;
+  isMalikENisab?: boolean;
+  is_malik_e_nisab?: boolean;
+  helpType?: 'Zakat' | 'Sadaka' | 'Fitra' | 'Other' | string;
+  help_type?: string;
+  helpDetails?: string;
+  help_details?: string;
 }
 
 export interface Community {
@@ -54,13 +68,19 @@ export interface Community {
   adminName: string;
   adminRoleTitle: string; // e.g. "Community Administrator"
   avatar: string;
-  totalMembers: number;
-  activeCampaigns: number;
-  totalRaisedINR: number;
-  healthScore: number; // 0 - 100
-  verifiedStatus: 'Verified' | 'Pending' | 'Flagged';
+  totalMembers?: number;
+  total_members?: number;
+  activeCampaigns?: number;
+  active_campaigns?: number;
+  totalRaisedINR?: number;
+  total_raised_inr?: number;
+  healthScore?: number; // 0 - 100
+  health_score?: number;
+  verifiedStatus?: 'Verified' | 'Pending' | 'Flagged';
+  verified_status?: 'Verified' | 'Pending' | 'Flagged';
   description: string;
-  establishedYear: number;
+  establishedYear?: number;
+  established_year?: number;
   coverImage: string;
 }
 
@@ -79,6 +99,10 @@ export interface Campaign {
   daysLeft: number;
   isVerified: boolean;
   isZakatEligible: boolean;
+  isSadqaEligible?: boolean;
+  is_sadqa_eligible?: boolean;
+  isFitrahEligible?: boolean;
+  is_fitrah_eligible?: boolean;
   isUrgent: boolean;
   mainImage: string;
   galleryImages?: string[];
@@ -140,7 +164,7 @@ export interface Testimonial {
   role: string;
   city: string;
   quote: string;
-  avatar: string;
+  avatar?: string;
   campaignTitle?: string;
   amountReceivedINR?: number;
   videoThumbnail?: string;
@@ -175,6 +199,7 @@ export interface AccountDetails {
   account_number: string;
   ifsc_code: string;
   upi_id: string;
+  account_holder_name?: string;
   qr_code_url?: string;
   created_at?: string;
   updated_at?: string;

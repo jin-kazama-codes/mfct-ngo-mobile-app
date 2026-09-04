@@ -21,6 +21,13 @@ import {
 import { useColorScheme } from 'nativewind';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  getLanguageCode,
+  translateRole,
+  translateCity,
+  translateCommunityName,
+} from '../../src/lib/translateEntity';
+import { useDynamicTranslatedText, autoTranslateText } from '../../src/lib/autoTranslate';
 
 const ROLES: { id: UserRole; label: string; color: string }[] = [
   { id: 'member', label: 'Member', color: '#10b981' },
@@ -29,13 +36,140 @@ const ROLES: { id: UserRole; label: string; color: string }[] = [
   { id: 'super_admin', label: 'Super Admin', color: '#ef4444' },
 ];
 
+// ─── UserListItem ─────────────────────────────────────────────────────────
+// Extracted as its own component so hooks (useDynamicTranslatedText) can be
+// called at the component top-level — never inside a .map() callback.
+interface UserListItemProps {
+  user: User;
+  lang: ReturnType<typeof getLanguageCode>;
+  theme: Record<string, string>;
+  isDark: boolean;
+  isCurrent: boolean;
+  onEdit: (user: User) => void;
+  onDelete: (id: string) => void;
+}
+
+function UserListItem({ user, lang, theme, isDark, isCurrent, onEdit, onDelete }: UserListItemProps) {
+  const roleObj = ROLES.find(r => r.id === user.role) || { label: user.role || 'member', color: '#64748b' };
+  const translatedCity = useDynamicTranslatedText(user.city || '', lang);
+  const translatedComm = useDynamicTranslatedText(user.communityName || '', lang);
+  const translatedName = useDynamicTranslatedText(user.name || '', lang);
+  const translatedState = useDynamicTranslatedText(user.state || '', lang);
+
+  return (
+    <View
+      style={[
+        s.userCard,
+        { backgroundColor: theme.cardBg, borderColor: theme.cardBorder },
+      ]}
+    >
+      {/* Top Row: Avatar + Info + Role Badge */}
+      <View style={s.userCardTop}>
+        {user.avatar ? (
+          <Image source={{ uri: user.avatar }} style={s.avatarImg} resizeMode="cover" />
+        ) : (
+          <View style={[s.avatarFallback, { backgroundColor: isDark ? '#334155' : '#e2e8f0' }]}>
+            <Text style={[s.avatarInitial, { color: theme.textMain }]}>
+              {user.name?.charAt(0)?.toUpperCase() || 'U'}
+            </Text>
+          </View>
+        )}
+
+        <View style={{ flex: 1, marginRight: 8 }}>
+          <View style={s.userNameRow}>
+            <Text style={[s.userNameText, { color: theme.textMain }]} numberOfLines={1}>
+              {translatedName}
+            </Text>
+            {user.isVerified && <ShieldCheck color="#10b981" size={14} />}
+          </View>
+
+          <Text style={[s.membershipText, { color: theme.textSub }]}>
+            ID: {user.membershipId || 'N/A'}
+          </Text>
+
+          {/* Contact Info */}
+          <View style={s.contactRow}>
+            <Phone color={theme.textSub} size={11} />
+            <Text style={[s.contactText, { color: theme.textSub }]}>{user.phone}</Text>
+          </View>
+
+          {user.email ? (
+            <View style={s.contactRow}>
+              <Mail color={theme.textSub} size={11} />
+              <Text style={[s.contactText, { color: theme.textSub }]} numberOfLines={1}>
+                {user.email}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Role Badge */}
+        <View style={[s.roleBadge, { backgroundColor: `${roleObj.color}20` }]}>
+          <Text style={[s.roleBadgeText, { color: roleObj.color }]}>
+            {translateRole(user.role || 'member', lang).toUpperCase()}
+          </Text>
+        </View>
+      </View>
+
+      {/* Location & Community row */}
+      <View style={[s.metaDetailsBar, { backgroundColor: isDark ? '#131d2e' : '#f8fafc' }]}>
+        <View style={s.metaItem}>
+          <MapPin color={theme.primary} size={12} />
+          <Text style={[s.metaItemText, { color: theme.textMain }]} numberOfLines={1}>
+            {user.city
+              ? `${translatedCity}${user.state ? `, ${translatedState}` : ''}`
+              : 'Location N/A'}
+          </Text>
+        </View>
+
+        {user.communityName ? (
+          <View style={s.metaItem}>
+            <Building2 color={theme.primary} size={12} />
+            <Text style={[s.metaItemText, { color: theme.textMain }]} numberOfLines={1}>
+              {translatedComm}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      {/* Action Bar: Edit & Delete */}
+      <View style={[s.cardActions, { borderTopColor: theme.cardBorder }]}>
+        {isCurrent && (
+          <Text style={[s.selfAccountTag, { color: theme.textSub }]}>
+            (Your Account)
+          </Text>
+        )}
+
+        <TouchableOpacity
+          style={[s.actionBtn, { backgroundColor: isDark ? '#1e3a5f' : '#e0f2fe' }]}
+          onPress={() => onEdit(user)}
+        >
+          <Edit3 color="#0284c7" size={14} />
+          <Text style={[s.actionBtnText, { color: '#0284c7' }]}>Edit User</Text>
+        </TouchableOpacity>
+
+        {!isCurrent && (
+          <TouchableOpacity
+            style={[s.actionBtn, { backgroundColor: isDark ? '#4c1d24' : '#fee2e2' }]}
+            onPress={() => onDelete(user.id)}
+          >
+            <Trash2 color="#ef4444" size={14} />
+            <Text style={[s.actionBtnText, { color: '#ef4444' }]}>Delete</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
+
 interface ToastInfo {
   message: string;
   type: 'success' | 'error' | 'info';
 }
 
 export default function ManageUsersScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = getLanguageCode(i18n.language);
   const { activeUser } = useAppState();
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -233,7 +367,6 @@ export default function ManageUsersScreen() {
           communityName: comm?.name || '',
           membershipId: `MEM-${Date.now().toString().slice(-4)}`,
           isVerified: true,
-          isPremium: false,
           joinDate: new Date().toISOString(),
           city: city.trim() || 'Bareilly',
           state: state.trim() || 'UP',
@@ -248,6 +381,20 @@ export default function ManageUsersScreen() {
         });
 
         showToast('User account created successfully!', 'success');
+      }
+
+      // Pre-warm translations for name, city, state in Hindi and Urdu
+      if (name) {
+        autoTranslateText(name, 'hi').catch(() => {});
+        autoTranslateText(name, 'ur').catch(() => {});
+      }
+      if (city) {
+        autoTranslateText(city, 'hi').catch(() => {});
+        autoTranslateText(city, 'ur').catch(() => {});
+      }
+      if (state) {
+        autoTranslateText(state, 'hi').catch(() => {});
+        autoTranslateText(state, 'ur').catch(() => {});
       }
 
       resetForm();
@@ -408,117 +555,18 @@ export default function ManageUsersScreen() {
                   </TouchableOpacity>
                 </View>
               ) : (
-                filteredUsers.map(user => {
-                  const roleObj = ROLES.find(r => r.id === user.role) || { label: user.role, color: '#64748b' };
-                  const isCurrent = user.id === activeUser?.id;
-
-                  return (
-                    <View
-                      key={user.id}
-                      style={[
-                        s.userCard,
-                        {
-                          backgroundColor: theme.cardBg,
-                          borderColor: theme.cardBorder,
-                        },
-                      ]}
-                    >
-                      {/* Top Row: Avatar + Info + Role Badge */}
-                      <View style={s.userCardTop}>
-                        {user.avatar ? (
-                          <Image source={{ uri: user.avatar }} style={s.avatarImg} resizeMode="cover" />
-                        ) : (
-                          <View style={[s.avatarFallback, { backgroundColor: isDark ? '#334155' : '#e2e8f0' }]}>
-                            <Text style={[s.avatarInitial, { color: theme.textMain }]}>
-                              {user.name?.charAt(0)?.toUpperCase() || 'U'}
-                            </Text>
-                          </View>
-                        )}
-
-                        <View style={{ flex: 1, marginRight: 8 }}>
-                          <View style={s.userNameRow}>
-                            <Text style={[s.userNameText, { color: theme.textMain }]} numberOfLines={1}>
-                              {user.name}
-                            </Text>
-                            {user.isVerified && <ShieldCheck color="#10b981" size={14} />}
-                          </View>
-
-                          <Text style={[s.membershipText, { color: theme.textSub }]}>
-                            ID: {user.membershipId || 'N/A'}
-                          </Text>
-
-                          {/* Contact Info */}
-                          <View style={s.contactRow}>
-                            <Phone color={theme.textSub} size={11} />
-                            <Text style={[s.contactText, { color: theme.textSub }]}>{user.phone}</Text>
-                          </View>
-
-                          {user.email ? (
-                            <View style={s.contactRow}>
-                              <Mail color={theme.textSub} size={11} />
-                              <Text style={[s.contactText, { color: theme.textSub }]} numberOfLines={1}>
-                                {user.email}
-                              </Text>
-                            </View>
-                          ) : null}
-                        </View>
-
-                        {/* Role Badge */}
-                        <View style={[s.roleBadge, { backgroundColor: `${roleObj.color}20` }]}>
-                          <Text style={[s.roleBadgeText, { color: roleObj.color }]}>
-                            {roleObj.label.toUpperCase()}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* Location & Community row */}
-                      <View style={[s.metaDetailsBar, { backgroundColor: isDark ? '#131d2e' : '#f8fafc' }]}>
-                        <View style={s.metaItem}>
-                          <MapPin color={theme.primary} size={12} />
-                          <Text style={[s.metaItemText, { color: theme.textMain }]} numberOfLines={1}>
-                            {user.city ? `${user.city}${user.state ? `, ${user.state}` : ''}` : 'Location N/A'}
-                          </Text>
-                        </View>
-
-                        {user.communityName ? (
-                          <View style={s.metaItem}>
-                            <Building2 color={theme.primary} size={12} />
-                            <Text style={[s.metaItemText, { color: theme.textMain }]} numberOfLines={1}>
-                              {user.communityName}
-                            </Text>
-                          </View>
-                        ) : null}
-                      </View>
-
-                      {/* Action Bar: Edit & Delete */}
-                      <View style={[s.cardActions, { borderTopColor: theme.cardBorder }]}>
-                        {isCurrent && (
-                          <Text style={[s.selfAccountTag, { color: theme.textSub }]}>
-                            (Your Account)
-                          </Text>
-                        )}
-
-                        <TouchableOpacity
-                          style={[s.actionBtn, { backgroundColor: isDark ? '#1e3a5f' : '#e0f2fe' }]}
-                          onPress={() => handleOpenEdit(user)}
-                        >
-                          <Edit3 color="#0284c7" size={14} />
-                          <Text style={[s.actionBtnText, { color: '#0284c7' }]}>Edit User</Text>
-                        </TouchableOpacity>
-
-                        {!isCurrent && (
-                          <TouchableOpacity
-                            style={[s.actionBtn, { backgroundColor: isDark ? '#4c1d24' : '#fee2e2' }]}
-                            onPress={() => setDeleteConfirmId(user.id)}
-                          >
-                            <Trash2 color="#ef4444" size={14} />
-                            <Text style={[s.actionBtnText, { color: '#ef4444' }]}>Delete</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
-                  );
-                })
+                filteredUsers.map(user => (
+                  <UserListItem
+                    key={user.id}
+                    user={user}
+                    lang={lang}
+                    theme={theme}
+                    isDark={isDark}
+                    isCurrent={user.id === activeUser?.id}
+                    onEdit={handleOpenEdit}
+                    onDelete={setDeleteConfirmId}
+                  />
+                ))
               )}
             </ScrollView>
           )}

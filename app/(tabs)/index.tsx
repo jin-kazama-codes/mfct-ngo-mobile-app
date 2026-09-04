@@ -12,10 +12,13 @@ import {
   Alert,
   Linking,
   RefreshControl,
+  ImageBackground,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { useColorScheme } from 'nativewind';
 import { useAppState } from '../../src/context/AppStateProvider';
+import { AboutUs } from '../../src/components/AboutUs';
 import { getCampaigns, getEmergencyCampaigns } from '../../src/services/campaignService';
 import { getTestimonials } from '../../src/services/testimonialService';
 import { getCommunityStories } from '../../src/services/storiesService';
@@ -23,7 +26,6 @@ import { getRecentDonations } from '../../src/services/donationService';
 import { getCommunities } from '../../src/services/communityService';
 import { getUsers } from '../../src/services/userService';
 import { getAccountDetails } from '../../src/services/adminService';
-import { submitContactMessage } from '../../src/services/contactService';
 import {
   Campaign,
   Testimonial,
@@ -31,7 +33,21 @@ import {
   Donation,
   Community,
   AccountDetails,
+  Language,
 } from '../../src/types';
+import {
+  getLanguageCode,
+  translateCategory,
+  translateCity,
+  translateCommunityName,
+  translateCampaignTitle,
+  translateCampaignStory,
+  translateTestimonial,
+  translateDonorName,
+  translateRole,
+  translateQuote,
+} from '../../src/lib/translateEntity';
+import DynamicText from '../../src/components/DynamicText';
 import {
   Heart,
   UserPlus,
@@ -43,27 +59,247 @@ import {
   Users,
   Building2,
   Phone,
-  HelpCircle,
-  ChevronDown,
-  ChevronUp,
   Activity,
   BookOpen,
-  Send,
   MessageSquare,
-  MapPin,
   Flame,
   Share2,
   Calculator,
   Copy,
   Clock,
-  Check,
   X,
+  Award,
+  Check,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react-native';
 
+// ─── Local Assets ──────────────────────────────────────────────────────────
+const aboutMfctImage = require('../../assets/images/about-mfct.jpeg');
+const medicalAidImage = require('../../assets/images/medical-aid.jpeg');
+const educationImage = require('../../assets/images/education-books.jpeg');
+const marriageImage = require('../../assets/images/marriage-support.jpeg');
+const janazahImage = require('../../assets/images/zanaza.jpeg');
+const foodImage = require('../../assets/images/food-ration.jpeg');
+const zakatImage = require('../../assets/images/zakat-eligiable.jpeg');
+
+// ─── Brand Color Constants ─────────────────────────────────────────────────
+const C = {
+  darkGreen: '#091f15',
+  midGreen: '#0e2a1d',
+  deepGreen: '#0d281a',
+  richGreen: '#1a4230',
+  gold: '#c8a84b',
+  goldLight: 'rgba(200,168,75,0.7)',
+  goldBg: 'rgba(200,168,75,0.15)',
+  goldBorder: 'rgba(200,168,75,0.35)',
+  goldDark: '#a0832e',
+  white: '#ffffff',
+  offWhite: '#fafaf8',
+  border: 'rgba(26,60,44,0.12)',
+  textMuted: '#6b7280',
+  cardBg: '#ffffff',
+};
+
+// ─── Mission Pillar Card ───────────────────────────────────────────────────
+const MissionCard: React.FC<{
+  icon: React.ReactNode;
+  title: string;
+  line1: string;
+  line2: string;
+}> = ({ icon, title, line1, line2 }) => {
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: isDark ? '#1e293b' : C.cardBg,
+        borderRadius: 16,
+        padding: 16,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: isDark ? '#334155' : C.border,
+        shadowColor: '#000',
+        shadowOpacity: isDark ? 0.2 : 0.04,
+        shadowRadius: 10,
+        elevation: 2,
+      }}
+    >
+      <View
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 12,
+          backgroundColor: isDark ? '#0f291e' : C.richGreen,
+          borderWidth: 2,
+          borderColor: C.goldBorder,
+          shadowColor: '#000',
+          shadowOpacity: 0.25,
+          shadowRadius: 8,
+          elevation: 4,
+        }}
+      >
+        {icon}
+      </View>
+      <Text
+        style={{
+          fontWeight: '700',
+          fontSize: 12,
+          color: isDark ? '#f8fafc' : C.richGreen,
+          textAlign: 'center',
+          marginBottom: 6,
+          lineHeight: 16,
+        }}
+      >
+        {title}
+      </Text>
+      <Text style={{ fontSize: 10, color: isDark ? '#94a3b8' : C.textMuted, textAlign: 'center', lineHeight: 14 }}>
+        {line1}
+      </Text>
+      <Text style={{ fontSize: 10, color: isDark ? '#94a3b8' : C.textMuted, textAlign: 'center', lineHeight: 14 }}>
+        {line2}
+      </Text>
+    </View>
+  );
+};
+
+// ─── Testimonial Card ──────────────────────────────────────────────────────
+const TestimonialCard: React.FC<{ item: Testimonial; lang: Language }> = ({ item, lang }) => {
+  const tItem = translateTestimonial(item, lang);
+
+  return (
+    <View
+      style={{
+        padding: 16,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.07)',
+        borderWidth: 1,
+        borderColor: 'rgba(200,168,75,0.2)',
+        marginBottom: 12,
+      }}
+    >
+      <Text style={{ fontSize: 11, fontStyle: 'italic', color: 'rgba(255,255,255,0.82)', lineHeight: 18, marginBottom: 12 }}>
+        "{tItem.quote}"
+      </Text>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingTop: 10,
+          borderTopWidth: 1,
+          borderTopColor: 'rgba(200,168,75,0.15)',
+        }}
+      >
+        {tItem.avatar ? (
+          <Image
+            source={{ uri: tItem.avatar }}
+            style={{ width: 32, height: 32, borderRadius: 16, marginRight: 10, borderWidth: 2, borderColor: C.gold }}
+          />
+        ) : (
+          <View
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              backgroundColor: C.goldBg,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: 10,
+              borderWidth: 2,
+              borderColor: C.gold,
+            }}
+          >
+            <Text style={{ color: C.gold, fontWeight: '700', fontSize: 12 }}>
+              {(tItem.name || 'U').charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontWeight: '700', fontSize: 11, color: C.white }}>{tItem.name}</Text>
+          <Text style={{ fontSize: 10, color: C.goldLight }}>{tItem.role} • {tItem.city}</Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
+// ─── Section Header ────────────────────────────────────────────────────────
+const SectionHeader: React.FC<{
+  tag: string;
+  title: string;
+  desc?: string;
+  light?: boolean;
+}> = ({ tag, title, desc, light = false }) => {
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  return (
+    <View style={{ alignItems: 'center', marginBottom: 20 }}>
+      <Text
+        style={{
+          fontSize: 10,
+          fontWeight: '800',
+          letterSpacing: 1.5,
+          textTransform: 'uppercase',
+          color: light ? C.gold : isDark ? C.gold : C.goldDark,
+          marginBottom: 4,
+        }}
+      >
+        {tag}
+      </Text>
+      <Text
+        style={{
+          fontSize: 20,
+          fontWeight: '900',
+          color: light ? C.white : isDark ? '#f8fafc' : C.richGreen,
+          textAlign: 'center',
+          lineHeight: 26,
+        }}
+      >
+        {title}
+      </Text>
+      {/* Gold divider */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 4 }}>
+        <View style={{ width: 28, height: 2, borderRadius: 1, backgroundColor: C.gold }} />
+        <Heart size={12} color={C.gold} fill={C.gold} style={{ marginHorizontal: 6 }} />
+        <View style={{ width: 28, height: 2, borderRadius: 1, backgroundColor: C.gold }} />
+      </View>
+      {desc ? (
+        <Text style={{ fontSize: 11, color: light ? 'rgba(255,255,255,0.7)' : isDark ? '#94a3b8' : C.textMuted, textAlign: 'center', lineHeight: 16, marginTop: 2 }}>
+          {desc}
+        </Text>
+      ) : null}
+    </View>
+  );
+};
+
+// ─── Main Component ────────────────────────────────────────────────────────
 export default function HomeScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = getLanguageCode(i18n.language);
   const router = useRouter();
   const { isAuthenticated, activeUser } = useAppState();
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
+  const theme = {
+    screenBg: isDark ? '#080d1a' : C.offWhite,
+    cardBg: isDark ? '#1e293b' : C.white,
+    cardBorder: isDark ? '#334155' : C.border,
+    innerCardBg: isDark ? '#0f172a' : '#fafaf8',
+    textPrimary: isDark ? '#f8fafc' : '#1e293b',
+    textSecondary: isDark ? '#94a3b8' : C.textMuted,
+    textHeading: isDark ? '#f8fafc' : C.richGreen,
+    accentGreen: isDark ? '#4ade80' : C.richGreen,
+    pillBg: isDark ? '#1e293b' : C.white,
+    pillBorder: isDark ? '#334155' : C.border,
+    progressTrack: isDark ? '#334155' : '#f1f5f9',
+    inputBg: isDark ? '#0f172a' : '#fafaf8',
+    inputBorder: isDark ? '#334155' : C.border,
+  };
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -79,8 +315,8 @@ export default function HomeScreen() {
 
   // UI Interactive states
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [activeFaq, setActiveFaq] = useState<number | null>(0);
   const [copiedUpi, setCopiedUpi] = useState(false);
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
 
   // Zakat Calculator Modal state
   const [isZakatModalOpen, setIsZakatModalOpen] = useState(false);
@@ -89,13 +325,6 @@ export default function HomeScreen() {
   const [zakatCash, setZakatCash] = useState('');
   const [zakatInvestments, setZakatInvestments] = useState('');
   const [zakatLiabilities, setZakatLiabilities] = useState('');
-
-  // Contact Form state
-  const [contactName, setContactName] = useState('');
-  const [contactPhone, setContactPhone] = useState('');
-  const [contactMsg, setContactMsg] = useState('');
-  const [contactSubmitting, setContactSubmitting] = useState(false);
-  const [contactSubmitted, setContactSubmitted] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -170,6 +399,7 @@ export default function HomeScreen() {
       id: 'Medical',
       label: t('home.cat_medical'),
       icon: Activity,
+      image: medicalAidImage,
       count: (campaigns || []).filter((c) => c.category === 'Medical').length,
       desc: t('home.cat_medical_desc'),
     },
@@ -177,6 +407,7 @@ export default function HomeScreen() {
       id: 'Education',
       label: t('home.cat_education'),
       icon: BookOpen,
+      image: educationImage,
       count: (campaigns || []).filter((c) => c.category === 'Education').length,
       desc: t('home.cat_education_desc'),
     },
@@ -184,6 +415,7 @@ export default function HomeScreen() {
       id: 'Marriage',
       label: t('home.cat_marriage'),
       icon: Heart,
+      image: marriageImage,
       count: (campaigns || []).filter((c) => c.category === 'Marriage').length,
       desc: t('home.cat_marriage_desc'),
     },
@@ -191,6 +423,7 @@ export default function HomeScreen() {
       id: 'Janazah',
       label: t('home.cat_janazah'),
       icon: Building2,
+      image: janazahImage,
       count: (campaigns || []).filter((c) => c.category === 'Janazah').length,
       desc: t('home.cat_janazah_desc'),
     },
@@ -198,6 +431,7 @@ export default function HomeScreen() {
       id: 'Food',
       label: t('home.cat_food'),
       icon: Flame,
+      image: foodImage,
       count: (campaigns || []).filter((c) => c.category === 'Food').length,
       desc: t('home.cat_food_desc'),
     },
@@ -205,16 +439,10 @@ export default function HomeScreen() {
       id: 'Zakat',
       label: t('home.cat_zakat'),
       icon: ShieldCheck,
+      image: zakatImage,
       count: (campaigns || []).filter((c) => c.isZakatEligible).length,
       desc: t('home.cat_zakat_desc'),
     },
-  ];
-
-  const faqs = [
-    { q: t('home.faq1_q'), a: t('home.faq1_a') },
-    { q: t('home.faq2_q'), a: t('home.faq2_a') },
-    { q: t('home.faq3_q'), a: t('home.faq3_a') },
-    { q: t('home.faq4_q'), a: t('home.faq4_a') },
   ];
 
   // UPI Copy Handler
@@ -229,36 +457,10 @@ export default function HomeScreen() {
   const handleShareCampaign = async (camp: Campaign) => {
     try {
       await Share.share({
-        message: `Support ${camp.title} on MFCT - Muslim Family Care Trust: Goal ₹${camp.goalINR.toLocaleString(
-          'en-IN'
-        )}`,
+        message: `Support ${camp.title} on MFCT - Muslim Family Care Trust: Goal ₹${camp.goalINR.toLocaleString('en-IN')}`,
       });
     } catch (error) {
       console.error(error);
-    }
-  };
-
-  // Contact Submit Handler
-  const handleContactSubmit = async () => {
-    if (!contactName.trim() || !contactPhone.trim() || !contactMsg.trim()) {
-      Alert.alert(t('common.error'), t('campaigns.validation'));
-      return;
-    }
-    setContactSubmitting(true);
-    try {
-      await submitContactMessage({
-        name: contactName.trim(),
-        phone: contactPhone.trim(),
-        message: contactMsg.trim(),
-      });
-      setContactSubmitted(true);
-      setContactName('');
-      setContactPhone('');
-      setContactMsg('');
-    } catch (err) {
-      Alert.alert(t('common.error'), t('common.error'));
-    } finally {
-      setContactSubmitting(false);
     }
   };
 
@@ -271,147 +473,552 @@ export default function HomeScreen() {
   const netWealth = Math.max(0, goldVal + silverVal + cashVal + invVal - liabVal);
   const zakatPayable = Math.round(netWealth * 0.025);
 
+  const faqs = [
+    {
+      q: t('home.faq1_q', 'How is MFCT different from other fundraising platforms?'),
+      a: t('home.faq1_a', 'We operate at 0% platform fee and every case is verified on the ground by the local mohalla committee.'),
+    },
+    {
+      q: t('home.faq2_q', 'Does my donation reach 100% directly to the beneficiary?'),
+      a: t('home.faq2_a', 'Yes, emergency medical funds go directly to the hospital and nikah/ration items go directly from vendor to beneficiary.'),
+    },
+    {
+      q: t('home.faq3_q', 'Will I receive an 80G tax exemption receipt?'),
+      a: t('home.faq3_a', 'Yes, an official 80G receipt is issued instantly upon entering your PAN number.'),
+    },
+    {
+      q: t('home.faq4_q', 'Can I give my Zakat through these campaigns?'),
+      a: t('home.faq4_a', 'Yes, campaigns marked \'Zakat Eligible\' are 100% Shariah-compliant and given only to eligible beneficiaries.'),
+    },
+  ];
+
   return (
     <ScrollView
-      className="flex-1 bg-slate-50 dark:bg-slate-950"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#10b981']} />}
+      style={{ flex: 1, backgroundColor: theme.screenBg }}
+      contentContainerStyle={{ width: '100%' }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[C.gold]} />}
     >
-      {/* 1. HERO SECTION */}
-      <View className="pt-5 pb-8 px-4 sm:px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-        <View className="flex-row items-center self-start bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 px-3 py-1.5 rounded-full mb-4">
-          <MapPin color="#059669" size={14} />
-          <Text className="text-emerald-800 dark:text-emerald-300 text-[11px] font-bold ml-1.5 flex-shrink">
-            {t('home.headquartered')}
-          </Text>
-        </View>
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 1. HERO SECTION                                                    */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View style={{ backgroundColor: C.darkGreen, overflow: 'hidden', width: '100%' }}>
+        {/* Hero Background Image */}
+        <ImageBackground
+          source={{ uri: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&w=800&q=70' }}
+          style={{ minHeight: 380, width: '100%' }}
+          resizeMode="cover"
+        >
+          {/* Cinematic Gradient Overlay */}
+          <View
+            style={{
+              position: 'absolute',
+              inset: 0,
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(8,24,16,0.88)',
+            }}
+          />
 
-        <Text className="text-2xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-8 sm:leading-10 mb-3">
-          {t('home.hero_title_prefix')}{' '}
-          <Text className="text-emerald-600 dark:text-emerald-400 underline">
-            {t('home.hero_title_highlight')}
-          </Text>{' '}
-          {t('home.hero_title_suffix')}
-        </Text>
+          {/* Hero Content */}
+          <View style={{ paddingHorizontal: 16, paddingTop: 48, paddingBottom: 28, width: '100%' }}>
+            {/* Tagline Badge */}
+            <View
+              style={{
+                alignSelf: 'flex-start',
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: 'rgba(26,60,44,0.9)',
+                borderWidth: 1,
+                borderColor: 'rgba(200,168,75,0.4)',
+                paddingHorizontal: 12,
+                paddingVertical: 5,
+                borderRadius: 999,
+                marginBottom: 14,
+              }}
+            >
+              <ArrowRight size={12} color={C.gold} style={{ marginRight: 5 }} />
+              <Text style={{ color: C.gold, fontWeight: '800', fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+                {t('home.hero_tagline', 'Together for a Better Tomorrow')}
+              </Text>
+            </View>
 
-        <Text className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm leading-5 mb-5 font-normal">
-          {t('home.hero_desc')}
-        </Text>
-
-        <View className="flex-row flex-wrap gap-2.5 mb-6">
-          <TouchableOpacity
-            onPress={() => router.push('/(auth)/sign-up')}
-            className="flex-row items-center bg-slate-900 dark:bg-slate-800 py-3 px-4 rounded-xl shadow-sm"
-          >
-            <UserPlus color="#ffffff" size={16} />
-            <Text className="text-white font-bold text-xs ml-2">{t('home.become_member')}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => router.push('/(stacks)/donation')}
-            className="flex-row items-center bg-emerald-600 dark:bg-emerald-600 py-3 px-4 rounded-xl shadow-sm"
-          >
-            <Heart color="#ffffff" size={16} fill="#ffffff" />
-            <Text className="text-white font-bold text-xs ml-2">{t('home.donate_now')}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setIsZakatModalOpen(true)}
-            className="flex-row items-center bg-amber-400 dark:bg-amber-500 py-3 px-4 rounded-xl shadow-sm"
-          >
-            <Calculator color="#78350f" size={16} />
-            <Text className="text-amber-950 font-extrabold text-xs ml-2">{t('home.zakat_calc')}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View className="flex-row justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
-          <View className="flex-1 pr-1">
-            <Text className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white">
-              {totalMembers > 0 ? totalMembers.toLocaleString('en-IN') : '0'}+
+            {/* Main Headline */}
+            <Text style={{ fontSize: 32, fontWeight: '900', color: C.white, lineHeight: 38, marginBottom: 10, letterSpacing: -0.5 }}>
+              {t('home.hero_line1', 'Yaad Unki,')}{' '}
+              <Text style={{ color: C.gold }}>{t('home.hero_line2_giving', 'Seva Hamari')}</Text>
             </Text>
-            <Text className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium">
-              {t('home.verified_members')}
+
+            {/* Description */}
+            <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', lineHeight: 20, marginBottom: 18 }}>
+              {t('home.hero_desc', '100% verified direct relief for hospital care, orphan education, dignified nikah support, janazah burial services, and ration kits.')}
             </Text>
+
+            {/* Trust Badges */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
+              {[
+                { icon: <ShieldCheck size={12} color={C.gold} />, label: t('home.trust_zakat', 'Zakat Compliant') },
+                { icon: <CheckCircle2 size={12} color={C.gold} />, label: t('home.trust_verified', 'UTR Verified') },
+                { icon: <Building2 size={12} color={C.gold} />, label: t('home.trust_registered', 'Govt. Registered NGO') },
+              ].map(({ icon, label }) => (
+                <View
+                  key={label}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: C.goldBg,
+                    borderWidth: 1,
+                    borderColor: C.goldBorder,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 999,
+                  }}
+                >
+                  {icon}
+                  <Text style={{ color: C.white, fontSize: 10, fontWeight: '600', marginLeft: 4 }}>{label}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* CTA Buttons */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 24, width: '100%' }}>
+              {/* Become a Member */}
+              <TouchableOpacity
+                onPress={() => router.push('/(auth)/sign-up')}
+                style={{
+                  flex: 1.15,
+                  minWidth: 0,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'transparent',
+                  borderWidth: 1.5,
+                  borderColor: 'rgba(200,168,75,0.6)',
+                  paddingVertical: 10,
+                  paddingHorizontal: 4,
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                }}
+              >
+                <UserPlus size={12} color={C.white} style={{ flexShrink: 0 }} />
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                  ellipsizeMode="tail"
+                  style={{
+                    flexShrink: 1,
+                    color: C.white,
+                    fontWeight: '800',
+                    fontSize: 10.5,
+                    marginLeft: 3,
+                    marginRight: 2,
+                  }}
+                >
+                  {t('home.become_member', 'Become a Member')}
+                </Text>
+                <View
+                  style={{
+                    backgroundColor: C.goldBg,
+                    paddingHorizontal: 3.5,
+                    paddingVertical: 1,
+                    borderRadius: 4,
+                    flexShrink: 0,
+                    borderWidth: 0.5,
+                    borderColor: 'rgba(200,168,75,0.3)',
+                  }}
+                >
+                  <Text style={{ color: C.gold, fontSize: 8, fontWeight: '800' }}>₹100</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Donate Now (Gold) */}
+              <TouchableOpacity
+                onPress={() => router.push('/(stacks)/donation')}
+                style={{
+                  flex: 0.92,
+                  minWidth: 0,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: C.gold,
+                  paddingVertical: 10,
+                  paddingHorizontal: 4,
+                  borderRadius: 12,
+                  shadowColor: C.gold,
+                  shadowOpacity: 0.4,
+                  shadowRadius: 8,
+                  elevation: 4,
+                  overflow: 'hidden',
+                }}
+              >
+                <Heart size={12} color={C.deepGreen} fill={C.deepGreen} style={{ flexShrink: 0 }} />
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                  ellipsizeMode="tail"
+                  style={{
+                    flexShrink: 1,
+                    color: C.deepGreen,
+                    fontWeight: '800',
+                    fontSize: 10.5,
+                    marginLeft: 3,
+                  }}
+                >
+                  {t('home.donate_now', 'Donate Now')}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Zakat Calculator */}
+              <TouchableOpacity
+                onPress={() => setIsZakatModalOpen(true)}
+                style={{
+                  flex: 0.93,
+                  minWidth: 0,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: C.midGreen,
+                  borderWidth: 1,
+                  borderColor: 'rgba(200,168,75,0.3)',
+                  paddingVertical: 10,
+                  paddingHorizontal: 4,
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                }}
+              >
+                <Calculator size={12} color={C.gold} style={{ flexShrink: 0 }} />
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                  ellipsizeMode="tail"
+                  style={{
+                    flexShrink: 1,
+                    color: C.white,
+                    fontWeight: '800',
+                    fontSize: 10.5,
+                    marginLeft: 3,
+                  }}
+                >
+                  {t('home.zakat_calc', 'Zakat Calculator')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Live Stats – 3 Cards */}
+            <View style={{ flexDirection: 'row', gap: 6, width: '100%' }}>
+              {/* Members */}
+              <View
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  backgroundColor: theme.cardBg,
+                  borderRadius: 12,
+                  paddingHorizontal: 8,
+                  paddingVertical: 10,
+                  borderWidth: 1,
+                  borderColor: isDark ? theme.cardBorder : 'rgba(200,168,75,0.3)',
+                  shadowColor: '#000',
+                  shadowOpacity: isDark ? 0.25 : 0.15,
+                  shadowRadius: 6,
+                  elevation: 3,
+                }}
+              >
+                {loading ? (
+                  <View style={{ width: 40, height: 22, backgroundColor: theme.progressTrack, borderRadius: 4, marginBottom: 4 }} />
+                ) : (
+                  <Text style={{ fontSize: 17, fontWeight: '900', color: theme.accentGreen, lineHeight: 22 }} numberOfLines={1} adjustsFontSizeToFit>
+                    {totalMembers > 0 ? totalMembers.toLocaleString('en-IN') : '0'}+
+                  </Text>
+                )}
+                <Text style={{ fontSize: 9, fontWeight: '600', color: theme.textSecondary, lineHeight: 12 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                  {t('home.verified_members', 'Verified Members')}
+                </Text>
+              </View>
+
+              {/* Relief Disbursed */}
+              <View
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  backgroundColor: C.richGreen,
+                  borderRadius: 12,
+                  paddingHorizontal: 8,
+                  paddingVertical: 10,
+                  borderWidth: 1,
+                  borderColor: C.midGreen,
+                  shadowColor: '#000',
+                  shadowOpacity: 0.2,
+                  shadowRadius: 6,
+                  elevation: 3,
+                }}
+              >
+                {loading ? (
+                  <View style={{ width: 48, height: 22, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 4, marginBottom: 4 }} />
+                ) : (
+                  <Text style={{ fontSize: 13, fontWeight: '900', color: C.white, lineHeight: 22 }} numberOfLines={1} adjustsFontSizeToFit>
+                    ₹{totalRaised > 0 ? totalRaised.toLocaleString('en-IN') : '0'}+
+                  </Text>
+                )}
+                <Text style={{ fontSize: 9, fontWeight: '600', color: C.gold, lineHeight: 12 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                  {t('home.funds_disbursed', 'Relief Disbursed')}
+                </Text>
+              </View>
+
+              {/* Audit Receipts */}
+              <View
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  backgroundColor: theme.cardBg,
+                  borderRadius: 12,
+                  paddingHorizontal: 8,
+                  paddingVertical: 10,
+                  borderWidth: 1,
+                  borderColor: isDark ? theme.cardBorder : 'rgba(200,168,75,0.3)',
+                  shadowColor: '#000',
+                  shadowOpacity: isDark ? 0.25 : 0.15,
+                  shadowRadius: 6,
+                  elevation: 3,
+                }}
+              >
+                <Text style={{ fontSize: 17, fontWeight: '900', color: theme.accentGreen, lineHeight: 22 }} numberOfLines={1} adjustsFontSizeToFit>
+                  100%
+                </Text>
+                <Text style={{ fontSize: 9, fontWeight: '600', color: theme.textSecondary, lineHeight: 12 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                  {t('home.audit_receipts', 'Audit Receipts')}
+                </Text>
+              </View>
+            </View>
           </View>
+        </ImageBackground>
+      </View>
 
-          <View className="flex-1 px-1">
-            <Text className="text-lg sm:text-2xl font-black text-emerald-600 dark:text-emerald-400">
-              ₹{totalRaised > 0 ? totalRaised.toLocaleString('en-IN') : '0'}+
-            </Text>
-            <Text className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium">
-              {t('home.funds_disbursed')}
-            </Text>
-          </View>
-
-          <View className="flex-1 pl-1">
-            <Text className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white">100%</Text>
-            <Text className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium">
-              {t('home.audit_receipts')}
-            </Text>
-          </View>
-        </View>
-
-        <View className="mt-6 rounded-2xl overflow-hidden bg-slate-900 dark:bg-slate-950 border border-slate-800 p-4">
-          <View className="flex-row items-center justify-between mb-3">
-            <View className="flex-row items-center">
-              <Sparkles color="#34d399" size={16} />
-              <Text className="text-emerald-400 font-bold text-xs uppercase tracking-wider ml-1.5">
-                Direct Donation UPI
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 2. UPI DONATION WIDGET                                             */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 }}>
+        <View
+          style={{
+            backgroundColor: C.darkGreen,
+            borderRadius: 20,
+            padding: 16,
+            borderWidth: 1,
+            borderColor: 'rgba(200,168,75,0.4)',
+            shadowColor: '#000',
+            shadowOpacity: 0.25,
+            shadowRadius: 12,
+            elevation: 6,
+          }}
+        >
+          {/* Header */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {/* Live dot */}
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.gold, marginRight: 8 }} />
+              <Text style={{ color: C.gold, fontWeight: '800', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                {t('home.scan_donate', 'UPI Direct Donate')}
               </Text>
             </View>
             <TouchableOpacity
               onPress={handleCopyUpi}
-              className="flex-row items-center bg-emerald-500/20 px-2.5 py-1 rounded-lg border border-emerald-500/30"
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: copiedUpi ? '#10b981' : C.gold,
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 8,
+              }}
             >
-              {copiedUpi ? <Check color="#34d399" size={12} /> : <Copy color="#34d399" size={12} />}
-              <Text className="text-emerald-300 font-bold text-[10px] ml-1">
-                {copiedUpi ? t('home.upi_copied') : t('home.copy_upi')}
+              {copiedUpi ? <Check size={12} color={C.white} /> : <Copy size={12} color={C.deepGreen} />}
+              <Text style={{ color: copiedUpi ? C.white : C.deepGreen, fontWeight: '800', fontSize: 10, marginLeft: 4 }}>
+                {copiedUpi ? t('home.upi_copied', 'Copied!') : t('home.copy_upi', 'Copy UPI')}
               </Text>
             </TouchableOpacity>
           </View>
 
-          <View className="flex-row items-center gap-3">
-            <View className="bg-white p-2 rounded-xl">
+          {/* QR + UPI ID */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <View style={{ backgroundColor: C.white, padding: 8, borderRadius: 12 }}>
               {accountDetails?.qr_code_url ? (
-                <Image
-                  source={{ uri: accountDetails.qr_code_url }}
-                  className="w-20 h-20"
-                  resizeMode="contain"
-                />
+                <Image source={{ uri: accountDetails.qr_code_url }} style={{ width: 72, height: 72 }} resizeMode="contain" />
               ) : (
-                <QrCode color="#0f172a" size={80} />
+                <QrCode color={C.darkGreen} size={72} />
               )}
             </View>
-
-            <View className="flex-1">
-              <Text className="text-white font-mono font-bold text-base select-all">
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: C.white, fontFamily: 'monospace', fontWeight: '700', fontSize: 14, marginBottom: 4 }}>
                 {accountDetails?.upi_id || 'mfct@okicici'}
               </Text>
-              <Text className="text-emerald-400 text-[10px] font-medium mt-1">
-                {t('home.scan_upi')}
+              <Text style={{ color: C.gold, fontSize: 10, fontWeight: '600', marginBottom: 2 }}>
+                {t('home.scan_upi', 'Scan & Pay via any UPI app')}
               </Text>
-              <Text className="text-slate-400 text-[9px] mt-0.5">
-                {accountDetails?.bank_name ? `Bank: ${accountDetails.bank_name}` : '100% Direct Hospital & Aid Escrow'}
+              <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9 }}>
+                {accountDetails?.bank_name ? `Bank: ${accountDetails.bank_name}` : t('home.escrow_note', '100% Direct Hospital & Aid Escrow')}
               </Text>
+              {/* App labels */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+                {['GPay', 'PhonePe', 'Paytm', 'BHIM'].map((app) => (
+                  <View key={app} style={{ backgroundColor: C.goldBg, borderWidth: 1, borderColor: C.goldBorder, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                    <Text style={{ color: C.gold, fontSize: 8, fontWeight: '700' }}>{app}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
           </View>
         </View>
       </View>
 
-      {/* 2. TARGETED GIVING / DONATION CATEGORIES */}
-      <View className="py-6 px-4">
-        <View className="mb-4">
-          <Text className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-0.5">
-            {t('home.targeted_giving')}
-          </Text>
-          <Text className="text-xl font-extrabold text-slate-900 dark:text-white">
-            {t('home.explore_categories')}
-          </Text>
-          <Text className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {t('home.category_subtitle')}
-          </Text>
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 3. OUR MISSION – 4 PILLARS                                        */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View style={{ paddingHorizontal: 16, paddingVertical: 28 }}>
+        <SectionHeader
+          tag={t('home.mission_tag', 'OUR MISSION')}
+          title={t('home.mission_title', 'Our Mission')}
+          desc={t('home.mission_desc', 'Our goal is to deliver aid, support, and selfless service to every section of society.')}
+        />
+        {/* Row 1 */}
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+          <MissionCard
+            icon={<Heart size={22} color={C.white} fill={C.white} />}
+            title={t('home.mission_care_title', 'We Care Every Life')}
+            line1={t('home.mission_care_l1', 'Emergency Bereavement Aid')}
+            line2={t('home.mission_care_l2', 'Standing by you in every crisis')}
+          />
+          <MissionCard
+            icon={<ShieldCheck size={22} color={C.white} />}
+            title={t('home.mission_stand_title', 'We Stand Together')}
+            line1={t('home.mission_stand_l1', 'Cooperation, Unity & Humanity')}
+            line2={t('home.mission_stand_l2', 'Dedicated to All')}
+          />
         </View>
+        {/* Row 2 */}
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <MissionCard
+            icon={<Award size={22} color={C.white} />}
+            title={t('home.mission_serve_title', 'We Serve Selflessly')}
+            line1={t('home.mission_serve_l1', 'Daughter Marriage Shagun Aid,')}
+            line2={t('home.mission_serve_l2', 'Our Daughter, Our Responsibility')}
+          />
+          <MissionCard
+            icon={<Users size={22} color={C.white} />}
+            title={t('home.mission_build_title', 'We Build Better Society')}
+            line1={t('home.mission_build_l1', 'Education, Health & Medical Aid')}
+            line2={t('home.mission_build_l2', 'and Social Upliftment')}
+          />
+        </View>
+      </View>
 
-        <View className="flex-row flex-wrap gap-2.5">
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 4. ABOUT MFCT BANNER                                               */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
+        <View
+          style={{
+            backgroundColor: C.darkGreen,
+            borderRadius: 24,
+            overflow: 'hidden',
+            borderWidth: 1.5,
+            borderColor: 'rgba(200,168,75,0.4)',
+            shadowColor: '#000',
+            shadowOpacity: 0.4,
+            shadowRadius: 16,
+            elevation: 8,
+          }}
+        >
+          {/* About Image from local asset */}
+          <Image
+            source={aboutMfctImage}
+            style={{ width: '100%', height: 180 }}
+            resizeMode="cover"
+          />
+          {/* Content */}
+          <View style={{ padding: 20 }}>
+            <Text style={{ color: C.gold, fontSize: 10, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>
+              {t('home.about_tag', 'ABOUT MFCT')}
+            </Text>
+            <Text style={{ color: C.white, fontSize: 18, fontWeight: '900', marginBottom: 10, lineHeight: 24 }}>
+              {t('home.about_title', 'Mohammad Faeem Charitable Trust')}
+            </Text>
+            {/* Gold divider */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+              <View style={{ width: 32, height: 2, backgroundColor: C.gold }} />
+              <Heart size={10} color={C.gold} fill={C.gold} style={{ marginHorizontal: 6 }} />
+              <ArrowRight size={10} color={C.gold} />
+            </View>
+            <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, lineHeight: 18, marginBottom: 16 }}>
+              {t('home.about_desc', 'MFCT was established to strengthen brotherhood, unity, and humanity across society. Through education, health, emergency bereavement aid, daughter marriage support, medical assistance, disaster relief, and welfare programs, we are dedicated to reaching every section of society.')}
+            </Text>
+
+            {/* Impact Stats Grid */}
+            <View
+              style={{
+                backgroundColor: 'rgba(0,0,0,0.28)',
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: 'rgba(200,168,75,0.3)',
+                padding: 12,
+                marginBottom: 16,
+              }}
+            >
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                {[
+                  { val: '1000+', label: t('home.about_families', 'Families Assisted') },
+                  { val: '500+', label: t('home.about_marriage', 'Marriage Aid') },
+                  { val: '200+', label: t('home.about_emergency', 'Emergency Aid') },
+                  { val: '50+', label: t('home.about_volunteers', 'Key Volunteers') },
+                ].map((stat) => (
+                  <View key={stat.label} style={{ width: '50%', flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 6 }}>
+                    <Users size={20} color={C.gold} style={{ marginRight: 8 }} />
+                    <View>
+                      <Text style={{ color: C.white, fontWeight: '900', fontSize: 15, lineHeight: 18 }}>{stat.val}</Text>
+                      <Text style={{ color: C.goldLight, fontSize: 9, fontWeight: '600' }}>{stat.label}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Read More Button */}
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/campaigns')}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: C.gold,
+                paddingVertical: 12,
+                borderRadius: 12,
+                shadowColor: C.gold,
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                elevation: 4,
+              }}
+            >
+              <Text style={{ color: C.deepGreen, fontWeight: '800', fontSize: 12, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                {t('home.about_read_more', 'Read More About Us')}
+              </Text>
+              <ArrowRight size={14} color={C.deepGreen} style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 5. OUR PROGRAMS / DONATION CATEGORIES                             */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+        <SectionHeader
+          tag={t('home.programs_tag', 'OUR PROGRAMS')}
+          title={t('home.programs_title', 'Our Key Programs')}
+          desc={t('home.programs_desc', 'Choose a cause. Every rupee goes directly to the beneficiary.')}
+        />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
           {categoriesList.map((cat) => {
             const IconComp = cat.icon;
             const isSelected = selectedCategory === cat.id;
@@ -419,155 +1026,272 @@ export default function HomeScreen() {
               <TouchableOpacity
                 key={cat.id}
                 onPress={() => setSelectedCategory(selectedCategory === cat.id ? 'All' : cat.id)}
-                className={`w-[48%] p-3.5 rounded-2xl border ${isSelected
-                  ? 'bg-emerald-600 border-emerald-600 shadow-sm'
-                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
-                  }`}
+                style={{
+                  width: '48%',
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  borderWidth: isSelected ? 2 : 1,
+                  borderColor: isSelected ? C.gold : theme.cardBorder,
+                  backgroundColor: theme.cardBg,
+                  shadowColor: '#000',
+                  shadowOpacity: isSelected ? 0.15 : 0.04,
+                  shadowRadius: isSelected ? 10 : 4,
+                  elevation: isSelected ? 5 : 2,
+                  marginBottom: 4,
+                }}
               >
-                <View className="flex-row items-center justify-between mb-2">
+                {/* Image & Icon Header */}
+                <View style={{ height: 80, width: '100%', position: 'relative', overflow: 'hidden' }}>
+                  <Image source={cat.image} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                   <View
-                    className={`w-8 h-8 rounded-xl items-center justify-center ${isSelected ? 'bg-white/20' : 'bg-emerald-50 dark:bg-emerald-950/80'
-                      }`}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      backgroundColor: isSelected ? 'rgba(9,31,21,0.5)' : 'rgba(0,0,0,0.3)',
+                    }}
+                  />
+                  <View
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      padding: 10,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
                   >
-                    <IconComp color={isSelected ? '#ffffff' : '#059669'} size={16} />
+                    <View
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 17,
+                        backgroundColor: isSelected ? C.gold : isDark ? '#0f172a' : C.white,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        shadowColor: '#000',
+                        shadowOpacity: 0.25,
+                        shadowRadius: 4,
+                        elevation: 3,
+                      }}
+                    >
+                      <IconComp size={16} color={isSelected ? C.deepGreen : isDark ? C.gold : C.richGreen} />
+                    </View>
+                    <View
+                      style={{
+                        backgroundColor: isSelected ? C.gold : isDark ? '#0f172a' : 'rgba(255,255,255,0.92)',
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        borderRadius: 999,
+                        shadowColor: '#000',
+                        shadowOpacity: 0.15,
+                        shadowRadius: 3,
+                        elevation: 2,
+                      }}
+                    >
+                      <Text style={{ color: isSelected ? C.deepGreen : isDark ? C.gold : C.richGreen, fontSize: 10, fontWeight: '900' }}>
+                        {cat.count}
+                      </Text>
+                    </View>
                   </View>
-                  <Text
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isSelected
-                      ? 'bg-white/20 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                      }`}
-                  >
-                    {cat.count}
+                </View>
+
+                {/* Card Text Content */}
+                <View style={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12 }}>
+                  <Text style={{ fontWeight: '800', fontSize: 12, color: theme.textHeading, marginBottom: 2 }}>
+                    {cat.label}
+                  </Text>
+                  <Text numberOfLines={1} style={{ fontSize: 10, color: theme.textSecondary }}>
+                    {cat.desc}
                   </Text>
                 </View>
-                <Text
-                  className={`font-bold text-xs ${isSelected ? 'text-white' : 'text-slate-900 dark:text-white'
-                    }`}
-                >
-                  {cat.label}
-                </Text>
-                <Text
-                  numberOfLines={1}
-                  className={`text-[10px] mt-0.5 ${isSelected ? 'text-emerald-100' : 'text-slate-400 dark:text-slate-500'
-                    }`}
-                >
-                  {cat.desc}
-                </Text>
               </TouchableOpacity>
             );
           })}
         </View>
       </View>
 
-      {/* 3. YOUR COMMUNITY CAMPAIGNS (LOGGED IN USER) */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 6. YOUR COMMUNITY CAMPAIGNS (LOGGED IN)                           */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
       {isAuthenticated && activeUser && myCommunityCampaigns.length > 0 && (
-        <View className="py-6 px-4 bg-emerald-50/50 dark:bg-emerald-950/20 border-y border-emerald-100 dark:border-emerald-900/40">
-          <View className="mb-4">
-            <Text className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-0.5">
-              {t('home.your_community')}
+        <View
+          style={{
+            paddingVertical: 20,
+            paddingHorizontal: 16,
+            backgroundColor: isDark ? 'rgba(200,168,75,0.06)' : 'rgba(26,66,44,0.06)',
+            borderTopWidth: 1,
+            borderBottomWidth: 1,
+            borderColor: isDark ? theme.cardBorder : 'rgba(26,66,44,0.1)',
+            marginBottom: 8,
+          }}
+        >
+          <View style={{ marginBottom: 14 }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase', color: C.goldDark, marginBottom: 3 }}>
+              {t('home.your_community', 'Your Community')}
             </Text>
-            <Text className="text-lg font-extrabold text-slate-900 dark:text-white">
-              {t('home.community_campaigns_title', { community: activeUser.communityName || 'Your Area' })}
-            </Text>
-            <Text className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              {t('home.community_campaigns_desc')}
+            <Text style={{ fontSize: 18, fontWeight: '900', color: theme.textHeading }}>
+              {t('home.community_campaigns_title', { community: translateCommunityName(activeUser.communityName || 'Your Area', lang) })}
             </Text>
           </View>
-
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
-            {myCommunityCampaigns.slice(0, 4).map((c) => (
-              <TouchableOpacity
-                key={c.id}
-                onPress={() => router.push({ pathname: '/(stacks)/campaign-details', params: { id: c.id } })}
-                className="w-64 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
-              >
-                <Image source={{ uri: c.mainImage }} className="w-full h-32" resizeMode="cover" />
-                <View className="p-3">
-                  <Text className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">
-                    {c.category} • {c.city}
-                  </Text>
-                  <Text className="font-bold text-slate-900 dark:text-white text-xs mt-0.5 mb-2" numberOfLines={2}>
-                    {c.title}
-                  </Text>
-                  <View className="bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 mb-1.5">
-                    <View
-                      className="bg-emerald-500 h-1.5 rounded-full"
-                      style={{ width: `${Math.min((c.raisedINR / c.goalINR) * 100, 100)}%` }}
-                    />
-                  </View>
-                  <View className="flex-row justify-between items-center">
-                    <Text className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-                      ₹{c.raisedINR.toLocaleString('en-IN')}
+            {myCommunityCampaigns.slice(0, 4).map((c) => {
+              const displayTitle = translateCampaignTitle(c.title, lang);
+              const displayCat = translateCategory(c.category, lang);
+              const displayCity = translateCity(c.city, lang);
+
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  onPress={() => router.push({ pathname: '/(stacks)/campaign-details', params: { id: c.id } })}
+                  style={{
+                    width: 220,
+                    backgroundColor: theme.cardBg,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: theme.cardBorder,
+                    overflow: 'hidden',
+                    shadowColor: '#000',
+                    shadowOpacity: 0.06,
+                    shadowRadius: 6,
+                    elevation: 2,
+                  }}
+                >
+                  <Image source={{ uri: c.mainImage }} style={{ width: '100%', height: 120 }} resizeMode="cover" />
+                  <View style={{ padding: 12 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: isDark ? C.gold : C.richGreen, textTransform: 'uppercase', marginBottom: 3 }}>
+                      {displayCat} • {displayCity}
                     </Text>
-                    <TouchableOpacity
-                      onPress={() =>
-                        router.push({
-                          pathname: '/(stacks)/donation',
-                          params: { campaignId: c.id, initialCategory: c.category },
-                        })
-                      }
-                      className="bg-emerald-600 px-2.5 py-1 rounded-lg"
-                    >
-                      <Text className="text-white text-[10px] font-bold">{t('home.donate_now')}</Text>
-                    </TouchableOpacity>
+                    <DynamicText
+                      text={c.title}
+                      lang={lang}
+                      fallback={displayTitle}
+                      style={{ fontWeight: '700', color: theme.textPrimary, fontSize: 12, marginBottom: 8 }}
+                      numberOfLines={2}
+                    />
+                    <View style={{ backgroundColor: theme.progressTrack, borderRadius: 999, height: 4, marginBottom: 8 }}>
+                      <View style={{ backgroundColor: C.gold, height: 4, borderRadius: 999, width: `${Math.min((c.raisedINR / c.goalINR) * 100, 100)}%` as any }} />
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 12, color: theme.accentGreen, fontWeight: '700' }}>
+                        ₹{c.raisedINR.toLocaleString('en-IN')}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => router.push({ pathname: '/(stacks)/donation', params: { campaignId: c.id, initialCategory: c.category } })}
+                        style={{ backgroundColor: C.gold, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}
+                      >
+                        <Text style={{ color: C.deepGreen, fontSize: 10, fontWeight: '800' }}>{t('home.donate_now', 'Donate')}</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
       )}
 
-      {/* 5. FEATURED CAMPAIGNS WITH CATEGORY FILTER */}
-      <View className="py-6 px-4">
-        <View className="mb-3">
-
-          <Text className="text-xl font-extrabold text-slate-900 dark:text-white">
-            {t('home.featured_title')}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 7. ZAKAT CALCULATOR HIGHLIGHT BANNER                              */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
+        <View
+          style={{
+            backgroundColor: C.richGreen,
+            borderRadius: 20,
+            padding: 20,
+            borderWidth: 1,
+            borderColor: 'rgba(200,168,75,0.3)',
+            shadowColor: '#000',
+            shadowOpacity: 0.2,
+            shadowRadius: 10,
+            elevation: 5,
+          }}
+        >
+          {/* Badge */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: C.gold, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginBottom: 10 }}>
+            <Sparkles size={12} color={C.deepGreen} />
+            <Text style={{ color: C.deepGreen, fontWeight: '800', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', marginLeft: 5 }}>
+              {t('home.zakat_banner_badge', '100% Shariah Compliant Calculator')}
+            </Text>
+          </View>
+          <Text style={{ color: C.white, fontSize: 20, fontWeight: '900', marginBottom: 6, lineHeight: 26 }}>
+            {t('home.zakat_modal_title', 'Calculate Your Zakat (2.5%)')}
           </Text>
-          <Text className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {t('home.featured_desc')}
+          <Text style={{ color: C.goldLight, fontSize: 12, lineHeight: 18, marginBottom: 16 }}>
+            {t('home.zakat_banner_desc', 'Enter gold, silver, savings and investments to instantly know your Zakat due and donate directly.')}
+          </Text>
+          <TouchableOpacity
+            onPress={() => setIsZakatModalOpen(true)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: C.gold,
+              paddingVertical: 12,
+              borderRadius: 14,
+              shadowColor: C.gold,
+              shadowOpacity: 0.35,
+              shadowRadius: 8,
+              elevation: 4,
+            }}
+          >
+            <Calculator size={16} color={C.deepGreen} />
+            <Text style={{ color: C.deepGreen, fontWeight: '800', fontSize: 13, marginLeft: 8 }}>
+              {t('home.zakat_calc', 'Free Zakat Calculator')}
+            </Text>
+            <ArrowRight size={14} color={C.deepGreen} style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 8. FEATURED CAMPAIGNS WITH CATEGORY FILTER                        */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+        <View style={{ marginBottom: 14 }}>
+          <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase', color: C.goldDark, marginBottom: 3 }}>
+            {t('home.how_tag', 'On-site Verified Causes')}
+          </Text>
+          <Text style={{ fontSize: 20, fontWeight: '900', color: theme.textHeading }}>
+            {t('home.featured_title', 'Featured Active Campaigns')}
+          </Text>
+          <Text style={{ fontSize: 11, color: theme.textSecondary, marginTop: 3 }}>
+            {t('home.featured_desc', 'High-impact relief campaigns verified at the grassroots level')}
           </Text>
         </View>
 
         {/* Filter Pills */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          className="mb-4"
-          contentContainerStyle={{ gap: 8 }}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 8 }}>
           {['All', 'Urgent', 'Zakat', 'Medical', 'Education', 'Food', 'Marriage', 'Janazah'].map((cat) => {
             const isCatActive = selectedCategory === cat;
             return (
               <TouchableOpacity
                 key={cat}
                 onPress={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-xl border ${isCatActive
-                  ? 'bg-slate-900 dark:bg-emerald-600 border-slate-900 dark:border-emerald-600'
-                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
-                  }`}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 7,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  backgroundColor: isCatActive ? (isDark ? C.gold : C.richGreen) : theme.cardBg,
+                  borderColor: isCatActive ? (isDark ? C.gold : C.richGreen) : theme.cardBorder,
+                }}
               >
-                <Text
-                  className={`text-xs font-bold ${isCatActive ? 'text-white' : 'text-slate-600 dark:text-slate-400'
-                    }`}
-                >
-                  {cat === 'All'
-                    ? t('home.cat_all')
-                    : cat === 'Urgent'
-                      ? t('home.cat_urgent')
-                      : cat === 'Zakat'
-                        ? t('home.cat_zakat')
-                        : cat === 'Medical'
-                          ? t('home.cat_medical')
-                          : cat === 'Education'
-                            ? t('home.cat_education')
-                            : cat === 'Food'
-                              ? t('home.cat_food')
-                              : cat === 'Marriage'
-                                ? t('home.cat_marriage')
-                                : cat === 'Janazah'
-                                  ? t('home.cat_janazah')
+                <Text style={{ fontSize: 11, fontWeight: '700', color: isCatActive ? (isDark ? C.deepGreen : C.white) : theme.textSecondary }}>
+                  {cat === 'All' ? t('home.cat_all', 'All')
+                    : cat === 'Urgent' ? t('home.cat_urgent', 'Urgent')
+                      : cat === 'Zakat' ? t('home.cat_zakat', 'Zakat')
+                        : cat === 'Medical' ? t('home.cat_medical', 'Medical')
+                          : cat === 'Education' ? t('home.cat_education', 'Education')
+                            : cat === 'Food' ? t('home.cat_food', 'Food')
+                              : cat === 'Marriage' ? t('home.cat_marriage', 'Marriage')
+                                : cat === 'Janazah' ? t('home.cat_janazah', 'Janazah')
                                   : cat}
                 </Text>
               </TouchableOpacity>
@@ -577,698 +1301,933 @@ export default function HomeScreen() {
 
         {/* Campaigns List */}
         {loading ? (
-          <View className="py-12 items-center">
-            <ActivityIndicator color="#10b981" size="large" />
+          <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+            <ActivityIndicator color={C.gold} size="large" />
           </View>
         ) : filteredCampaigns.length > 0 ? (
-          <View className="gap-4">
-            {filteredCampaigns.slice(0, 6).map((camp) => (
-              <View
-                key={camp.id}
-                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm"
-              >
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => router.push({ pathname: '/(stacks)/campaign-details', params: { id: camp.id } })}
-                  className="relative"
+          <View style={{ gap: 14 }}>
+            {filteredCampaigns.slice(0, 6).map((camp) => {
+              const displayTitle = translateCampaignTitle(camp.title, lang);
+              const displayCat = translateCategory(camp.category, lang);
+              const displayCity = translateCity(camp.city, lang);
+              const displayStory = translateCampaignStory(camp.story, lang);
+
+              return (
+                <View
+                  key={camp.id}
+                  style={{
+                    backgroundColor: theme.cardBg,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor: theme.cardBorder,
+                    overflow: 'hidden',
+                    shadowColor: '#000',
+                    shadowOpacity: 0.06,
+                    shadowRadius: 8,
+                    elevation: 3,
+                  }}
                 >
-                  <Image source={{ uri: camp.mainImage }} className="w-full h-40" resizeMode="cover" />
-                  <View className="absolute top-2.5 left-2.5 flex-row gap-1.5">
-                    {camp.isUrgent && (
-                      <View className="bg-red-600 px-2 py-0.5 rounded-md flex-row items-center">
-                        <Flame color="#ffffff" size={10} />
-                        <Text className="text-white text-[9px] font-black uppercase ml-1">
-                          {t('campaigns.urgent')}
-                        </Text>
-                      </View>
-                    )}
-                    {camp.isZakatEligible && (
-                      <View className="bg-emerald-700 px-2 py-0.5 rounded-md flex-row items-center">
-                        <ShieldCheck color="#ffffff" size={10} />
-                        <Text className="text-white text-[9px] font-black uppercase ml-1">
-                          {t('campaigns.zakat')}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </TouchableOpacity>
-
-                <View className="p-4">
-                  <View className="flex-row items-center justify-between mb-1">
-                    <Text className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">
-                      {camp.category} • {camp.city}
-                    </Text>
-                    <View className="flex-row items-center">
-                      <Clock color="#94a3b8" size={12} />
-                      <Text className="text-[11px] text-slate-500 dark:text-slate-400 ml-1">
-                        {camp.daysLeft} {t('campaigns.days_left')}
-                      </Text>
-                    </View>
-                  </View>
-
                   <TouchableOpacity
+                    activeOpacity={0.9}
                     onPress={() => router.push({ pathname: '/(stacks)/campaign-details', params: { id: camp.id } })}
                   >
-                    <Text className="font-bold text-slate-900 dark:text-white text-base leading-5 mb-1.5" numberOfLines={2}>
-                      {camp.title}
-                    </Text>
+                    <Image source={{ uri: camp.mainImage }} style={{ width: '100%', height: 168 }} resizeMode="cover" />
+                    {/* Badges */}
+                    <View style={{ position: 'absolute', top: 10, left: 10, flexDirection: 'row', gap: 6 }}>
+                      {camp.isUrgent && (
+                        <View style={{ backgroundColor: '#dc2626', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, flexDirection: 'row', alignItems: 'center' }}>
+                          <Flame color={C.white} size={9} />
+                          <Text style={{ color: C.white, fontSize: 9, fontWeight: '900', textTransform: 'uppercase', marginLeft: 3 }}>
+                            {translateCategory('Urgent', lang)}
+                          </Text>
+                        </View>
+                      )}
+                      {camp.isZakatEligible && (
+                        <View style={{ backgroundColor: C.richGreen, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, flexDirection: 'row', alignItems: 'center' }}>
+                          <ShieldCheck color={C.white} size={9} />
+                          <Text style={{ color: C.white, fontSize: 9, fontWeight: '900', textTransform: 'uppercase', marginLeft: 3 }}>
+                            {translateCategory('Zakat', lang)}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   </TouchableOpacity>
 
-                  <Text className="text-slate-500 dark:text-slate-400 text-xs leading-4 mb-3" numberOfLines={2}>
-                    {camp.story}
-                  </Text>
-
-                  {/* Progress bar */}
-                  <View className="bg-slate-100 dark:bg-slate-800 rounded-full h-2 mb-2">
-                    <View
-                      className="bg-emerald-500 h-2 rounded-full"
-                      style={{
-                        width: `${Math.min((camp.raisedINR / camp.goalINR) * 100, 100)}%`,
-                      }}
-                    />
-                  </View>
-
-                  <View className="flex-row justify-between items-center mb-3">
-                    <View>
-                      <Text className="text-emerald-600 dark:text-emerald-400 font-extrabold text-sm">
-                        ₹{camp.raisedINR.toLocaleString('en-IN')}
+                  <View style={{ padding: 16 }}>
+                    {/* Category + days */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: isDark ? C.gold : C.richGreen, textTransform: 'uppercase' }}>
+                        {displayCat} • {displayCity}
                       </Text>
-                      <Text className="text-[10px] text-slate-400">
-                        {t('home.raised_of')} ₹{camp.goalINR.toLocaleString('en-IN')}
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Clock color="#94a3b8" size={11} />
+                        <Text style={{ fontSize: 10, color: '#94a3b8', marginLeft: 3 }}>
+                          {camp.daysLeft} {t('campaigns.days_left', 'days left')}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity onPress={() => router.push({ pathname: '/(stacks)/campaign-details', params: { id: camp.id } })}>
+                      <DynamicText
+                        text={camp.title}
+                        lang={lang}
+                        fallback={displayTitle}
+                        style={{ fontWeight: '800', color: theme.textPrimary, fontSize: 15, lineHeight: 21, marginBottom: 6 }}
+                        numberOfLines={2}
+                      />
+                    </TouchableOpacity>
+
+                    <DynamicText
+                      text={camp.story}
+                      lang={lang}
+                      fallback={displayStory}
+                      style={{ color: theme.textSecondary, fontSize: 11, lineHeight: 16, marginBottom: 12 }}
+                      numberOfLines={2}
+                    />
+
+                    {/* Progress bar */}
+                    <View style={{ backgroundColor: theme.progressTrack, borderRadius: 999, height: 6, marginBottom: 8 }}>
+                      <View
+                        style={{
+                          backgroundColor: C.gold,
+                          height: 6,
+                          borderRadius: 999,
+                          width: `${Math.min((camp.raisedINR / camp.goalINR) * 100, 100)}%` as any,
+                        }}
+                      />
+                    </View>
+
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <View>
+                        <Text style={{ color: theme.accentGreen, fontWeight: '800', fontSize: 13 }}>
+                          ₹{camp.raisedINR.toLocaleString('en-IN')}
+                        </Text>
+                        <Text style={{ fontSize: 10, color: theme.textSecondary }}>
+                          {t('home.raised_of', 'of')} ₹{camp.goalINR.toLocaleString('en-IN')}
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary }}>
+                        {camp.donorsCount} {t('campaigns.donors', 'donors')}
                       </Text>
                     </View>
-                    <Text className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                      {camp.donorsCount} {t('campaigns.donors')}
-                    </Text>
-                  </View>
 
-                  {/* Buttons */}
-                  <View className="flex-row items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                    <TouchableOpacity
-                      onPress={() =>
-                        router.push({
-                          pathname: '/(stacks)/donation',
-                          params: { campaignId: camp.id, initialCategory: camp.category },
-                        })
-                      }
-                      className="flex-1 bg-emerald-600 py-2.5 rounded-xl items-center justify-center flex-row"
-                    >
-                      <Heart color="#ffffff" size={14} fill="#ffffff" />
-                      <Text className="text-white font-bold text-xs ml-1.5">{t('home.donate_now')}</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => handleShareCampaign(camp)}
-                      className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 items-center justify-center"
-                    >
-                      <Share2 color="#64748b" size={16} />
-                    </TouchableOpacity>
+                    {/* Action Buttons */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: isDark ? theme.cardBorder : '#f1f5f9' }}>
+                      <TouchableOpacity
+                        onPress={() => router.push({ pathname: '/(stacks)/donation', params: { campaignId: camp.id, initialCategory: camp.category } })}
+                        style={{ flex: 1, backgroundColor: C.gold, paddingVertical: 11, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', shadowColor: C.gold, shadowOpacity: 0.3, shadowRadius: 6, elevation: 3 }}
+                      >
+                        <Heart color={C.deepGreen} size={14} fill={C.deepGreen} />
+                        <Text style={{ color: C.deepGreen, fontWeight: '800', fontSize: 12, marginLeft: 6 }}>{t('home.donate_now', 'Donate Now')}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleShareCampaign(camp)}
+                        style={{ padding: 11, borderRadius: 12, backgroundColor: theme.innerCardBg, borderWidth: 1, borderColor: theme.cardBorder, alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Share2 color={theme.textSecondary} size={16} />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
 
             <TouchableOpacity
               onPress={() => router.push('/(tabs)/campaigns')}
-              className="py-3.5 px-6 rounded-2xl bg-emerald-600 items-center justify-center flex-row shadow-sm mt-2"
+              style={{ paddingVertical: 14, paddingHorizontal: 20, borderRadius: 16, backgroundColor: C.richGreen, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', marginTop: 4, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, elevation: 4 }}
             >
-              <Text className="text-white font-bold text-xs mr-2">{t('home.view_all_campaigns')}</Text>
-              <ArrowRight color="#ffffff" size={16} />
+              <Text style={{ color: C.white, fontWeight: '800', fontSize: 13, marginRight: 8 }}>{t('home.view_all_campaigns', 'View All Campaigns')}</Text>
+              <ArrowRight color={C.gold} size={16} />
             </TouchableOpacity>
           </View>
         ) : (
-          <View className="py-10 items-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6">
-            <Text className="text-slate-500 dark:text-slate-400 text-xs text-center">
-              {t('home.no_campaigns')}
+          <View style={{ paddingVertical: 36, alignItems: 'center', backgroundColor: theme.cardBg, borderRadius: 16, borderWidth: 1, borderColor: theme.cardBorder }}>
+            <Text style={{ color: theme.textSecondary, fontSize: 12, textAlign: 'center' }}>
+              {t('home.no_campaigns', 'No active campaigns found in this category.')}
             </Text>
           </View>
         )}
       </View>
 
-
-      {/* 7. HOW IT WORKS (4 STEPS) */}
-      <View className="py-6 px-4 bg-white dark:bg-slate-900 border-y border-slate-200 dark:border-slate-800">
-        <View className="mb-5 text-center items-center">
-          <Text className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-0.5">
-            {t('home.how_tag')}
-          </Text>
-          <Text className="text-xl font-extrabold text-slate-900 dark:text-white">
-            {t('home.how_title')}
-          </Text>
-          <Text className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 text-center">
-            {t('home.how_desc')}
-          </Text>
-        </View>
-
-        <View className="gap-3">
-          {[
-            {
-              step: '1',
-              title: t('home.step1_title'),
-              desc: t('home.step1_desc'),
-            },
-            {
-              step: '2',
-              title: t('home.step2_title'),
-              desc: t('home.step2_desc'),
-            },
-            {
-              step: '3',
-              title: t('home.step3_title'),
-              desc: t('home.step3_desc'),
-            },
-            {
-              step: '4',
-              title: t('home.step4_title'),
-              desc: t('home.step4_desc'),
-            },
-          ].map((item) => (
-            <View
-              key={item.step}
-              className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/60 flex-row gap-3.5 items-start"
-            >
-              <View className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-900/80 items-center justify-center shrink-0">
-                <Text className="text-emerald-700 dark:text-emerald-300 font-extrabold text-sm">
-                  {item.step}
-                </Text>
-              </View>
-              <View className="flex-1">
-                <Text className="font-bold text-slate-900 dark:text-white text-xs mb-1">
-                  {item.title}
-                </Text>
-                <Text className="text-slate-500 dark:text-slate-400 text-[11px] leading-4">
-                  {item.desc}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      {/* 8. LIFE IMPACT & COUNTERS */}
-      <View className="py-6 px-4 gap-3.5">
-        <View className="bg-emerald-800 dark:bg-emerald-900 rounded-2xl p-5 shadow-sm">
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-[11px] font-bold uppercase tracking-wider text-emerald-200">
-              {t('home.impact_counter_tag')}
-            </Text>
-            <View className="bg-white/20 px-2 py-0.5 rounded">
-              <Text className="text-[10px] text-white font-bold">{t('home.impact_realtime')}</Text>
-            </View>
-          </View>
-          <Text className="text-3xl font-black text-white mb-1">
-            {testimonials.length > 0 ? testimonials.length : 12}+
-          </Text>
-          <Text className="text-xs text-emerald-100">
-            {t('home.impact_counter_desc')}
-          </Text>
-        </View>
-
-        <View className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              {t('home.members_counter_tag')}
-            </Text>
-            <View className="bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded">
-              <Text className="text-[10px] text-emerald-700 dark:text-emerald-300 font-bold">
-                {t('home.today_badge')}
-              </Text>
-            </View>
-          </View>
-          <Text className="text-3xl font-black text-slate-900 dark:text-white mb-1">
-            {totalMembers > 0 ? totalMembers.toLocaleString('en-IN') : '0'}
-          </Text>
-          <Text className="text-xs text-slate-500 dark:text-slate-400">
-            {t('home.members_counter_desc')}
-          </Text>
-        </View>
-
-        <View className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              {t('home.communities_tag')}
-            </Text>
-            <View className="bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded">
-              <Text className="text-[10px] text-blue-700 dark:text-blue-300 font-bold">
-                {communities.length > 0 ? communities.length : 1} {t('home.active_hubs')}
-              </Text>
-            </View>
-          </View>
-          <Text className="text-3xl font-black text-slate-900 dark:text-white mb-1">
-            {avgHealth}%
-          </Text>
-          <Text className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-            {t('home.communities_desc')}
-          </Text>
-
-          <TouchableOpacity
-            onPress={() => router.push('/(tabs)/community')}
-            className="w-full py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 items-center justify-center flex-row"
-          >
-            <Building2 color="#34d399" size={14} />
-            <Text className="text-white font-bold text-xs ml-1.5">
-              {t('home.explore_communities')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* 9. RECENT DONATIONS LIVE FEED */}
-      <View className="py-6 px-4">
-        <View className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-          <View className="flex-row items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-3">
-            <View className="flex-row items-center">
-              <View className="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-2" />
-              <Text className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-white">
-                {t('home.donations_feed_title')}
-              </Text>
-            </View>
-            <Text className="text-[10px] text-slate-400">
-              {t('home.donations_feed_subtitle')}
-            </Text>
-          </View>
-
-          {recentDonations.length > 0 ? (
-            <View className="gap-2.5">
-              {recentDonations.map((don) => (
-                <View
-                  key={don.id}
-                  className="flex-row items-center justify-between py-2 border-b border-slate-50 dark:border-slate-800/50 last:border-0"
-                >
-                  <View className="flex-row items-center flex-1 pr-2">
-                    <View className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950 items-center justify-center mr-2.5">
-                      <Text className="text-emerald-800 dark:text-emerald-300 font-bold text-xs">
-                        {(don.donorName || 'A').charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                    <View className="flex-1">
-                      <Text className="font-bold text-slate-900 dark:text-white text-xs">
-                        {don.donorName}{' '}
-                        <Text className="text-slate-400 font-normal">
-                          {t('home.donated_label')}
-                        </Text>{' '}
-                        ₹{don.amountINR.toLocaleString('en-IN')}
-                      </Text>
-                      <Text className="text-[10px] text-slate-400" numberOfLines={1}>
-                        {don.campaignTitle} • {don.communityName}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View className="items-end shrink-0">
-                    <View className="bg-emerald-50 dark:bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-100 dark:border-emerald-800/60 mb-0.5">
-                      <Text className="text-[9px] text-emerald-700 dark:text-emerald-300 font-bold">
-                        {t('home.utr_verified')}
-                      </Text>
-                    </View>
-                    <Text className="text-[9px] text-slate-400 font-mono">{don.date}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text className="text-center py-4 text-xs text-slate-400">
-              {t('home.no_donations')}
-            </Text>
-          )}
-        </View>
-      </View>
-
-      {/* 10. COMMUNITY STORIES & TESTIMONIALS */}
-      <View className="py-8 px-4 bg-slate-900 dark:bg-slate-950">
-        <View className="mb-5 text-center items-center">
-          <Text className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 mb-0.5">
-            {t('home.testimonials_tag')}
-          </Text>
-          <Text className="text-xl font-extrabold text-white text-center">
-            {t('home.testimonials_title')}
-          </Text>
-          <Text className="text-xs text-slate-400 mt-0.5 text-center">
-            {t('home.testimonials_desc')}
-          </Text>
-        </View>
-
-        <View className="gap-3 mb-4">
-          {testimonials.slice(0, 3).map((item) => (
-            <View
-              key={item.id}
-              className="p-4 rounded-2xl bg-slate-800/80 border border-slate-700/80"
-            >
-              <Text className="text-xs text-slate-300 italic leading-5 mb-3">
-                "{item.quote}"
-              </Text>
-              <View className="flex-row items-center pt-2.5 border-t border-slate-700/60">
-                {item.avatar ? (
-                  <Image
-                    source={{ uri: item.avatar }}
-                    className="w-8 h-8 rounded-full mr-2.5"
-                  />
-                ) : (
-                  <View className="w-8 h-8 rounded-full bg-emerald-700 items-center justify-center mr-2.5">
-                    <Text className="text-white font-bold text-xs">
-                      {item.name.charAt(0)}
-                    </Text>
-                  </View>
-                )}
-                <View>
-                  <Text className="font-bold text-xs text-white">{item.name}</Text>
-                  <Text className="text-[10px] text-slate-400">
-                    {item.role} • {item.city}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          ))}
-        </View>
-
-        <TouchableOpacity
-          onPress={() => router.push('/(tabs)/impact-stories')}
-          className="py-3 px-6 rounded-2xl bg-emerald-600 items-center justify-center flex-row self-center shadow-md"
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 9. MEMBERSHIP BANNER                                               */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
+        <View
+          style={{
+            borderRadius: 20,
+            overflow: 'hidden',
+            borderWidth: 1.5,
+            borderColor: 'rgba(200,168,75,0.5)',
+            shadowColor: '#000',
+            shadowOpacity: 0.15,
+            shadowRadius: 12,
+            elevation: 6,
+          }}
         >
-          <Text className="text-white font-bold text-xs mr-2">
-            {t('home.view_all_stories')}
-          </Text>
-          <ArrowRight color="#ffffff" size={14} />
-        </TouchableOpacity>
-      </View>
-
-      {/* 11. FAQ ACCORDION */}
-      <View className="py-8 px-4">
-        <View className="mb-5 text-center items-center">
-          <Text className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-0.5">
-            {t('home.faq_tag')}
-          </Text>
-          <Text className="text-xl font-extrabold text-slate-900 dark:text-white">
-            {t('home.faq_title')}
-          </Text>
-        </View>
-
-        <View className="gap-2.5">
-          {faqs.map((faq, idx) => (
-            <TouchableOpacity
-              key={idx}
-              onPress={() => setActiveFaq(activeFaq === idx ? null : idx)}
-              className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm"
-            >
-              <View className="flex-row items-center justify-between">
-                <View className="flex-row items-center flex-1 pr-2">
-                  <HelpCircle color="#059669" size={16} />
-                  <Text className="font-bold text-slate-900 dark:text-white text-xs ml-2 flex-1">
-                    {faq.q}
-                  </Text>
-                </View>
-                {activeFaq === idx ? (
-                  <ChevronUp color="#94a3b8" size={16} />
-                ) : (
-                  <ChevronDown color="#94a3b8" size={16} />
-                )}
-              </View>
-              {activeFaq === idx && (
-                <Text className="mt-2.5 text-xs text-slate-600 dark:text-slate-400 leading-5 pt-2.5 border-t border-slate-100 dark:border-slate-800">
-                  {faq.a}
+          <ImageBackground
+            source={{ uri: 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?auto=format&fit=crop&w=800&q=70' }}
+            style={{ overflow: 'hidden' }}
+            resizeMode="cover"
+          >
+            {/* Overlay */}
+            <View style={{ backgroundColor: 'rgba(9,31,21,0.93)', padding: 22 }}>
+              {/* Badge */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: C.gold, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginBottom: 12 }}>
+                <Sparkles size={11} color={C.deepGreen} />
+                <Text style={{ color: C.deepGreen, fontWeight: '900', fontSize: 9, letterSpacing: 1.2, textTransform: 'uppercase', marginLeft: 5 }}>
+                  {t('home.join_badge', 'Join the Community')}
                 </Text>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
+              </View>
 
-      {/* 12. CONTACT COMMUNITY SUPPORT */}
-      <View className="py-8 px-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
-        <View className="mb-5 text-center items-center">
-          <Text className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-0.5">
-            {t('home.contact_tag')}
-          </Text>
-          <Text className="text-xl font-extrabold text-slate-900 dark:text-white">
-            {t('home.contact_title')}
-          </Text>
-          <Text className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 text-center">
-            {t('home.contact_desc')}
-          </Text>
-        </View>
-
-        {/* Contact Form */}
-        <View className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 mb-4">
-          <Text className="font-bold text-sm text-slate-900 dark:text-white mb-3">
-            {t('home.send_message')}
-          </Text>
-
-          {contactSubmitted ? (
-            <View className="p-4 bg-emerald-50 dark:bg-emerald-950/80 rounded-xl items-center border border-emerald-200 dark:border-emerald-800">
-              <CheckCircle2 color="#059669" size={32} />
-              <Text className="font-bold text-slate-900 dark:text-white text-xs mt-2">
-                {t('home.msg_received')}
+              <Text style={{ color: C.white, fontSize: 22, fontWeight: '900', lineHeight: 28, marginBottom: 8 }}>
+                {t('home.member_heading', 'Become a Member')}{' '}
+                <Text style={{ color: C.gold }}>{t('home.member_price', 'for ₹100/yr')}</Text>
               </Text>
-              <Text className="text-slate-600 dark:text-slate-300 text-[11px] text-center mt-1">
-                {t('home.msg_received_desc')}
+              <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, lineHeight: 18, marginBottom: 18 }}>
+                {t('home.member_desc', 'Your ₹100 annual membership fee creates a verified member ID and builds our solidarity emergency fund — helping families in crisis right in your neighbourhood.')}
               </Text>
-            </View>
-          ) : (
-            <View className="gap-3">
-              <View>
-                <Text className="font-bold text-slate-700 dark:text-slate-300 text-xs mb-1">
-                  {t('home.your_name')}
-                </Text>
-                <TextInput
-                  value={contactName}
-                  onChangeText={setContactName}
-                  placeholder={t('home.name_placeholder')}
-                  placeholderTextColor="#94a3b8"
-                  className="w-full p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
-                />
-              </View>
 
-              <View>
-                <Text className="font-bold text-slate-700 dark:text-slate-300 text-xs mb-1">
-                  {t('home.phone_number')}
-                </Text>
-                <TextInput
-                  value={contactPhone}
-                  onChangeText={setContactPhone}
-                  keyboardType="phone-pad"
-                  placeholder={t('home.phone_placeholder')}
-                  placeholderTextColor="#94a3b8"
-                  className="w-full p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
-                />
-              </View>
-
-              <View>
-                <Text className="font-bold text-slate-700 dark:text-slate-300 text-xs mb-1">
-                  {t('home.help_label')}
-                </Text>
-                <TextInput
-                  value={contactMsg}
-                  onChangeText={setContactMsg}
-                  multiline
-                  numberOfLines={3}
-                  placeholder={t('home.help_placeholder')}
-                  placeholderTextColor="#94a3b8"
-                  className="w-full p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white h-20"
-                />
+              {/* Benefits */}
+              <View style={{ gap: 8, marginBottom: 20 }}>
+                {[
+                  t('home.benefit_1', 'Verified Member ID Card'),
+                  t('home.benefit_2', 'Priority Emergency Assistance'),
+                  t('home.benefit_3', 'Access to all Community Events'),
+                  t('home.benefit_4', 'Zakat & Donation Receipts'),
+                ].map((benefit) => (
+                  <View key={benefit} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <CheckCircle2 size={14} color={C.gold} fill={C.gold} />
+                    <Text style={{ color: C.white, fontSize: 12, marginLeft: 8, fontWeight: '600' }}>{benefit}</Text>
+                  </View>
+                ))}
               </View>
 
               <TouchableOpacity
-                onPress={handleContactSubmit}
-                disabled={contactSubmitting}
-                className="w-full py-3.5 rounded-xl bg-emerald-600 items-center justify-center flex-row shadow-sm mt-1"
+                onPress={() => router.push('/(auth)/sign-up')}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: C.gold,
+                  paddingVertical: 14,
+                  borderRadius: 14,
+                  shadowColor: C.gold,
+                  shadowOpacity: 0.4,
+                  shadowRadius: 10,
+                  elevation: 5,
+                }}
               >
-                {contactSubmitting ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <>
-                    <Send color="#ffffff" size={14} />
-                    <Text className="text-white font-bold text-xs ml-1.5">
-                      {t('home.send_request')}
-                    </Text>
-                  </>
-                )}
+                <UserPlus size={16} color={C.deepGreen} />
+                <Text style={{ color: C.deepGreen, fontWeight: '900', fontSize: 14, marginLeft: 8 }}>
+                  {t('home.become_member_action', 'Become a Member · ₹100')}
+                </Text>
               </TouchableOpacity>
             </View>
-          )}
+          </ImageBackground>
+        </View>
+      </View>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 10. HOW IT WORKS (4 STEPS)                                         */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View
+        style={{
+          marginHorizontal: 16,
+          marginBottom: 20,
+          backgroundColor: theme.cardBg,
+          borderRadius: 20,
+          padding: 20,
+          borderWidth: 1,
+          borderColor: theme.cardBorder,
+          shadowColor: '#000',
+          shadowOpacity: 0.04,
+          shadowRadius: 8,
+          elevation: 2,
+        }}
+      >
+        <SectionHeader
+          tag={t('home.how_tag', 'Simple & Trustworthy')}
+          title={t('home.how_title', 'How Does It Work?')}
+          desc={t('home.how_desc', 'A simple 4-step model for transparent and direct aid')}
+        />
+        <View style={{ gap: 10 }}>
+          {[
+            { step: '1', title: t('home.step1_title', 'Grassroots Identification'), desc: t('home.step1_desc', 'Mohalla elders and field volunteers personally verify every case.') },
+            { step: '2', title: t('home.step2_title', 'Direct Bank & Hospital Payments'), desc: t('home.step2_desc', 'Funds go directly to hospitals, vendors, or beneficiaries.') },
+            { step: '3', title: t('home.step3_title', '100% Audit & Receipts'), desc: t('home.step3_desc', "Every transaction's bill and audit report is publicly available.") },
+            { step: '4', title: t('home.step4_title', 'Video & Photo Updates'), desc: t('home.step4_desc', 'Proof is shared with donors immediately after relief is delivered.') },
+          ].map((item) => (
+            <View
+              key={item.step}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 12,
+                padding: 14,
+                borderRadius: 14,
+                backgroundColor: theme.innerCardBg,
+                borderWidth: 1,
+                borderColor: theme.cardBorder,
+              }}
+            >
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  backgroundColor: C.goldBg,
+                  borderWidth: 2,
+                  borderColor: 'rgba(200,168,75,0.35)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Text style={{ color: isDark ? C.gold : C.richGreen, fontWeight: '900', fontSize: 14 }}>{item.step}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '800', fontSize: 12, color: theme.textHeading, marginBottom: 3 }}>{item.title}</Text>
+                <Text style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 16 }}>{item.desc}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 11. IMPACT COUNTERS                                                */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 20, gap: 12 }}>
+        {/* Life Impact */}
+        <View
+          style={{
+            backgroundColor: C.richGreen,
+            borderRadius: 20,
+            padding: 20,
+            borderWidth: 1,
+            borderColor: 'rgba(200,168,75,0.2)',
+            shadowColor: '#000',
+            shadowOpacity: 0.2,
+            shadowRadius: 10,
+            elevation: 5,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase', color: C.goldLight }}>
+              {t('home.impact_counter_tag', 'Impact')}
+            </Text>
+            <View style={{ backgroundColor: C.goldBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
+              <Text style={{ color: C.gold, fontSize: 10, fontWeight: '700' }}>{t('home.impact_realtime', 'Live')}</Text>
+            </View>
+          </View>
+          <Text style={{ fontSize: 36, fontWeight: '900', color: C.gold, marginBottom: 4 }}>
+            {testimonials.length > 0 ? testimonials.length : 12}+
+          </Text>
+          <Text style={{ fontSize: 12, color: C.goldLight, lineHeight: 18 }}>
+            {t('home.impact_counter_desc', 'Lives changed and successful relief stories')}
+          </Text>
         </View>
 
-        {/* Emergency Help Desks */}
-        <View className="bg-slate-900 dark:bg-slate-950 p-5 rounded-2xl space-y-3">
-          <Text className="font-bold text-xs text-white uppercase tracking-wider mb-2">
-            {t('home.emergency_desks')}
+        {/* Members */}
+        <View
+          style={{
+            backgroundColor: theme.cardBg,
+            borderRadius: 20,
+            padding: 20,
+            borderWidth: 1,
+            borderColor: theme.cardBorder,
+            shadowColor: '#000',
+            shadowOpacity: 0.04,
+            shadowRadius: 8,
+            elevation: 2,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase', color: theme.textSecondary }}>
+              {t('home.members_counter_tag', 'Network')}
+            </Text>
+            <View style={{ backgroundColor: C.goldBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, borderWidth: 1, borderColor: 'rgba(200,168,75,0.2)' }}>
+              <Text style={{ color: isDark ? C.gold : C.richGreen, fontSize: 10, fontWeight: '700' }}>
+                {t('home.today_badge', 'Active')} +14
+              </Text>
+            </View>
+          </View>
+          <Text style={{ fontSize: 36, fontWeight: '900', color: theme.textHeading, marginBottom: 4 }}>
+            {totalMembers > 0 ? totalMembers.toLocaleString('en-IN') : '0'}
           </Text>
+          <Text style={{ fontSize: 12, color: theme.textSecondary }}>
+            {t('home.members_counter_desc', 'Registered volunteers and donor members')}
+          </Text>
+        </View>
 
-          <TouchableOpacity
-            onPress={() => Linking.openURL('tel:18002006328')}
-            className="flex-row items-center p-3 rounded-xl bg-slate-800 mb-2"
-          >
-            <Phone color="#34d399" size={18} />
-            <View className="ml-3">
-              <Text className="text-[10px] text-slate-400 uppercase font-semibold">
-                {t('home.helpline_247')}
-              </Text>
-              <Text className="font-bold text-white text-xs">
-                {t('home.helpline_num')}
+        {/* Communities */}
+        <View
+          style={{
+            backgroundColor: theme.cardBg,
+            borderRadius: 20,
+            padding: 20,
+            borderWidth: 1,
+            borderColor: theme.cardBorder,
+            shadowColor: '#000',
+            shadowOpacity: 0.04,
+            shadowRadius: 8,
+            elevation: 2,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase', color: theme.textSecondary }}>
+              {t('home.communities_tag', 'Mohalla Hub')}
+            </Text>
+            <View style={{ backgroundColor: isDark ? 'rgba(200,168,75,0.1)' : 'rgba(26,60,44,0.08)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
+              <Text style={{ color: isDark ? C.gold : C.richGreen, fontSize: 10, fontWeight: '700' }}>
+                {communities.length > 0 ? communities.length : '0'} {t('home.active_hubs', 'Active Hubs')}
               </Text>
             </View>
-          </TouchableOpacity>
-
+          </View>
+          <Text style={{ fontSize: 36, fontWeight: '900', color: theme.textHeading, marginBottom: 4 }}>{avgHealth}%</Text>
+          <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 14 }}>
+            {t('home.communities_desc', 'Average community health and verification score')}
+          </Text>
           <TouchableOpacity
-            onPress={() => Linking.openURL('https://wa.me/919810012345')}
-            className="flex-row items-center p-3 rounded-xl bg-emerald-950 border border-emerald-500/30"
+            onPress={() => router.push('/(tabs)/community')}
+            style={{ paddingVertical: 11, borderRadius: 12, backgroundColor: isDark ? '#0f291e' : C.richGreen, borderWidth: isDark ? 1 : 0, borderColor: C.goldBorder, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' }}
           >
-            <MessageSquare color="#34d399" size={18} />
-            <View className="ml-3">
-              <Text className="text-[10px] text-emerald-300 uppercase font-bold">
-                {t('home.whatsapp_desk')}
-              </Text>
-              <Text className="font-bold text-white text-xs">
-                {t('home.whatsapp_num')}
-              </Text>
-            </View>
+            <Building2 color={C.gold} size={14} />
+            <Text style={{ color: C.white, fontWeight: '800', fontSize: 12, marginLeft: 6 }}>
+              {t('home.explore_communities', 'Explore Community Network')}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* 13. ZAKAT CALCULATOR MODAL */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 12. FAQ ACCORDION                                                  */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View
+        style={{
+          marginHorizontal: 16,
+          marginBottom: 20,
+          backgroundColor: theme.cardBg,
+          borderRadius: 20,
+          padding: 20,
+          borderWidth: 1,
+          borderColor: theme.cardBorder,
+          shadowColor: '#000',
+          shadowOpacity: 0.04,
+          shadowRadius: 8,
+          elevation: 2,
+        }}
+      >
+        <SectionHeader
+          tag={t('home.faq_tag', 'Frequently Asked Questions')}
+          title={t('home.faq_title', 'FAQ')}
+        />
+        <View style={{ gap: 10 }}>
+          {faqs.map((faq, index) => {
+            const isOpen = expandedFaq === index;
+            return (
+              <View
+                key={index}
+                style={{
+                  borderRadius: 14,
+                  backgroundColor: isOpen ? theme.innerCardBg : theme.cardBg,
+                  borderWidth: 1,
+                  borderColor: isOpen ? C.goldBorder : theme.cardBorder,
+                  overflow: 'hidden',
+                }}
+              >
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setExpandedFaq(isOpen ? null : index)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: 14,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }}>
+                    <View
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 14,
+                        backgroundColor: isOpen ? C.goldBg : isDark ? '#334155' : '#f1f5f9',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 10,
+                        borderWidth: 1,
+                        borderColor: isOpen ? C.goldBorder : 'transparent',
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: isOpen ? (isDark ? C.gold : C.richGreen) : theme.textSecondary }}>
+                        {index + 1}
+                      </Text>
+                    </View>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '700',
+                        color: isOpen ? (isDark ? C.gold : C.richGreen) : theme.textPrimary,
+                        flex: 1,
+                        lineHeight: 18,
+                      }}
+                    >
+                      {faq.q}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 14,
+                      backgroundColor: isOpen ? (isDark ? '#0f291e' : C.richGreen) : isDark ? '#334155' : '#f8fafc',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {isOpen ? (
+                      <ChevronUp size={16} color={C.white} />
+                    ) : (
+                      <ChevronDown size={16} color={theme.textSecondary} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+
+                {isOpen && (
+                  <View
+                    style={{
+                      paddingHorizontal: 14,
+                      paddingBottom: 14,
+                      paddingTop: 4,
+                      borderTopWidth: 1,
+                      borderTopColor: 'rgba(200,168,75,0.15)',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: theme.textSecondary,
+                        lineHeight: 18,
+                      }}
+                    >
+                      {faq.a}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 13. RECENT DONATIONS LIVE FEED                                     */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
+        <View
+          style={{
+            backgroundColor: theme.cardBg,
+            borderRadius: 20,
+            padding: 18,
+            borderWidth: 1,
+            borderColor: theme.cardBorder,
+            shadowColor: '#000',
+            shadowOpacity: 0.05,
+            shadowRadius: 8,
+            elevation: 2,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, marginBottom: 12, borderBottomWidth: 1, borderBottomColor: theme.cardBorder }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: C.gold, marginRight: 8 }} />
+              <Text style={{ fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8, color: theme.textHeading }}>
+                {t('home.donations_feed_title', 'Recent Donations')}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 10, color: theme.textSecondary }}>{t('home.donations_feed_subtitle', 'Transparent Live Feed')}</Text>
+          </View>
+
+          {recentDonations.length > 0 ? (
+            <View style={{ gap: 10 }}>
+              {recentDonations.map((don) => {
+                const donorName = translateDonorName(don.donorName, lang);
+                const campTitle = translateCampaignTitle(don.campaignTitle, lang);
+                const commName = translateCommunityName(don.communityName, lang);
+
+                return (
+                  <View
+                    key={don.id}
+                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(26,60,44,0.06)' }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                      <View
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 17,
+                          backgroundColor: C.goldBg,
+                          borderWidth: 1,
+                          borderColor: 'rgba(200,168,75,0.3)',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginRight: 10,
+                        }}
+                      >
+                        <Text style={{ color: isDark ? C.gold : C.richGreen, fontWeight: '800', fontSize: 13 }}>
+                          {(donorName || 'A').charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontWeight: '700', color: theme.textPrimary, fontSize: 12 }}>
+                          {donorName}{' '}
+                          <Text style={{ color: theme.textSecondary, fontWeight: '400' }}>{t('home.donated_label', 'donated')}</Text>{' '}
+                          ₹{don.amountINR.toLocaleString('en-IN')}
+                        </Text>
+                        <Text style={{ fontSize: 10, color: theme.textSecondary }} numberOfLines={1}>
+                          {campTitle} • {commName}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
+                      <View
+                        style={{
+                          backgroundColor: C.goldBg,
+                          borderWidth: 1,
+                          borderColor: 'rgba(200,168,75,0.3)',
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 4,
+                          marginBottom: 3,
+                        }}
+                      >
+                        <Text style={{ fontSize: 9, color: isDark ? C.gold : C.richGreen, fontWeight: '800' }}>
+                          ✓ {t('home.utr_verified', 'UTR Verified')}
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 9, color: theme.textSecondary, fontFamily: 'monospace' }}>{don.date}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <Text style={{ textAlign: 'center', paddingVertical: 16, fontSize: 12, color: theme.textSecondary }}>
+              {t('home.no_donations', 'No donation records yet')}
+            </Text>
+          )}
+        </View>
+      </View>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 13. TESTIMONIALS                                                    */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View
+        style={{
+          paddingHorizontal: 16,
+          paddingVertical: 32,
+          marginHorizontal: 0,
+          backgroundColor: C.richGreen,
+        }}
+      >
+        <SectionHeader
+          tag={t('home.testimonials_tag', 'Stories')}
+          title={t('home.testimonials_title', 'Grassroots Impact Stories')}
+          desc={t('home.testimonials_desc', 'Experiences of beneficiaries and field volunteers')}
+          light
+        />
+        <View>
+          {testimonials.slice(0, 3).map((item) => (
+            <TestimonialCard key={item.id} item={item} lang={lang} />
+          ))}
+        </View>
+        {testimonials.length > 0 && (
+          <TouchableOpacity
+            onPress={() => router.push('/(tabs)/impact-stories')}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 13,
+              paddingHorizontal: 24,
+              borderRadius: 14,
+              backgroundColor: C.gold,
+              alignSelf: 'center',
+              shadowColor: C.gold,
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 4,
+            }}
+          >
+            <Text style={{ color: C.deepGreen, fontWeight: '800', fontSize: 12, marginRight: 6 }}>
+              {t('home.view_all_stories', 'View All Stories')}
+            </Text>
+            <ArrowRight color={C.deepGreen} size={14} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 13.5 ABOUT US & FOUNDERS' MESSAGE                                  */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <AboutUs />
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 14. 24/7 HELPLINE & SUPPORT (Clean, Readable Design)               */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 36, paddingTop: 28, backgroundColor: theme.screenBg, borderTopWidth: 1, borderTopColor: theme.cardBorder }}>
+        <SectionHeader
+          tag={t('home.contact_tag', '24/7 Helpline & Support')}
+          title={t('home.contact_title', 'Emergency & Support Helpline')}
+          desc={t('home.contact_desc', 'Our team and grassroots volunteers are available 24/7 for immediate assistance.')}
+        />
+
+        {/* Emergency Helpline Cards */}
+        <View
+          style={{
+            backgroundColor: C.richGreen,
+            borderRadius: 20,
+            padding: 18,
+            borderWidth: 1,
+            borderColor: 'rgba(200,168,75,0.25)',
+            shadowColor: '#000',
+            shadowOpacity: 0.15,
+            shadowRadius: 10,
+            elevation: 4,
+            gap: 10,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+            <Text style={{ fontWeight: '800', fontSize: 11, color: C.gold, textTransform: 'uppercase', letterSpacing: 1 }}>
+              {t('home.emergency_desks', 'Emergency Direct Desks')}
+            </Text>
+            <View style={{ backgroundColor: 'rgba(16,185,129,0.2)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4 }}>
+              <Text style={{ color: '#34d399', fontSize: 9, fontWeight: '800' }}>● 24/7 LIVE</Text>
+            </View>
+          </View>
+
+          {/* Helpline 1 */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => Linking.openURL('tel:+918218017226')}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              padding: 14,
+              borderRadius: 14,
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              borderWidth: 1,
+              borderColor: 'rgba(200,168,75,0.2)',
+            }}
+          >
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: C.goldBg,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 12,
+              }}
+            >
+              <Phone color={C.gold} size={18} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 9, color: C.goldLight, textTransform: 'uppercase', fontWeight: '700', letterSpacing: 0.5 }}>
+                {t('home.helpline_desk1', '24/7 Emergency Support Desk 1')}
+              </Text>
+              <Text style={{ fontWeight: '900', color: C.white, fontSize: 15, marginTop: 1 }}>
+                +91 82180 17226
+              </Text>
+            </View>
+            <View style={{ backgroundColor: C.gold, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}>
+              <Text style={{ color: C.deepGreen, fontSize: 10, fontWeight: '900' }}>CALL</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Helpline 2 */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => Linking.openURL('tel:+919756919430')}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              padding: 14,
+              borderRadius: 14,
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              borderWidth: 1,
+              borderColor: 'rgba(200,168,75,0.2)',
+            }}
+          >
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: C.goldBg,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 12,
+              }}
+            >
+              <Phone color={C.gold} size={18} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 9, color: C.goldLight, textTransform: 'uppercase', fontWeight: '700', letterSpacing: 0.5 }}>
+                {t('home.helpline_desk2', '24/7 Emergency Support Desk 2')}
+              </Text>
+              <Text style={{ fontWeight: '900', color: C.white, fontSize: 15, marginTop: 1 }}>
+                +91 97569 19430
+              </Text>
+            </View>
+            <View style={{ backgroundColor: C.gold, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}>
+              <Text style={{ color: C.deepGreen, fontSize: 10, fontWeight: '900' }}>CALL</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* WhatsApp / Email Quick Row */}
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => Linking.openURL('https://wa.me/918218017226?text=Hello%20MFCT%20Team,%20I%20need%20assistance')}
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#25D366',
+                paddingVertical: 10,
+                borderRadius: 10,
+              }}
+            >
+              <MessageSquare color={C.white} size={14} />
+              <Text style={{ color: C.white, fontWeight: '800', fontSize: 11, marginLeft: 6 }}>
+                {t('home.whatsapp_desk', 'WhatsApp Desk')}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => Linking.openURL('mailto:info@mfcttrust.com')}
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'rgba(255,255,255,0.1)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.2)',
+                paddingVertical: 10,
+                borderRadius: 10,
+              }}
+            >
+              <Text style={{ color: C.white, fontWeight: '800', fontSize: 11 }}>
+                info@mfcttrust.com
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Registered Trust Information Footer */}
+        <View style={{ marginTop: 16, alignItems: 'center', paddingHorizontal: 12 }}>
+          <Text style={{ fontSize: 11, fontWeight: '800', color: theme.textHeading, textAlign: 'center' }}>
+            {t('home.footer_trust_name')}
+          </Text>
+          <Text style={{ fontSize: 10, color: theme.textSecondary, textAlign: 'center', marginTop: 2 }}>
+            {t('home.footer_reg')}
+          </Text>
+          <Text style={{ fontSize: 9, color: theme.textSecondary, textAlign: 'center', marginTop: 2 }}>
+            {t('home.footer_address')}
+          </Text>
+        </View>
+      </View>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 16. ZAKAT CALCULATOR MODAL (Logic Unchanged)                       */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
       <Modal
         visible={isZakatModalOpen}
         animationType="slide"
         transparent={true}
         onRequestClose={() => setIsZakatModalOpen(false)}
       >
-        <View className="flex-1 bg-slate-950/80 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-3xl max-h-[88%] p-5">
-            <View className="flex-row items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-3">
-              <View className="flex-row items-center">
-                <Calculator color="#059669" size={20} />
-                <Text className="font-extrabold text-base text-slate-900 dark:text-white ml-2">
-                  {t('home.zakat_modal_title')}
+        <View style={{ flex: 1, backgroundColor: 'rgba(9,31,21,0.85)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: theme.cardBg, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '92%', padding: 20 }}>
+            {/* Modal Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.cardBorder, paddingBottom: 14, marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Calculator color={C.gold} size={22} />
+                <Text style={{ fontWeight: '900', fontSize: 16, color: theme.textHeading, marginLeft: 8 }}>
+                  {t('home.zakat_modal_title', 'Zakat Calculator (2.5%)')}
                 </Text>
               </View>
               <TouchableOpacity
                 onPress={() => setIsZakatModalOpen(false)}
-                className="p-1 rounded-full bg-slate-100 dark:bg-slate-800"
+                style={{ padding: 6, borderRadius: 999, backgroundColor: isDark ? '#1a4230' : '#f1f5f9' }}
               >
-                <X color="#64748b" size={18} />
+                <X color={isDark ? '#94a3b8' : '#64748b'} size={18} />
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                {t('home.zakat_modal_desc')}
+              <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 16, lineHeight: 18 }}>
+                {t('home.zakat_modal_desc', 'Enter values in INR (₹) to calculate your 2.5% Zakat obligation.')}
               </Text>
 
-              <View className="gap-3 mb-4">
-                <View>
-                  <Text className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    {t('home.zakat_gold')}
-                  </Text>
-                  <TextInput
-                    value={zakatGold}
-                    onChangeText={setZakatGold}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    placeholderTextColor="#94a3b8"
-                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
-                  />
-                </View>
-
-                <View>
-                  <Text className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    {t('home.zakat_silver')}
-                  </Text>
-                  <TextInput
-                    value={zakatSilver}
-                    onChangeText={setZakatSilver}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    placeholderTextColor="#94a3b8"
-                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
-                  />
-                </View>
-
-                <View>
-                  <Text className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    {t('home.zakat_cash')}
-                  </Text>
-                  <TextInput
-                    value={zakatCash}
-                    onChangeText={setZakatCash}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    placeholderTextColor="#94a3b8"
-                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
-                  />
-                </View>
-
-                <View>
-                  <Text className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    {t('home.zakat_investments')}
-                  </Text>
-                  <TextInput
-                    value={zakatInvestments}
-                    onChangeText={setZakatInvestments}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    placeholderTextColor="#94a3b8"
-                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
-                  />
-                </View>
-
-                <View>
-                  <Text className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    {t('home.zakat_liabilities')}
-                  </Text>
-                  <TextInput
-                    value={zakatLiabilities}
-                    onChangeText={setZakatLiabilities}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    placeholderTextColor="#94a3b8"
-                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
-                  />
-                </View>
+              <View style={{ gap: 12, marginBottom: 16 }}>
+                {[
+                  { label: t('home.zakat_gold', 'Gold Value (₹)'), val: zakatGold, set: setZakatGold },
+                  { label: t('home.zakat_silver', 'Silver Value (₹)'), val: zakatSilver, set: setZakatSilver },
+                  { label: t('home.zakat_cash', 'Cash & Savings (₹)'), val: zakatCash, set: setZakatCash },
+                  { label: t('home.zakat_investments', 'Investments (₹)'), val: zakatInvestments, set: setZakatInvestments },
+                  { label: t('home.zakat_liabilities', 'Liabilities / Loans (₹)'), val: zakatLiabilities, set: setZakatLiabilities },
+                ].map((field) => (
+                  <View key={field.label}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textHeading, marginBottom: 5 }}>{field.label}</Text>
+                    <TextInput
+                      value={field.val}
+                      onChangeText={field.set}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
+                      style={{ padding: 12, borderRadius: 12, backgroundColor: theme.inputBg, borderWidth: 1, borderColor: theme.inputBorder, fontSize: 13, color: theme.textPrimary }}
+                    />
+                  </View>
+                ))}
               </View>
 
-              {/* Net Results Box */}
-              <View className="bg-emerald-950 p-4 rounded-2xl border border-emerald-500/30 mb-4">
-                <View className="flex-row justify-between items-center mb-2">
-                  <Text className="text-emerald-200 text-xs font-medium">
-                    {t('home.zakat_net_wealth')}
-                  </Text>
-                  <Text className="text-white font-bold text-sm">
-                    ₹{netWealth.toLocaleString('en-IN')}
-                  </Text>
+              {/* Result */}
+              <View style={{ backgroundColor: C.darkGreen, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(200,168,75,0.3)', marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>{t('home.zakat_net_wealth', 'Net Wealth')}</Text>
+                  <Text style={{ color: C.white, fontWeight: '700', fontSize: 14 }}>₹{netWealth.toLocaleString('en-IN')}</Text>
                 </View>
-
-                <View className="flex-row justify-between items-center pt-2 border-t border-emerald-800">
-                  <Text className="text-amber-300 font-extrabold text-sm">
-                    {t('home.zakat_payable')}
-                  </Text>
-                  <Text className="text-amber-300 font-black text-lg">
-                    ₹{zakatPayable.toLocaleString('en-IN')}
-                  </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(200,168,75,0.2)' }}>
+                  <Text style={{ color: C.gold, fontWeight: '800', fontSize: 14 }}>{t('home.zakat_payable', 'Zakat Payable (2.5%)')}</Text>
+                  <Text style={{ color: C.gold, fontWeight: '900', fontSize: 22 }}>₹{zakatPayable.toLocaleString('en-IN')}</Text>
                 </View>
-
-                <Text className="text-[10px] text-emerald-400/80 mt-2">
-                  {t('home.zakat_nisab_note')}
+                <Text style={{ fontSize: 10, color: 'rgba(200,168,75,0.65)', marginTop: 8 }}>
+                  {t('home.zakat_nisab_note', 'Based on current nisab. Verify with your local scholar.')}
                 </Text>
               </View>
 
               <TouchableOpacity
-                onPress={() => {
-                  setIsZakatModalOpen(false);
-                  router.push('/(tabs)/campaigns');
-                }}
-                className="w-full py-3.5 bg-emerald-600 rounded-xl items-center justify-center mb-3"
+                onPress={() => { setIsZakatModalOpen(false); router.push('/(tabs)/campaigns'); }}
+                style={{ paddingVertical: 14, backgroundColor: C.gold, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 10, shadowColor: C.gold, shadowOpacity: 0.35, shadowRadius: 8, elevation: 4 }}
               >
-                <Text className="text-white font-bold text-xs">
-                  {t('home.zakat_donate_action')}
+                <Text style={{ color: C.deepGreen, fontWeight: '900', fontSize: 13 }}>
+                  {t('home.zakat_donate_action', 'Donate Your Zakat Now')}
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={() => setIsZakatModalOpen(false)}
-                className="w-full py-2.5 rounded-xl items-center justify-center"
+                style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }}
               >
-                <Text className="text-slate-400 text-xs font-semibold">
-                  {t('home.zakat_close')}
+                <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                  {t('home.zakat_close', 'Close')}
                 </Text>
               </TouchableOpacity>
             </ScrollView>

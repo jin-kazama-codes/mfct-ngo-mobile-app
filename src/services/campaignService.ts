@@ -19,7 +19,9 @@ function mapRow(row: Record<string, unknown>): Campaign {
     donorsCount: Number(row.donorsCount ?? row.donors_count ?? 0),
     daysLeft: Number(row.daysLeft ?? row.days_left ?? 30),
     isVerified: Boolean(row.isVerified ?? row.is_verified ?? true),
-    isZakatEligible: Boolean(row.isZakatEligible ?? row.is_zakat_eligible ?? true),
+    isZakatEligible: Boolean(row.isZakatEligible ?? row.is_zakat_eligible ?? false),
+    isSadqaEligible: Boolean(row.isSadqaEligible ?? row.is_sadqa_eligible ?? row.is_sadaqah_eligible ?? false),
+    isFitrahEligible: Boolean(row.isFitrahEligible ?? row.is_fitrah_eligible ?? row.is_fitra_eligible ?? false),
     isUrgent: Boolean(row.isUrgent ?? row.is_urgent ?? false),
     mainImage: splitImages[0] || 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80',
     galleryImages: splitImages.slice(1) || [],
@@ -157,8 +159,11 @@ export async function createCampaign(campaign: Omit<Campaign, 'id'>): Promise<Ca
     days_left: Number(campaign.daysLeft || 30),
     is_verified: true,
     is_zakat_eligible: Boolean(campaign.isZakatEligible),
+    is_sadqa_eligible: Boolean(campaign.isSadqaEligible),
+    is_fitrah_eligible: Boolean(campaign.isFitrahEligible),
     is_urgent: Boolean(campaign.isUrgent),
-    main_image: campaign.mainImage || 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80',
+    main_image: [campaign.mainImage, ...(campaign.galleryImages || [])].filter(Boolean).join(',') || 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=800&q=80',
+    documents: campaign.documents || [],
     story: campaign.story || '',
     created_date: new Date().toISOString(),
     status: campaign.status === 'active' ? 'approved' : (campaign.status || 'approved'),
@@ -182,6 +187,8 @@ export async function updateCampaign(
   if (updateData.beneficiaryRelation !== undefined) payload.beneficiary_relation = updateData.beneficiaryRelation;
   if (updateData.goalINR !== undefined) payload.goal_inr = updateData.goalINR;
   if (updateData.isZakatEligible !== undefined) payload.is_zakat_eligible = updateData.isZakatEligible;
+  if (updateData.isSadqaEligible !== undefined) payload.is_sadqa_eligible = updateData.isSadqaEligible;
+  if (updateData.isFitrahEligible !== undefined) payload.is_fitrah_eligible = updateData.isFitrahEligible;
   if (updateData.isUrgent !== undefined) payload.is_urgent = updateData.isUrgent;
   if (updateData.mainImage !== undefined) {
     const allImages = [updateData.mainImage, ...(updateData.galleryImages || [])].filter(Boolean);

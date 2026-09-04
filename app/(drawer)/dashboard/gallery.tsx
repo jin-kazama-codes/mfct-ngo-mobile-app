@@ -20,6 +20,8 @@ import {
 import { GalleryGridSkeleton } from '../../../src/components/SkeletonLoader';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
+import { getLanguageCode, translateCategory, translateCity } from '../../../src/lib/translateEntity';
+import { DynamicText } from '../../../src/components/DynamicText';
 
 const { width } = Dimensions.get('window');
 const TILE = (width - 36) / 2;
@@ -32,7 +34,8 @@ interface ToastInfo {
 }
 
 export default function GalleryAdminScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = getLanguageCode(i18n.language);
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -343,7 +346,7 @@ export default function GalleryAdminScreen() {
                         isSelected ? s.filterChipTextActive : { color: theme.chipIdleText },
                       ]}
                     >
-                      {cat}
+                      {translateCategory(cat, lang)}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -369,7 +372,7 @@ export default function GalleryAdminScreen() {
                     }}
                   >
                     <PlusCircle color="#fff" size={16} />
-                    <Text style={s.emptyAddBtnText}>Upload First Photo</Text>
+                    <Text style={s.emptyAddBtnText}>{t('gallery.tab_create', '+ Add Photo')}</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -396,20 +399,24 @@ export default function GalleryAdminScreen() {
 
                         {/* Category Badge */}
                         <View style={s.tileBadge}>
-                          <Text style={s.tileBadgeText}>{photo.category}</Text>
+                          <Text style={s.tileBadgeText}>{translateCategory(photo.category, lang)}</Text>
                         </View>
                       </TouchableOpacity>
 
                       {/* Photo Info */}
                       <View style={s.tileDetails}>
-                        <Text style={[s.tileTitle, { color: theme.textMain }]} numberOfLines={1}>
-                          {photo.title}
-                        </Text>
+                        <DynamicText
+                          text={photo.title}
+                          style={[s.tileTitle, { color: theme.textMain }]}
+                          numberOfLines={1}
+                        />
                         <View style={s.tileLocationRow}>
                           <MapPin color={theme.primary} size={11} />
-                          <Text style={[s.tileCity, { color: theme.textSub }]} numberOfLines={1}>
-                            {photo.city || 'Bareilly'}
-                          </Text>
+                          <DynamicText
+                            text={photo.city || 'Bareilly'}
+                            style={[s.tileCity, { color: theme.textSub }]}
+                            numberOfLines={1}
+                          />
                         </View>
                       </View>
 
@@ -422,7 +429,7 @@ export default function GalleryAdminScreen() {
                           accessibilityLabel="View photo"
                         >
                           <Eye color="#0284c7" size={14} />
-                          <Text style={[s.actionBtnText, { color: '#0284c7' }]}>View</Text>
+                          <Text style={[s.actionBtnText, { color: '#0284c7' }]}>{t('btn.viewDetails', 'View')}</Text>
                         </TouchableOpacity>
 
                         {/* Edit Button */}
@@ -432,7 +439,7 @@ export default function GalleryAdminScreen() {
                           accessibilityLabel="Edit photo"
                         >
                           <Edit3 color="#10b981" size={14} />
-                          <Text style={[s.actionBtnText, { color: '#10b981' }]}>Edit</Text>
+                          <Text style={[s.actionBtnText, { color: '#10b981' }]}>{t('admin.auditTrail', 'Edit')}</Text>
                         </TouchableOpacity>
 
                         {/* Delete Button */}
@@ -442,7 +449,7 @@ export default function GalleryAdminScreen() {
                           accessibilityLabel="Delete photo"
                         >
                           <Trash2 color="#ef4444" size={14} />
-                          <Text style={[s.actionBtnText, { color: '#ef4444' }]}>Delete</Text>
+                          <Text style={[s.actionBtnText, { color: '#ef4444' }]}>{t('btn.reject', 'Delete')}</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -671,17 +678,20 @@ export default function GalleryAdminScreen() {
             {/* Modal Header */}
             <View style={[s.modalHeader, { borderBottomColor: theme.cardBorder }]}>
               <View style={{ flex: 1 }}>
-                <Text style={[s.modalTitle, { color: theme.textMain }]} numberOfLines={1}>
-                  {selectedViewPhoto?.title}
-                </Text>
+                <DynamicText
+                  text={selectedViewPhoto?.title || ''}
+                  style={[s.modalTitle, { color: theme.textMain }]}
+                  numberOfLines={1}
+                />
                 <View style={s.modalMetaRow}>
                   <MapPin color={theme.primary} size={13} />
-                  <Text style={[s.modalMetaText, { color: theme.textSub }]}>
-                    {selectedViewPhoto?.city || 'Bareilly'}
-                  </Text>
+                  <DynamicText
+                    text={selectedViewPhoto?.city || 'Bareilly'}
+                    style={[s.modalMetaText, { color: theme.textSub }]}
+                  />
                   <View style={s.modalDot} />
                   <Text style={[s.modalBadgeText, { color: theme.primary }]}>
-                    {selectedViewPhoto?.category}
+                    {translateCategory(selectedViewPhoto?.category || '', lang)}
                   </Text>
                 </View>
               </View>

@@ -1,24 +1,23 @@
 {
   "expo": {
-    "name": "ngo-mobile-app",
+    "name": "MFCT Trust",
     "slug": "mfct-ngo",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "ngomobileapp",
+    "icon": "./assets/images/ngo-logo.png",
+    "scheme": "mfcttrust",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#ffffff",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.codevamptechnology.mfctngo"
+      "package": "com.mfct.trust",
+      "versionCode": 2
     },
     "web": {
       "bundler": "metro",
@@ -30,11 +29,12 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/ngo-logo.png",
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true
@@ -45,6 +45,12 @@
         "projectId": "3e4e8b46-eca4-43e7-ba35-645258cbb087"
       }
     },
-    "owner": "codevamp-technology"
+    "owner": "codevamp-technology",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3e4e8b46-eca4-43e7-ba35-645258cbb087"
+    }
   }
 }

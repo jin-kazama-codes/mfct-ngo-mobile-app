@@ -2,10 +2,12 @@ import { Tabs } from 'expo-router';
 import { LayoutDashboard, User, Heart, Users, Building2 } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { Platform } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useAppState } from '../../src/context/AppStateProvider';
 
 export default function DrawerGroupLayout() {
   const { colorScheme } = useColorScheme();
+  const { t } = useTranslation();
   const isDark = colorScheme === 'dark';
   const { currentRole, activeUser } = useAppState();
 
@@ -46,14 +48,14 @@ export default function DrawerGroupLayout() {
       <Tabs.Screen
         name="dashboard"
         options={{
-          title: 'Dashboard',
+          title: t('nav.dashboard', 'Dashboard'),
           tabBarIcon: ({ color }) => <LayoutDashboard color={color} size={22} />,
         }}
       />
       <Tabs.Screen
         name="campaigns"
         options={{
-          title: 'Campaigns',
+          title: t('nav.campaigns', 'Campaigns'),
           href: isAdmin ? undefined : null,
           tabBarIcon: ({ color }) => <Heart color={color} size={22} />,
         }}
@@ -61,7 +63,7 @@ export default function DrawerGroupLayout() {
       <Tabs.Screen
         name="manage-users"
         options={{
-          title: 'Users',
+          title: t('nav.users', 'Users'),
           href: isSuperOrExec ? undefined : null,
           tabBarIcon: ({ color }) => <Users color={color} size={22} />,
         }}
@@ -69,7 +71,7 @@ export default function DrawerGroupLayout() {
       <Tabs.Screen
         name="communities"
         options={{
-          title: 'Communities',
+          title: t('nav.communities', 'Communities'),
           href: isSuperOrExec ? undefined : null,
           tabBarIcon: ({ color }) => <Building2 color={color} size={22} />,
         }}
@@ -77,7 +79,7 @@ export default function DrawerGroupLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: t('nav.profile', 'Profile'),
           tabBarIcon: ({ color }) => <User color={color} size={22} />,
         }}
       />

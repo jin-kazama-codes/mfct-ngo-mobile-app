@@ -12,6 +12,13 @@ import {
 import { getGalleryPhotos, GalleryPhoto } from '../../src/services/galleryService';
 import { Image as ImageIcon, MapPin, X, Sparkles } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
+import {
+  getLanguageCode,
+  translateCategory,
+  translateCity,
+  translateGalleryPhoto,
+} from '../../src/lib/translateEntity';
+import { DynamicText } from '../../src/components/DynamicText';
 
 const { width } = Dimensions.get('window');
 const ITEM_SIZE = (width - 44) / 2;
@@ -29,7 +36,8 @@ function GalleryPhotoSkeleton() {
 }
 
 export default function GalleryScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = getLanguageCode(i18n.language);
   const [photos, setPhotos] = useState<GalleryPhoto[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -60,7 +68,17 @@ export default function GalleryScreen() {
   const filtered =
     selectedCat === 'All'
       ? photos
-      : photos.filter((p) => p.category?.toLowerCase() === selectedCat.toLowerCase());
+      : photos.filter((p) => {
+          const cat = (p.category || '').toLowerCase();
+          const target = selectedCat.toLowerCase();
+          if (cat === target) return true;
+          if (target === 'community' && (cat.includes('nikah') || cat.includes('community'))) return true;
+          if (target === 'education' && (cat.includes('education') || cat.includes('school') || cat.includes('child'))) return true;
+          if (target === 'medical' && (cat.includes('medical') || cat.includes('dialysis') || cat.includes('hospital'))) return true;
+          if (target === 'food' && (cat.includes('food') || cat.includes('ration'))) return true;
+          if (target === 'emergency' && (cat.includes('emergency') || cat.includes('relief'))) return true;
+          return cat.includes(target);
+        });
 
   return (
     <View className="flex-1 bg-slate-50 dark:bg-slate-950">
@@ -89,7 +107,7 @@ export default function GalleryScreen() {
                     isSelected ? 'text-white' : 'text-slate-600 dark:text-slate-400'
                   }`}
                 >
-                  {cat}
+                  {translateCategory(cat, lang)}
                 </Text>
               </TouchableOpacity>
             );
@@ -108,10 +126,10 @@ export default function GalleryScreen() {
         {/* Header summary */}
         <View className="mb-4">
           <Text className="text-xl font-black text-slate-900 dark:text-white">
-            Community Relief Gallery
+            {t('gallery_page.title', 'Community Relief Gallery')}
           </Text>
           <Text className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Verified ground photographs of ration drives, hospital visits, and community initiatives.
+            {t('gallery_page.desc', 'Verified ground photographs of ration drives, hospital visits, and community initiatives.')}
           </Text>
         </View>
 
@@ -126,40 +144,53 @@ export default function GalleryScreen() {
           <View className="items-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 my-4">
             <ImageIcon color="#94a3b8" size={48} />
             <Text className="text-slate-500 dark:text-slate-400 font-bold text-sm mt-3">
-              No photos found in {selectedCat}
+              {t('gallery_page.no_photos', 'No photos found')}
             </Text>
           </View>
         ) : (
           <View className="flex-row flex-wrap gap-3">
-            {filtered.map((photo) => (
-              <TouchableOpacity
-                key={photo.id}
-                activeOpacity={0.85}
-                onPress={() => setSelectedPhoto(photo)}
-                style={{ width: ITEM_SIZE }}
-                className="rounded-2xl overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm"
-              >
-                <View className="relative">
-                  <Image
-                    source={{ uri: photo.image }}
-                    style={{ width: ITEM_SIZE, height: ITEM_SIZE }}
-                    resizeMode="cover"
-                  />
-                  <View className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
-                  <View className="absolute bottom-2 left-2.5 right-2.5">
-                    <Text className="text-white text-xs font-extrabold leading-4" numberOfLines={1}>
-                      {photo.title}
-                    </Text>
-                    <View className="flex-row items-center mt-0.5">
-                      <MapPin color="#34d399" size={10} />
-                      <Text className="text-emerald-300 text-[10px] ml-1 font-medium" numberOfLines={1}>
-                        {photo.city} • {photo.category}
-                      </Text>
+            {filtered.map((rawPhoto) => {
+              const photo = translateGalleryPhoto(rawPhoto, lang);
+              const displayCat = translateCategory(photo.category, lang);
+              const displayCity = translateCity(photo.city, lang);
+
+              return (
+                <TouchableOpacity
+                  key={photo.id}
+                  activeOpacity={0.85}
+                  onPress={() => setSelectedPhoto(rawPhoto)}
+                  style={{ width: ITEM_SIZE }}
+                  className="rounded-2xl overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm"
+                >
+                  <View className="relative">
+                    <Image
+                      source={{ uri: photo.image }}
+                      style={{ width: ITEM_SIZE, height: ITEM_SIZE }}
+                      resizeMode="cover"
+                    />
+                    <View className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
+                    <View className="absolute bottom-2 left-2.5 right-2.5">
+                      <DynamicText
+                        text={rawPhoto.title}
+                        className="text-white text-xs font-extrabold leading-4"
+                        numberOfLines={1}
+                      />
+                      <View className="flex-row items-center mt-0.5">
+                        <MapPin color="#34d399" size={10} />
+                        <DynamicText
+                          text={rawPhoto.city || 'Bareilly'}
+                          className="text-emerald-300 text-[10px] ml-1 font-medium"
+                          numberOfLines={1}
+                        />
+                        <Text className="text-emerald-300 text-[10px] font-medium">
+                          {' • '}{displayCat}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -179,33 +210,42 @@ export default function GalleryScreen() {
             <X color="#ffffff" size={20} />
           </TouchableOpacity>
 
-          {selectedPhoto && (
-            <View className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800">
-              <Image
-                source={{ uri: selectedPhoto.image }}
-                className="w-full h-80"
-                resizeMode="contain"
-              />
-              <View className="p-5">
-                <View className="flex-row items-center justify-between mb-1">
-                  <Text className="text-emerald-400 font-bold text-xs uppercase">
-                    {selectedPhoto.category} Relief
-                  </Text>
-                  <Text className="text-slate-400 text-xs font-medium">
-                    {selectedPhoto.city}
-                  </Text>
+          {selectedPhoto && (() => {
+            const photo = translateGalleryPhoto(selectedPhoto, lang);
+            const displayCat = translateCategory(photo.category, lang);
+            const displayCity = translateCity(photo.city, lang);
+
+            return (
+              <View className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800">
+                <Image
+                  source={{ uri: photo.image }}
+                  className="w-full h-80"
+                  resizeMode="contain"
+                />
+                <View className="p-5">
+                  <View className="flex-row items-center justify-between mb-1">
+                    <Text className="text-emerald-400 font-bold text-xs uppercase">
+                      {displayCat}
+                    </Text>
+                    <DynamicText
+                      text={selectedPhoto.city || 'Bareilly'}
+                      className="text-slate-400 text-xs font-medium"
+                    />
+                  </View>
+                  <DynamicText
+                    text={selectedPhoto.title}
+                    className="text-white font-extrabold text-base mb-1"
+                  />
+                  {selectedPhoto.description && (
+                    <DynamicText
+                      text={selectedPhoto.description}
+                      className="text-slate-300 text-xs leading-5 mt-1"
+                    />
+                  )}
                 </View>
-                <Text className="text-white font-extrabold text-base mb-1">
-                  {selectedPhoto.title}
-                </Text>
-                {selectedPhoto.description && (
-                  <Text className="text-slate-300 text-xs leading-5 mt-1">
-                    {selectedPhoto.description}
-                  </Text>
-                )}
               </View>
-            </View>
-          )}
+            );
+          })()}
         </View>
       </Modal>
     </View>

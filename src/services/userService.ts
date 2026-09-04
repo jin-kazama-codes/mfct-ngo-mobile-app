@@ -14,15 +14,20 @@ function mapRow(row: Record<string, unknown>): User {
     communityName: row.community_name as string,
     membershipId: row.membership_id as string,
     isVerified: row.is_verified as boolean,
-    isPremium: row.is_premium as boolean,
     joinDate: row.join_date as string,
     city: row.city as string,
     state: row.state as string,
+    address: (row.address || row.adderess || row.full_address) as string | undefined,
     passwordHash: (row.password || row.password_hash || row.passwordHash) as string | undefined,
-    documentUrl: (row.document_url || row.kyc_document_url) as string | undefined,
+    aadhaarFrontUrl: (row.aadhaar_front_url || row.aadhaarFrontUrl) as string | undefined,
+    aadhaarBackUrl: (row.aadhaar_back_url || row.aadhaarBackUrl) as string | undefined,
     paymentMethod: row.payment_method as string,
     paymentUtr: row.payment_utr as string,
     paymentScreenshotUrl: row.payment_screenshot_url as string,
+    religion: (row.religion || row.dharam) as string | undefined,
+    isMalikENisab: (row.is_malik_e_nisab ?? row.isMalikENisab) as boolean | undefined,
+    helpType: (row.help_type || row.helpType) as string | undefined,
+    helpDetails: (row.help_details || row.helpDetails) as string | undefined,
   };
 }
 
@@ -113,58 +118,78 @@ export async function authenticateUser(
   }
 }
 
-export async function createUser(user: Partial<User> & {
-  name: string;
-  phone: string;
-  email?: string;
-  password?: string;
-  kycDocumentUrl?: string;
-}): Promise<User> {
-  const passwordHash = user.passwordHash ? user.passwordHash : (user.password ? await hashPassword(user.password) : null);
+export async function createUser(user: User & { kycDocumentUrl?: string; aadhaarFrontUrl?: string; aadhaarBackUrl?: string }): Promise<User> {
+  const passwordHash = user.passwordHash
+    ? user.passwordHash
+    : await hashPassword('Member@123');
+
   const city = user.city || 'Bareilly';
-  const payload = {
+  const payload: Record<string, unknown> = {
     id: user.id || `usr_${Date.now()}`,
     name: user.name,
     email: user.email?.trim().toLowerCase() || `${user.phone}@mfct.org`,
     phone: user.phone.trim(),
     role: user.role || 'member',
-    avatar: user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+    avatar: user.avatar || null,
     community_id: user.communityId || 'comm_bareilly_hq',
     community_name: user.communityName || 'Bareilly Central Care Society (Headquarters)',
     membership_id: user.membershipId || `SS-${city.substring(0, 3).toUpperCase()}-2024-${Math.floor(1000 + Math.random() * 9000)}`,
     is_verified: user.isVerified ?? false,
-    is_premium: user.isPremium ?? false,
     join_date: user.joinDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     city: city,
     state: user.state || 'UP',
     password: passwordHash,
-    document_url: user.documentUrl || user.kycDocumentUrl || null,
+    aadhaar_front_url: user.aadhaarFrontUrl || null,
+    aadhaar_back_url: user.aadhaarBackUrl || null,
     payment_method: user.paymentMethod || null,
     payment_utr: user.paymentUtr || null,
     payment_screenshot_url: user.paymentScreenshotUrl || null,
+    adderess: user.address || null,
+    religion: user.religion || null,
+    is_malik_e_nisab: user.isMalikENisab !== undefined ? user.isMalikENisab : null,
+    help_type: user.helpType || null,
+    help_details: user.helpDetails || null,
   };
-  const { data, error } = await supabase.from('users').insert(payload).select().single();
-  if (error) {
-    console.error('createUser error:', error);
-    const essentialPayload = {
-      id: payload.id,
-      name: payload.name,
-      email: payload.email,
-      phone: payload.phone,
-      role: payload.role,
-      community_id: payload.community_id,
-      community_name: payload.community_name,
-      membership_id: payload.membership_id,
-      is_verified: payload.is_verified,
-      city: payload.city,
-      state: payload.state,
-      password: payload.password,
-    };
-    const { data: retryData, error: retryError } = await supabase.from('users').insert(essentialPayload).select().single();
-    if (retryError) throw retryError;
-    return mapRow(retryData);
+
+  let currentPayload = { ...payload };
+  let insertResult = null;
+  let lastError = null;
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data, error } = await supabase.from('users').insert(currentPayload).select().single();
+    if (!error && data) {
+      insertResult = data;
+      break;
+    }
+
+    lastError = error;
+    console.warn(`createUser insert attempt ${attempt + 1}:`, error?.message);
+
+    const match = error?.message?.match(/column "([^"]+)" of relation "users" does not exist/);
+    if (match && match[1]) {
+      const missingCol = match[1];
+      delete currentPayload[missingCol];
+      if (missingCol === 'adderess' && user.address) {
+        currentPayload['address'] = user.address;
+      }
+      continue;
+    }
+
+    if (currentPayload['adderess'] !== undefined) {
+      delete currentPayload['adderess'];
+      if (user.address) currentPayload['address'] = user.address;
+      continue;
+    }
+
+    break;
   }
-  return mapRow(data);
+
+  if (!insertResult) {
+    if (lastError) throw lastError;
+    throw new Error('Failed to create user');
+  }
+
+  return mapRow(insertResult);
 }
 
 export async function updateUser(
@@ -185,7 +210,10 @@ export async function updateUser(
   if (updates.paymentUtr !== undefined) payload.payment_utr = updates.paymentUtr;
   if (updates.paymentScreenshotUrl !== undefined) payload.payment_screenshot_url = updates.paymentScreenshotUrl;
   if (updates.isVerified !== undefined) payload.is_verified = updates.isVerified;
-  if (updates.isPremium !== undefined) payload.is_premium = updates.isPremium;
+  if (updates.religion !== undefined) payload.religion = updates.religion;
+  if (updates.isMalikENisab !== undefined) payload.is_malik_e_nisab = updates.isMalikENisab;
+  if (updates.helpType !== undefined) payload.help_type = updates.helpType;
+  if (updates.helpDetails !== undefined) payload.help_details = updates.helpDetails;
 
   if (updates.password || updates.plainPassword) {
     const p = updates.password || updates.plainPassword;

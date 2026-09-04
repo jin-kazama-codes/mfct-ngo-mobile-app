@@ -4,6 +4,11 @@ import { Drawer, DrawerContentScrollView, DrawerItem } from 'expo-router/drawer'
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppState } from '../../../src/context/AppStateProvider';
 import { useColorScheme } from 'nativewind';
+import { useTranslation } from 'react-i18next';
+import {
+  getLanguageCode,
+  translateRole,
+} from '../../../src/lib/translateEntity';
 import {
   LayoutDashboard, CreditCard, PlusCircle, Users,
   ShieldCheck, TrendingUp, Image as ImageIcon, MessageSquare,
@@ -14,6 +19,8 @@ import { UserRole } from '@/src/types';
 function CustomDrawerContent(props: any) {
   const { currentRole, activeUser, handleLogout } = useAppState();
   const { colorScheme } = useColorScheme();
+  const { t, i18n } = useTranslation();
+  const lang = getLanguageCode(i18n.language);
   const isDark = colorScheme === 'dark';
 
   const bg = isDark ? '#0f172a' : '#ffffff';
@@ -46,30 +53,23 @@ function CustomDrawerContent(props: any) {
   const showUsers = isExecOrSuper;
 
   const menuItems = [
-    { name: 'index', label: 'Dashboard', icon: LayoutDashboard, show: true },
-    { name: 'my-id-card', label: 'My ID Card', icon: IdCardLanyard, show: true },
-    { name: 'finacial', label: 'My Donations', icon: CreditCard, show: isMember },
-    { name: 'financial-analytics', label: 'Financial Analytics', icon: TrendingUp, show: showFinancialAnalytics },
-    { name: 'utr-aproved', label: 'UTR Payment Desk', icon: ShieldCheck, show: showUtr },
-    { name: 'kyc-aproved', label: 'KYC Approval', icon: UserCheck, show: showKyc },
-    { name: 'community-members', label: 'Community Members', icon: Users, show: showCommunityMembers },
-    { name: 'gallery', label: 'Manage Gallery', icon: ImageIcon, show: showGallery },
-    { name: 'impact-stories', label: 'Impact Stories', icon: MessageSquare, show: showGallery },
-    { name: 'contact-messages', label: 'Contact Messages', icon: MessageSquare, show: showMessages },
+    { name: 'index', label: t('admin.tabOverview', 'Dashboard'), icon: LayoutDashboard, show: true },
+    { name: 'my-id-card', label: t('nav.myCard', 'My ID Card'), icon: IdCardLanyard, show: true },
+    { name: 'myDonation', label: t('admin.tabDonations', 'My Donations'), icon: CreditCard, show: isMember },
+    { name: 'financial-analytics', label: t('admin.tabFinancialAnalytics', 'Financial Analytics'), icon: TrendingUp, show: showFinancialAnalytics },
+    { name: 'utr-aproved', label: t('admin.tabUtrAudit', 'UTR Payment Desk'), icon: ShieldCheck, show: showUtr },
+    { name: 'kyc-aproved', label: t('admin.tabKycQueue', 'KYC Approval'), icon: UserCheck, show: showKyc },
+    { name: 'community-members', label: t('admin.tabMembers', 'Community Members'), icon: Users, show: showCommunityMembers },
+    { name: 'gallery', label: t('admin.tabGalleryManage', 'Manage Gallery'), icon: ImageIcon, show: showGallery },
+    { name: 'impact-stories', label: t('admin.tabTestimonialsManage', 'Impact Stories'), icon: MessageSquare, show: showGallery },
+    { name: 'contact-messages', label: t('admin.tabContactMessages', 'Contact Messages'), icon: MessageSquare, show: showMessages },
   ];
 
   const currentRouteName = props.state.routes[props.state.index]?.name;
 
   const handleItemPress = (itemName: string) => {
-    const route = props.state.routes.find((r: any) => r.name === itemName);
-    const isFocused = currentRouteName === itemName;
-
-    console.log('BEFORE NAVIGATION', {
-      index: props.state.index,
-      route: props.state.routes[props.state.index]?.name,
-      history: props.state.history,
-    });
-    console.log('CLICKED ROUTE', itemName);
+    const route = props.state.routes.find((r: any) => r.name === itemName || r.name.trim() === itemName.trim());
+    const isFocused = currentRouteName === itemName || currentRouteName?.trim() === itemName.trim();
 
     if (route) {
       const event = props.navigation.emit({
@@ -114,7 +114,7 @@ function CustomDrawerContent(props: any) {
               </Text>
               <View style={s.rolePill}>
                 <Text style={s.roleText}>
-                  {userRole.replace(/_/g, ' ').toUpperCase()}
+                  {translateRole(rawRole, lang)}
                 </Text>
               </View>
             </View>
@@ -171,7 +171,7 @@ function CustomDrawerContent(props: any) {
             activeOpacity={0.7}
           >
             <LogOut color="#ef4444" size={18} />
-            <Text style={s.logoutText}>Sign Out</Text>
+            <Text style={s.logoutText}>{t('nav.logout', 'Sign Out')}</Text>
           </TouchableOpacity>
         </View>
       </DrawerContentScrollView>
@@ -181,6 +181,7 @@ function CustomDrawerContent(props: any) {
 
 export default function DashboardDrawerLayout() {
   const { colorScheme } = useColorScheme();
+  const { t } = useTranslation();
   const isDark = colorScheme === 'dark';
 
   const bg = isDark ? '#0f172a' : '#ffffff';
@@ -205,16 +206,16 @@ export default function DashboardDrawerLayout() {
         drawerLabelStyle: { fontWeight: '600', fontSize: 14 },
       }}
     >
-      <Drawer.Screen name="index" options={{ title: 'Dashboard' }} />
-      <Drawer.Screen name="my-id-card" options={{ title: 'My ID Card' }} />
-      <Drawer.Screen name="finacial" options={{ title: 'My Donations' }} />
-      <Drawer.Screen name="financial-analytics" options={{ title: 'Financial Analytics' }} />
-      <Drawer.Screen name="utr-aproved" options={{ title: 'UTR Payment Desk' }} />
-      <Drawer.Screen name="kyc-aproved" options={{ title: 'KYC Approval' }} />
-      <Drawer.Screen name="community-members" options={{ title: 'Community Members' }} />
-      <Drawer.Screen name="gallery" options={{ title: 'Manage Gallery' }} />
-      <Drawer.Screen name="impact-stories" options={{ title: 'Impact Stories' }} />
-      <Drawer.Screen name="contact-messages" options={{ title: 'Contact Messages' }} />
+      <Drawer.Screen name="index" options={{ title: t('admin.tabOverview', 'Dashboard') }} />
+      <Drawer.Screen name="my-id-card" options={{ title: t('nav.myCard', 'My ID Card') }} />
+      <Drawer.Screen name="myDonation" options={{ title: t('admin.tabDonations', 'My Donations') }} />
+      <Drawer.Screen name="financial-analytics" options={{ title: t('admin.tabFinancialAnalytics', 'Financial Analytics') }} />
+      <Drawer.Screen name="utr-aproved" options={{ title: t('admin.tabUtrAudit', 'UTR Payment Desk') }} />
+      <Drawer.Screen name="kyc-aproved" options={{ title: t('admin.tabKycQueue', 'KYC Approval') }} />
+      <Drawer.Screen name="community-members" options={{ title: t('admin.tabMembers', 'Community Members') }} />
+      <Drawer.Screen name="gallery" options={{ title: t('admin.tabGalleryManage', 'Manage Gallery') }} />
+      <Drawer.Screen name="impact-stories" options={{ title: t('admin.tabTestimonialsManage', 'Impact Stories') }} />
+      <Drawer.Screen name="contact-messages" options={{ title: t('admin.tabContactMessages', 'Contact Messages') }} />
     </Drawer>
   );
 }

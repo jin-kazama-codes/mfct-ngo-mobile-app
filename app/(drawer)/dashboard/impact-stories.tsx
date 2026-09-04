@@ -20,6 +20,16 @@ import { StoryCardSkeleton } from '../../../src/components/SkeletonLoader';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
 import { useAppState } from '../../../src/context/AppStateProvider';
+import {
+  getLanguageCode,
+  translateDonorName,
+  translateRole,
+  translateCity,
+  translateQuote,
+  translateCampaignTitle,
+  translateStatus,
+} from '../../../src/lib/translateEntity';
+import { DynamicText } from '../../../src/components/DynamicText';
 
 interface ToastInfo {
   message: string;
@@ -27,7 +37,8 @@ interface ToastInfo {
 }
 
 export default function ImpactStoriesAdminScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = getLanguageCode(i18n.language);
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
   const { activeUser, currentRole } = useAppState();
@@ -216,6 +227,7 @@ export default function ImpactStoriesAdminScreen() {
         const newStoryData = {
           name: name.trim(),
           city: city.trim(),
+          role: (activeUser?.role || 'Member') as any,
           quote: quote.trim(),
           avatar: activeUser?.avatar,
           createdBy: activeUser?.id,
@@ -365,12 +377,19 @@ export default function ImpactStoriesAdminScreen() {
                   }}
                 >
                   <PlusCircle color="#fff" size={16} />
-                  <Text style={s.emptyAddBtnText}>Share First Story</Text>
+                  <Text style={s.emptyAddBtnText}>{t('testimonials.title', 'Share First Story')}</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               testimonials.map(item => {
                 const isApproved = item.status === 'approved';
+                const authorName = translateDonorName(item.name, lang);
+                const authorCity = translateCity(item.city || 'Bareilly', lang);
+                const authorRole = translateRole(item.role || 'Beneficiary', lang);
+                const quoteText = translateQuote(item.quote, lang);
+                const campaignTitle = translateCampaignTitle(item.campaignTitle || '', lang);
+                const statusDisplay = translateStatus(item.status || 'pending', lang);
+
                 return (
                   <View
                     key={item.id}
@@ -395,13 +414,20 @@ export default function ImpactStoriesAdminScreen() {
                           </View>
                         )}
                         <View style={{ flex: 1 }}>
-                          <Text style={[s.authorName, { color: theme.textMain }]} numberOfLines={1}>
-                            {item.name}
-                          </Text>
+                          <DynamicText
+                            text={item.name}
+                            style={[s.authorName, { color: theme.textMain }]}
+                            numberOfLines={1}
+                          />
                           <View style={s.metaRow}>
                             <MapPin color={theme.primary} size={11} />
-                            <Text style={[s.authorMeta, { color: theme.textSub }]} numberOfLines={1}>
-                              {item.city} • {item.role || 'Beneficiary'}
+                            <DynamicText
+                              text={item.city || 'Bareilly'}
+                              style={[s.authorMeta, { color: theme.textSub }]}
+                              numberOfLines={1}
+                            />
+                            <Text style={[s.authorMeta, { color: theme.textSub }]}>
+                              {' • '}{authorRole}
                             </Text>
                           </View>
                         </View>
@@ -425,7 +451,7 @@ export default function ImpactStoriesAdminScreen() {
                             isApproved ? s.statusTextApproved : s.statusTextPending,
                           ]}
                         >
-                          {isApproved ? 'Approved' : 'Pending'}
+                          {statusDisplay}
                         </Text>
                       </View>
                     </View>
@@ -433,18 +459,21 @@ export default function ImpactStoriesAdminScreen() {
                     {/* Quote Text */}
                     <View style={[s.quoteContainer, { backgroundColor: isDark ? '#131d2e' : '#f8fafc' }]}>
                       <Quote color={theme.primary} size={14} style={{ marginBottom: 4 }} />
-                      <Text style={[s.quoteText, { color: theme.textMain }]}>
-                        "{item.quote}"
-                      </Text>
+                      <DynamicText
+                        text={item.quote}
+                        style={[s.quoteText, { color: theme.textMain }]}
+                      />
                     </View>
 
                     {/* Linked Campaign Badge if present */}
                     {item.campaignTitle ? (
                       <View style={s.campaignTagRow}>
                         <HeartHandshake color={theme.primary} size={12} />
-                        <Text style={[s.campaignTagText, { color: theme.primary }]} numberOfLines={1}>
-                          {item.campaignTitle}
-                        </Text>
+                        <DynamicText
+                          text={item.campaignTitle}
+                          style={[s.campaignTagText, { color: theme.primary }]}
+                          numberOfLines={1}
+                        />
                       </View>
                     ) : null}
 
@@ -462,7 +491,7 @@ export default function ImpactStoriesAdminScreen() {
                           ) : (
                             <>
                               <Check color="#10b981" size={14} />
-                              <Text style={[s.actionBtnText, { color: '#10b981' }]}>Approve</Text>
+                              <Text style={[s.actionBtnText, { color: '#10b981' }]}>{t('btn.approve', 'Approve')}</Text>
                             </>
                           )}
                         </TouchableOpacity>
@@ -474,7 +503,7 @@ export default function ImpactStoriesAdminScreen() {
                         onPress={() => handleOpenEdit(item)}
                       >
                         <Edit3 color="#0284c7" size={14} />
-                        <Text style={[s.actionBtnText, { color: '#0284c7' }]}>Edit</Text>
+                        <Text style={[s.actionBtnText, { color: '#0284c7' }]}>{t('admin.auditTrail', 'Edit')}</Text>
                       </TouchableOpacity>
 
                       {/* Delete button */}
@@ -483,7 +512,7 @@ export default function ImpactStoriesAdminScreen() {
                         onPress={() => setDeleteConfirmId(item.id)}
                       >
                         <Trash2 color="#ef4444" size={14} />
-                        <Text style={[s.actionBtnText, { color: '#ef4444' }]}>Delete</Text>
+                        <Text style={[s.actionBtnText, { color: '#ef4444' }]}>{t('btn.reject', 'Delete')}</Text>
                       </TouchableOpacity>
                     </View>
                   </View>

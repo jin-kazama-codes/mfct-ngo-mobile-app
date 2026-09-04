@@ -4,9 +4,19 @@ import { useAppState } from '../../../src/context/AppStateProvider';
 import { getUsers } from '../../../src/services/userService';
 import { User } from '../../../src/types';
 import { Users, ShieldCheck } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
+import {
+  getLanguageCode,
+  translateCommunityName,
+  translateCity,
+  translateRole,
+} from '../../../src/lib/translateEntity';
+import { DynamicText } from '../../../src/components/DynamicText';
 
 export default function CommunityMembersScreen() {
   const { activeUser } = useAppState();
+  const { t, i18n } = useTranslation();
+  const lang = getLanguageCode(i18n.language);
   const [members, setMembers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -14,17 +24,20 @@ export default function CommunityMembersScreen() {
     const fetchMembers = async () => {
       try {
         setLoading(true);
-        if (activeUser?.communityId) {
-          const data = await getUsers(activeUser.communityId);
-          // Filter out top-level admins from directory list
-          const filtered = data.filter(
-            m => m.role !== 'super_admin' && m.role !== 'executive_admin'
+        const data = await getUsers();
+        let filtered = data;
+        if (activeUser?.communityId || activeUser?.communityName) {
+          filtered = data.filter(
+            m =>
+              (activeUser.communityId && m.communityId === activeUser.communityId) ||
+              (activeUser.communityName && m.communityName?.toLowerCase() === activeUser.communityName.toLowerCase())
           );
-          setMembers(filtered);
-        } else {
-          const data = await getUsers();
-          setMembers(data);
         }
+        // Filter out top-level admins from directory list
+        const cleanMembers = filtered.filter(
+          m => m.role !== 'super_admin' && m.role !== 'executive_admin'
+        );
+        setMembers(cleanMembers);
       } catch (err) {
         console.error('Error fetching community members:', err);
       } finally {
@@ -32,7 +45,7 @@ export default function CommunityMembersScreen() {
       }
     };
     fetchMembers();
-  }, [activeUser?.communityId]);
+  }, [activeUser?.communityId, activeUser?.communityName]);
 
   if (loading) {
     return (
@@ -47,24 +60,24 @@ export default function CommunityMembersScreen() {
       {/* Header */}
       <View className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 mb-4 flex-row items-center justify-between">
         <View className="flex-1 mr-2">
-          <Text className="text-lg font-bold text-slate-900 dark:text-white">Community Directory</Text>
+          <Text className="text-lg font-bold text-slate-900 dark:text-white">{t('community.directory', 'Community Directory')}</Text>
           <Text className="text-xs text-slate-500 dark:text-slate-400 mt-0.5" numberOfLines={1}>
-            {activeUser?.communityName || 'Registered Community Members'}
+            {translateCommunityName(activeUser?.communityName || 'Registered Community Members', lang)}
           </Text>
         </View>
         <View className="bg-emerald-50 dark:bg-emerald-950 px-3 py-1 rounded-xl border border-emerald-200 dark:border-emerald-800">
           <Text className="text-emerald-700 dark:text-emerald-300 text-xs font-bold">
-            Total: {members.length}
+            {t('common.total', 'Total')}: {members.length}
           </Text>
         </View>
       </View>
 
       {/* Members List */}
-      <Text className="text-base font-bold text-slate-900 dark:text-white mb-3">Verified Members</Text>
+      <Text className="text-base font-bold text-slate-900 dark:text-white mb-3">{t('community.verified_members', 'Verified Members')}</Text>
       {members.length === 0 ? (
         <View className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 items-center">
           <Users color="#94a3b8" size={40} />
-          <Text className="text-slate-500 dark:text-slate-400 text-sm mt-3">No members found in this community</Text>
+          <Text className="text-slate-500 dark:text-slate-400 text-sm mt-3">{t('community.no_members', 'No members found in this community')}</Text>
         </View>
       ) : (
         members.map((member) => (
@@ -83,12 +96,20 @@ export default function CommunityMembersScreen() {
                 </View>
               )}
               <View className="flex-1">
-                <Text className="font-bold text-slate-900 dark:text-white text-sm" numberOfLines={1}>
-                  {member.name}
-                </Text>
-                <Text className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  ID: {member.membershipId || member.id.slice(0, 8)} • {member.city || 'Bareilly'}
-                </Text>
+                <DynamicText
+                  text={member.name}
+                  className="font-bold text-slate-900 dark:text-white text-sm"
+                  numberOfLines={1}
+                />
+                <View className="flex-row items-center flex-wrap mt-0.5">
+                  <Text className="text-xs text-slate-500 dark:text-slate-400">
+                    {translateRole(member.role || 'member', lang)}{' • '}
+                  </Text>
+                  <DynamicText
+                    text={member.city || 'Bareilly'}
+                    className="text-xs text-slate-500 dark:text-slate-400"
+                  />
+                </View>
               </View>
             </View>
 
@@ -102,7 +123,7 @@ export default function CommunityMembersScreen() {
                   ? 'text-emerald-700 dark:text-emerald-300'
                   : 'text-amber-700 dark:text-amber-300'
               }`}>
-                {member.isVerified ? '✓ KYC Verified' : 'Pending KYC'}
+                {member.isVerified ? `✓ ${t('id_card.verified_badge', 'KYC Verified')}` : t('admin.kyc_subtitle', 'Pending KYC')}
               </Text>
             </View>
           </View>

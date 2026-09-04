@@ -37,7 +37,7 @@ function AppInit() {
         } else {
           setColorScheme('light'); // default
         }
-        if (savedLang === 'hi' || savedLang === 'ur') {
+        if (savedLang === 'hi' || savedLang === 'en' || savedLang === 'ur') {
           i18n.changeLanguage(savedLang);
         } else {
           i18n.changeLanguage('hi');

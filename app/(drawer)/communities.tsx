@@ -14,22 +14,285 @@ import { Community, User } from '../../src/types';
 import {
   Building2, Users, TrendingUp, PlusCircle, Trash2, CheckCircle2,
   ShieldCheck, Calendar, Edit3, ArrowLeft, Upload, RefreshCw, X,
-  AlertCircle, Sparkles, Check, ChevronDown, ChevronUp, UserCheck
+  AlertCircle, Sparkles, Check, ChevronDown, ChevronUp, UserCheck, Camera,
+  MapPin, Flame, FileText
 } from 'lucide-react-native';
 import { CommunityCardSkeleton } from '../../src/components/SkeletonLoader';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  getLanguageCode,
+  translateRole,
+} from '../../src/lib/translateEntity';
+import { useDynamicTranslatedText } from '../../src/lib/autoTranslate';
 
 interface ToastInfo {
   message: string;
   type: 'success' | 'error' | 'info';
 }
 
+// ─── CommunityCardItem ──────────────────────────────────────────────────
+// Extracted as its own component so hooks (useDynamicTranslatedText) can be
+// called at the component top-level — never inside a .map() callback.
+interface CommunityCardItemProps {
+  community: Community;
+  lang: ReturnType<typeof getLanguageCode>;
+  theme: any;
+  isDark: boolean;
+  tr: (hi: string, ur: string, en: string) => string;
+  onEdit: (c: Community) => void;
+  onDelete: (id: string) => void;
+}
+
+function CommunityCardItem({
+  community: c,
+  lang,
+  theme,
+  isDark,
+  tr,
+  onEdit,
+  onDelete,
+}: CommunityCardItemProps) {
+  const [expandedDesc, setExpandedDesc] = useState(false);
+
+  const translatedName = useDynamicTranslatedText(c.name, lang);
+  const translatedCity = useDynamicTranslatedText(c.city, lang);
+  const translatedState = useDynamicTranslatedText(c.state, lang);
+  const translatedAdminName = useDynamicTranslatedText(c.adminName, lang);
+  const translatedDesc = useDynamicTranslatedText(c.description, lang);
+  const translatedRole = translateRole(c.adminRoleTitle || 'community admin', lang);
+
+  const healthPct = Math.min(100, c.healthScore ?? 80);
+  const healthColor = healthPct >= 80 ? '#10b981' : healthPct >= 50 ? '#f59e0b' : '#ef4444';
+  const isPending = c.verifiedStatus === 'Pending';
+  const isFlagged = c.verifiedStatus === 'Flagged';
+
+  const descContent = translatedDesc || c.description || '';
+
+  return (
+    <View
+      style={[
+        s.card,
+        { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }
+      ]}
+    >
+      {/* Cover image with Est Year Overlay Badge */}
+      {c.coverImage ? (
+        <View style={s.cardCoverContainer}>
+          <Image source={{ uri: c.coverImage }} style={s.coverImg} resizeMode="cover" />
+          <View style={s.coverBadgeOverlay}>
+            <View style={s.statPill}>
+              <Calendar color="#fff" size={11} />
+              <Text style={s.statPillText}>
+                {tr('स्थापना', 'قیام', 'Est.')} {c.establishedYear || 2024}
+              </Text>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      <View style={s.cardBody}>
+        {/* Header row: Avatar, Title, Location & Status Badge */}
+        <View style={s.headerRow}>
+          <Image
+            source={{
+              uri:
+                c.avatar ||
+                `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name || 'C')}&background=059669&color=fff`
+            }}
+            style={s.avatar}
+          />
+          <View style={s.flex1}>
+            <Text style={[s.cardTitle, { color: theme.textMain }]} numberOfLines={1}>
+              {translatedName || c.name}
+            </Text>
+            <View style={s.locationRow}>
+              <MapPin color={theme.textSub} size={12} />
+              <Text style={[s.cardMeta, { color: theme.textSub }]} numberOfLines={1}>
+                {translatedCity || c.city}{translatedState || c.state ? `, ${translatedState || c.state}` : ''}
+              </Text>
+            </View>
+          </View>
+
+          {/* Status Badge */}
+          <View
+            style={[
+              s.verifiedBadge,
+              isPending
+                ? { backgroundColor: theme.warningLight, borderColor: theme.warning }
+                : isFlagged
+                  ? { backgroundColor: theme.dangerLight, borderColor: theme.danger }
+                  : { backgroundColor: theme.primaryLight, borderColor: theme.primary }
+            ]}
+          >
+            <ShieldCheck
+              color={isPending ? theme.warning : isFlagged ? theme.danger : theme.primary}
+              size={11}
+            />
+            <Text
+              style={[
+                s.verifiedText,
+                { color: isPending ? theme.warning : isFlagged ? theme.danger : theme.primary }
+              ]}
+            >
+              {c.verifiedStatus === 'Verified'
+                ? tr('सत्यापित', 'تصدیق شدہ', 'Verified')
+                : c.verifiedStatus === 'Pending'
+                  ? tr('लंबित', 'زیر التواء', 'Pending')
+                  : tr('चिह्नित', 'نشان زدہ', 'Flagged')}
+            </Text>
+          </View>
+        </View>
+
+        {/* Admin Info Badge */}
+        <View style={[s.adminBadgeRow, { backgroundColor: isDark ? '#131d2e' : '#f1f5f9' }]}>
+          <UserCheck color={theme.primary} size={14} />
+          <Text style={[s.adminTextNew, { color: theme.textSub }]} numberOfLines={1}>
+            <Text style={{ fontWeight: '700', color: theme.textMain }}>
+              {tr('व्यवस्थापक: ', 'ایڈمن: ', 'Admin: ')}
+            </Text>
+            {translatedAdminName || c.adminName}
+            <Text style={{ color: theme.primary, fontWeight: '600' }}> • {translatedRole}</Text>
+          </Text>
+        </View>
+
+        {/* Description / Mission Statement (All Data) */}
+        {descContent ? (
+          <View style={[s.descContainer, { backgroundColor: isDark ? '#131d2e' : '#f8fafc', borderColor: theme.cardBorder }]}>
+            <View style={s.descHeader}>
+              <FileText color={theme.primary} size={13} />
+              <Text style={[s.descHeading, { color: theme.textSub }]}>
+                {tr('विवरण एवं उद्देश्य', 'تفصیل اور مقصد', 'About & Mission')}
+              </Text>
+            </View>
+            <Text
+              style={[s.descText, { color: theme.textMain }]}
+              numberOfLines={expandedDesc ? undefined : 2}
+            >
+              {descContent}
+            </Text>
+            {descContent.length > 80 && (
+              <TouchableOpacity
+                onPress={() => setExpandedDesc(!expandedDesc)}
+                style={s.descToggleBtn}
+              >
+                <Text style={[s.descToggleText, { color: theme.primary }]}>
+                  {expandedDesc
+                    ? tr('कम दिखाएं ▲', 'کم دکھائیں ▲', 'Show Less ▲')
+                    : tr('और पढ़ें ▼', 'مزید پڑھیں ▼', 'Read More ▼')}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : null}
+
+        {/* Comprehensive 4-Metric Grid */}
+        <View style={s.gridStatsContainer}>
+          {/* Members */}
+          <View style={[s.gridStatBox, { backgroundColor: isDark ? '#131d2e' : '#f8fafc', borderColor: theme.cardBorder }]}>
+            <Users color="#0284c7" size={15} />
+            <View style={{ flex: 1 }}>
+              <Text style={[s.gridStatVal, { color: theme.textMain }]}>
+                {c.totalMembers ? c.totalMembers.toLocaleString() : 0}
+              </Text>
+              <Text style={[s.gridStatLbl, { color: theme.textSub }]}>
+                {tr('कुल सदस्य', 'کل ممبران', 'Members')}
+              </Text>
+            </View>
+          </View>
+
+          {/* Funds Raised */}
+          <View style={[s.gridStatBox, { backgroundColor: isDark ? '#131d2e' : '#f8fafc', borderColor: theme.cardBorder }]}>
+            <TrendingUp color="#10b981" size={15} />
+            <View style={{ flex: 1 }}>
+              <Text style={[s.gridStatVal, { color: theme.textMain }]}>
+                ₹{c.totalRaisedINR ? (c.totalRaisedINR >= 100000 ? `${(c.totalRaisedINR / 100000).toFixed(1)}L` : c.totalRaisedINR.toLocaleString()) : 0}
+              </Text>
+              <Text style={[s.gridStatLbl, { color: theme.textSub }]}>
+                {tr('एकत्रित राशि', 'جمع رقم', 'Raised')}
+              </Text>
+            </View>
+          </View>
+
+          {/* Active Campaigns */}
+          <View style={[s.gridStatBox, { backgroundColor: isDark ? '#131d2e' : '#f8fafc', borderColor: theme.cardBorder }]}>
+            <Flame color="#f59e0b" size={15} />
+            <View style={{ flex: 1 }}>
+              <Text style={[s.gridStatVal, { color: theme.textMain }]}>
+                {c.activeCampaigns ?? 0}
+              </Text>
+              <Text style={[s.gridStatLbl, { color: theme.textSub }]}>
+                {tr('सक्रिय अभियान', 'فعال مہمات', 'Campaigns')}
+              </Text>
+            </View>
+          </View>
+
+          {/* Established Year */}
+          <View style={[s.gridStatBox, { backgroundColor: isDark ? '#131d2e' : '#f8fafc', borderColor: theme.cardBorder }]}>
+            <Calendar color="#8b5cf6" size={15} />
+            <View style={{ flex: 1 }}>
+              <Text style={[s.gridStatVal, { color: theme.textMain }]}>
+                {c.establishedYear || 2024}
+              </Text>
+              <Text style={[s.gridStatLbl, { color: theme.textSub }]}>
+                {tr('स्थापना वर्ष', 'سال قیام', 'Est. Year')}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Health Score Progress */}
+        <View style={s.healthSection}>
+          <View style={s.healthLabelRow}>
+            <Text style={[s.healthLabel, { color: theme.textSub }]}>
+              {tr('स्वास्थ्य स्कोर एवं गुणवत्ता', 'ہیلتھ سکور اور معیار', 'Community Health Score')}
+            </Text>
+            <Text style={[s.healthPct, { color: healthColor }]}>{healthPct}%</Text>
+          </View>
+          <View style={[s.healthTrack, { backgroundColor: isDark ? '#334155' : '#e2e8f0' }]}>
+            <View style={[s.healthFill, { width: `${healthPct}%`, backgroundColor: healthColor }]} />
+          </View>
+        </View>
+
+        {/* Action buttons: Edit & Delete */}
+        <View style={[s.cardActionsRow, { borderTopColor: theme.cardBorder }]}>
+          <TouchableOpacity
+            onPress={() => onEdit(c)}
+            style={[s.actionBtn, { backgroundColor: isDark ? '#1e3a5f' : '#e0f2fe' }]}
+          >
+            <Edit3 color="#0284c7" size={14} />
+            <Text style={[s.actionBtnText, { color: '#0284c7' }]}>
+              {tr('संपादित करें', 'ترمیم', 'Edit')}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => onDelete(c.id)}
+            style={[s.actionBtn, { backgroundColor: theme.dangerLight }]}
+          >
+            <Trash2 color={theme.danger} size={14} />
+            <Text style={[s.actionBtnText, { color: theme.danger }]}>
+              {tr('हटाएं', 'حذف کریں', 'Delete')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function CommunitiesAdminScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = getLanguageCode(i18n.language);
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
+
+  const tr = (hi: string, ur: string, en: string) => {
+    if (lang === 'hi') return hi;
+    if (lang === 'ur') return ur;
+    return en;
+  };
 
   const [activeSubTab, setActiveSubTab] = useState<'list' | 'create'>('list');
   const [communities, setCommunities] = useState<Community[]>([]);
@@ -70,6 +333,7 @@ export default function CommunitiesAdminScreen() {
     coverImageFileName: string;
     description: string;
     avatar: string;
+    avatarFileName: string;
   }>({
     name: '',
     city: '',
@@ -84,9 +348,11 @@ export default function CommunitiesAdminScreen() {
     coverImageFileName: '',
     description: '',
     avatar: '',
+    avatarFileName: '',
   });
 
   const [showUrlFallback, setShowUrlFallback] = useState(false);
+  const [showAvatarUrlFallback, setShowAvatarUrlFallback] = useState(false);
 
   const loadData = async (showLoader = true) => {
     if (showLoader) setLoading(true);
@@ -125,8 +391,10 @@ export default function CommunitiesAdminScreen() {
       coverImageFileName: '',
       description: '',
       avatar: '',
+      avatarFileName: '',
     });
     setShowUrlFallback(false);
+    setShowAvatarUrlFallback(false);
     setShowAdminDropdown(false);
     setActiveSubTab('create');
   };
@@ -149,10 +417,60 @@ export default function CommunitiesAdminScreen() {
       coverImageFileName: comm.coverImage ? 'community_cover.jpg' : '',
       description: comm.description || '',
       avatar: comm.avatar || '',
+      avatarFileName: comm.avatar ? 'community_avatar.jpg' : '',
     });
     setShowUrlFallback(false);
+    setShowAvatarUrlFallback(false);
     setShowAdminDropdown(false);
     setActiveSubTab('create');
+  };
+
+  // Pick Avatar / Logo from Phone Gallery
+  const handlePickAvatarImage = async () => {
+    try {
+      const ImagePicker = await import('expo-image-picker');
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showToast(
+          tr(
+            'कृपया अवतार लोगो चुनने के लिए गैलरी एक्सेस की अनुमति दें।',
+            'براہ کرم اوتار لوگو منتخب کرنے کے لیے گیلری تک رسائی کی اجازت دیں۔',
+            'Please allow gallery access to select avatar logo.'
+          ),
+          'error'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        setFormData(prev => ({
+          ...prev,
+          avatar: asset.uri,
+          avatarFileName: asset.fileName || `avatar_${Date.now()}.jpg`
+        }));
+        showToast(
+          tr('अवतार / लोगो चुना गया', 'اوتار / لوگو منتخب کیا گیا', 'Avatar / logo selected from device'),
+          'info'
+        );
+      }
+    } catch (err) {
+      console.warn('Avatar picker fallback:', err);
+      const defaultAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'C')}&background=059669&color=fff`;
+      setFormData(prev => ({
+        ...prev,
+        avatar: defaultAvatar,
+        avatarFileName: 'avatar_default.jpg'
+      }));
+      showToast(tr('अवतार संलग्न किया गया', 'اوتار منسلک کیا گیا', 'Avatar attached'), 'info');
+    }
   };
 
   // Pick Cover Photo from Phone Gallery
@@ -161,7 +479,14 @@ export default function CommunitiesAdminScreen() {
       const ImagePicker = await import('expo-image-picker');
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        showToast('Please allow gallery access to select cover photo.', 'error');
+        showToast(
+          tr(
+            'कृपया कवर फोटो चुनने के लिए गैलरी एक्सेस की अनुमति दें।',
+            'براہ کرم کور تصویر منتخب کرنے کے لیے گیلری تک رسائی کی اجازت دیں۔',
+            'Please allow gallery access to select cover photo.'
+          ),
+          'error'
+        );
         return;
       }
 
@@ -178,7 +503,10 @@ export default function CommunitiesAdminScreen() {
           coverImage: asset.uri,
           coverImageFileName: asset.fileName || `cover_${Date.now()}.jpg`
         }));
-        showToast('Cover photo selected from device', 'info');
+        showToast(
+          tr('कवर फोटो डिवाइस से चुनी गई', 'کور تصویر منتخب کی گئی', 'Cover photo selected from device'),
+          'info'
+        );
       }
     } catch (err) {
       console.warn('Image picker fallback:', err);
@@ -193,7 +521,7 @@ export default function CommunitiesAdminScreen() {
         coverImage: chosen,
         coverImageFileName: 'sample_cover.jpg'
       }));
-      showToast('Sample cover photo attached', 'info');
+      showToast(tr('कवर फोटो संलग्न की गई', 'کور تصویر منسلک کی گئی', 'Sample cover photo attached'), 'info');
     }
   };
 
@@ -211,22 +539,22 @@ export default function CommunitiesAdminScreen() {
   // Handle Save (Create or Update)
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
-      showToast('Please enter Community Name.', 'error');
+      showToast(tr('कृपया समुदाय का नाम दर्ज करें।', 'براہ کرم کمیونٹی کا نام درج کریں۔', 'Please enter Community Name.'), 'error');
       return;
     }
     if (!formData.city.trim()) {
-      showToast('Please enter City.', 'error');
+      showToast(tr('कृपया शहर दर्ज करें।', 'براہ کرم شہر درج کریں۔', 'Please enter City.'), 'error');
       return;
     }
     if (!formData.state.trim()) {
-      showToast('Please enter State.', 'error');
+      showToast(tr('कृपया राज्य दर्ज करें।', 'براہ کرم ریاست درج کریں۔', 'Please enter State.'), 'error');
       return;
     }
 
     setSubmitting(true);
     try {
       const defaultCover = 'https://images.unsplash.com/photo-1577495508048-b635879837f1?auto=format&fit=crop&w=800&q=80';
-      const defaultAvatar = 'https://images.unsplash.com/photo-1577495508048-b635879837f1?auto=format&fit=crop&w=200&q=80';
+      const defaultAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'C')}&background=059669&color=fff`;
 
       const communityPayload: Partial<Community> = {
         name: formData.name.trim(),
@@ -247,7 +575,10 @@ export default function CommunitiesAdminScreen() {
       if (editingId) {
         // Update community
         savedCommunity = await updateCommunity(editingId, communityPayload);
-        showToast('Community updated successfully!', 'success');
+        showToast(
+          tr('समुदाय सफलतापूर्वक अपडेट किया गया!', 'کمیونٹی کامیابی سے اپ ڈیٹ ہو گئی!', 'Community updated successfully!'),
+          'success'
+        );
       } else {
         // Create community
         savedCommunity = await createCommunity({
@@ -256,7 +587,10 @@ export default function CommunitiesAdminScreen() {
           activeCampaigns: 0,
           totalRaisedINR: 0,
         } as Omit<Community, 'id'>);
-        showToast('Community created successfully!', 'success');
+        showToast(
+          tr('समुदाय सफलतापूर्वक बनाया गया!', 'کمیونٹی کامیابی سے بنائی گئی!', 'Community created successfully!'),
+          'success'
+        );
       }
 
       // Sync Admin User role if selected
@@ -276,7 +610,10 @@ export default function CommunitiesAdminScreen() {
       await loadData(false);
     } catch (err: any) {
       console.error('Save community error:', err);
-      showToast(err?.message || 'Failed to save community.', 'error');
+      showToast(
+        err?.message || tr('समुदाय सुरक्षित करने में विफल।', 'کمیونٹی محفوظ کرنے میں ناکام۔', 'Failed to save community.'),
+        'error'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -289,11 +626,17 @@ export default function CommunitiesAdminScreen() {
     try {
       await deleteCommunity(deleteConfirmId);
       setCommunities(prev => prev.filter(c => c.id !== deleteConfirmId));
-      showToast('Community deleted successfully!', 'success');
+      showToast(
+        tr('समुदाय सफलतापूर्वक हटा दिया गया!', 'کمیونٹی کامیابی سے حذف ہو گئی!', 'Community deleted successfully!'),
+        'success'
+      );
       setDeleteConfirmId(null);
     } catch (err: any) {
       console.error('Delete community error:', err);
-      showToast(err?.message || 'Failed to delete community.', 'error');
+      showToast(
+        err?.message || tr('समुदाय हटाने में विफल।', 'کمیونٹی حذف کرنے میں ناکام۔', 'Failed to delete community.'),
+        'error'
+      );
     } finally {
       setDeletingId(null);
     }
@@ -354,7 +697,7 @@ export default function CommunitiesAdminScreen() {
         >
           <Building2 color={activeSubTab === 'list' ? '#fff' : theme.textSub} size={15} />
           <Text style={[s.tabBtnText, activeSubTab === 'list' ? s.tabBtnTextActive : { color: theme.textSub }]}>
-            {t('communities.tab_list', 'Communities')} ({communities.length})
+            {tr('समुदाय', 'کمیونٹیز', 'Communities')} ({communities.length})
           </Text>
         </TouchableOpacity>
 
@@ -372,7 +715,9 @@ export default function CommunitiesAdminScreen() {
             <PlusCircle color={activeSubTab === 'create' ? '#fff' : theme.textSub} size={15} />
           )}
           <Text style={[s.tabBtnText, activeSubTab === 'create' ? s.tabBtnTextActive : { color: theme.textSub }]}>
-            {editingId ? 'Edit Community' : t('communities.tab_create', '+ Add Community')}
+            {editingId
+              ? tr('समुदाय संपादित करें', 'کمیونٹی میں ترمیم کریں', 'Edit Community')
+              : tr('+ नया समुदाय जोड़ें', '+ نئی کمیونٹی شامل کریں', '+ Add Community')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -389,139 +734,31 @@ export default function CommunitiesAdminScreen() {
               <View style={s.empty}>
                 <Building2 color={theme.textSub} size={48} />
                 <Text style={[s.emptyText, { color: theme.textSub }]}>
-                  {t('communities.empty', 'No communities found')}
+                  {tr('कोई समुदाय नहीं मिला', 'کوئی کمیونٹی نہیں ملی', 'No communities found')}
                 </Text>
                 <TouchableOpacity
                   style={[s.emptyAddBtn, { backgroundColor: theme.primary }]}
                   onPress={handleOpenAdd}
                 >
                   <PlusCircle color="#fff" size={16} />
-                  <Text style={s.emptyAddBtnText}>Add First Community</Text>
+                  <Text style={s.emptyAddBtnText}>
+                    {tr('पहला समुदाय जोड़ें', 'پہلی کمیونٹی شامل کریں', 'Add First Community')}
+                  </Text>
                 </TouchableOpacity>
               </View>
             ) : (
-              communities.map(c => {
-                const healthPct = Math.min(100, c.healthScore ?? 80);
-                const healthColor = healthPct >= 80 ? '#10b981' : healthPct >= 50 ? '#f59e0b' : '#ef4444';
-                const isPending = c.verifiedStatus === 'Pending';
-                const isFlagged = c.verifiedStatus === 'Flagged';
-
-                return (
-                  <View
-                    key={c.id}
-                    style={[
-                      s.card,
-                      { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }
-                    ]}
-                  >
-                    {/* Cover image */}
-                    {c.coverImage ? (
-                      <Image source={{ uri: c.coverImage }} style={s.coverImg} resizeMode="cover" />
-                    ) : null}
-
-                    <View style={s.cardBody}>
-                      {/* Header row */}
-                      <View style={s.headerRow}>
-                        <Image
-                          source={{ uri: c.avatar || 'https://images.unsplash.com/photo-1577495508048-b635879837f1?auto=format&fit=crop&w=200&q=80' }}
-                          style={s.avatar}
-                        />
-                        <View style={s.flex1}>
-                          <Text style={[s.cardTitle, { color: theme.textMain }]} numberOfLines={1}>
-                            {c.name}
-                          </Text>
-                          <Text style={[s.cardMeta, { color: theme.textSub }]}>
-                            {c.city}, {c.state}
-                          </Text>
-                        </View>
-
-                        {/* Status Badge */}
-                        <View
-                          style={[
-                            s.verifiedBadge,
-                            isPending
-                              ? { backgroundColor: theme.warningLight, borderColor: theme.warning }
-                              : isFlagged
-                                ? { backgroundColor: theme.dangerLight, borderColor: theme.danger }
-                                : { backgroundColor: theme.primaryLight, borderColor: theme.primary }
-                          ]}
-                        >
-                          <ShieldCheck
-                            color={isPending ? theme.warning : isFlagged ? theme.danger : theme.primary}
-                            size={11}
-                          />
-                          <Text
-                            style={[
-                              s.verifiedText,
-                              { color: isPending ? theme.warning : isFlagged ? theme.danger : theme.primary }
-                            ]}
-                          >
-                            {c.verifiedStatus || 'Verified'}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* Admin Info */}
-                      <Text style={[s.adminText, { color: theme.textSub }]}>
-                        <Text style={{ fontWeight: '700', color: theme.textMain }}>Admin: </Text>
-                        {c.adminName} ({c.adminRoleTitle || 'community admin'})
-                      </Text>
-
-                      {/* Health Score Progress */}
-                      <View style={s.healthSection}>
-                        <View style={s.healthLabelRow}>
-                          <Text style={[s.healthLabel, { color: theme.textSub }]}>{t('communities.health_score', 'Health Score')}</Text>
-                          <Text style={[s.healthPct, { color: healthColor }]}>{healthPct}%</Text>
-                        </View>
-                        <View style={[s.healthTrack, { backgroundColor: isDark ? '#334155' : '#e2e8f0' }]}>
-                          <View style={[s.healthFill, { width: `${healthPct}%`, backgroundColor: healthColor }]} />
-                        </View>
-                      </View>
-
-                      {/* Stats row */}
-                      <View style={[s.statsRow, { backgroundColor: isDark ? '#131d2e' : '#f8fafc' }]}>
-                        <View style={s.statItem}>
-                          <Users color={theme.textSub} size={12} />
-                          <Text style={[s.statText, { color: theme.textMain }]}>
-                            {c.totalMembers.toLocaleString()} {t('communities.members', 'Members')}
-                          </Text>
-                        </View>
-                        <View style={s.statItem}>
-                          <TrendingUp color={theme.textSub} size={12} />
-                          <Text style={[s.statText, { color: theme.textMain }]}>
-                            ₹{c.totalRaisedINR.toLocaleString()} {t('communities.raised', 'Raised')}
-                          </Text>
-                        </View>
-                        <View style={s.statItem}>
-                          <Calendar color={theme.textSub} size={12} />
-                          <Text style={[s.statText, { color: theme.textMain }]}>
-                            Est. {c.establishedYear || 2024}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* Action buttons: Edit & Delete */}
-                      <View style={[s.cardActionsRow, { borderTopColor: theme.cardBorder }]}>
-                        <TouchableOpacity
-                          onPress={() => handleOpenEdit(c)}
-                          style={[s.actionBtn, { backgroundColor: isDark ? '#1e3a5f' : '#e0f2fe' }]}
-                        >
-                          <Edit3 color="#0284c7" size={14} />
-                          <Text style={[s.actionBtnText, { color: '#0284c7' }]}>Edit</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => setDeleteConfirmId(c.id)}
-                          style={[s.actionBtn, { backgroundColor: theme.dangerLight }]}
-                        >
-                          <Trash2 color={theme.danger} size={14} />
-                          <Text style={[s.actionBtnText, { color: theme.danger }]}>Delete</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-                );
-              })
+              communities.map(c => (
+                <CommunityCardItem
+                  key={c.id}
+                  community={c}
+                  lang={lang}
+                  theme={theme}
+                  isDark={isDark}
+                  tr={tr}
+                  onEdit={handleOpenEdit}
+                  onDelete={setDeleteConfirmId}
+                />
+              ))
             )}
           </ScrollView>
         )
@@ -544,61 +781,150 @@ export default function CommunitiesAdminScreen() {
             )}
             <View style={{ flex: 1 }}>
               <Text style={[s.formTitle, { color: theme.textMain }]}>
-                {editingId ? 'Edit Community' : 'Add New Community'}
+                {editingId
+                  ? tr('समुदाय संपादित करें', 'کمیونٹی میں ترمیم کریں', 'Edit Community')
+                  : tr('नया समुदाय जोड़ें', 'نئی کمیونٹی شامل کریں', 'Add New Community')}
               </Text>
               <Text style={[s.formSubTitle, { color: theme.textSub }]}>
                 {editingId
-                  ? 'Update community details, assigned admin, and metrics.'
-                  : 'Add a new regional community chapter to the platform.'}
+                  ? tr(
+                    'समुदाय का विवरण, प्रशासक और मेट्रिक्स अपडेट करें।',
+                    'کمیونٹی کی تفصیلات، تفویض کردہ ایڈمن اور میٹرکس اپ ڈیٹ کریں۔',
+                    'Update community details, assigned admin, and metrics.'
+                  )
+                  : tr(
+                    'प्लेटफ़ॉर्म पर एक नया क्षेत्रीय समुदाय अध्याय जोड़ें।',
+                    'پلیٹ فارم پر ایک نیا علاقائی کمیونٹی چیپٹر شامل کریں۔',
+                    'Add a new regional community chapter to the platform.'
+                  )}
               </Text>
             </View>
           </View>
 
-          {/* ──────────────── 1. BASIC DETAILS ──────────────── */}
+          {/* ──────────────── 1. AVATAR / LOGO ──────────────── */}
           <View style={[s.formCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[s.sectionHeading, { color: theme.primary }]}>1. Basic Details</Text>
+            <Text style={[s.sectionHeading, { color: theme.primary }]}>
+              {tr('1. समुदाय का अवतार / लोगो', '1. کمیونٹی اوتار / لوگو', '1. Community Avatar / Logo')}
+            </Text>
+            <Text style={[s.hintText, { color: theme.textSub }]}>
+              {tr(
+                'अपनी डिवाइस से इस समुदाय अध्याय के लिए लोगो चुनें या URL दर्ज करें।',
+                'اپنے ڈیوائس سے اس کمیونٹی چیپٹر کے لیے لوگو منتخب کریں یا URL درج کریں۔',
+                'Select a logo or profile image for this community chapter from your device or enter a URL.'
+              )}
+            </Text>
+
+            <View style={s.avatarSectionRow}>
+
+              {/* Upload & Actions */}
+              <View style={{ flex: 1, gap: 6 }}>
+                <TouchableOpacity
+                  style={[s.avatarUploadBtn, { backgroundColor: theme.primaryLight, borderColor: theme.primary }]}
+                  onPress={handlePickAvatarImage}
+                  activeOpacity={0.7}
+                >
+                  <Upload color={theme.primary} size={15} />
+                  <Text style={[s.avatarUploadBtnText, { color: theme.primary }]}>
+                    {formData.avatar
+                      ? tr('अवतार बदलें', 'اوتار تبدیل کریں', 'Change Avatar')
+                      : tr('गैलरी से अवतार चुनें', 'گیلری سے اوتار منتخب کریں', 'Select Avatar from Gallery')}
+                  </Text>
+                </TouchableOpacity>
+
+                {formData.avatar ? (
+                  <View style={s.avatarFileRow}>
+                    <Text style={[s.avatarFileNameText, { color: theme.textSub }]} numberOfLines={1}>
+                      ✓ {formData.avatarFileName || tr('अवतार संलग्न', 'اوتار منسلک', 'Avatar attached')}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setFormData(prev => ({ ...prev, avatar: '', avatarFileName: '' }))}
+                      style={s.avatarClearBtn}
+                    >
+                      <X color="#ef4444" size={14} />
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
+                {/* Direct Avatar URL Toggle */}
+                <TouchableOpacity
+                  onPress={() => setShowAvatarUrlFallback(!showAvatarUrlFallback)}
+                  style={s.urlToggleBtn}
+                >
+                  <Text style={[s.urlToggleText, { color: theme.primary }]}>
+                    {showAvatarUrlFallback
+                      ? tr('▲ डायरेक्ट URL छुपाएं', '▲ براہ راست URL چھپائیں', '▲ Hide Direct URL')
+                      : tr('▼ या छवि URL दर्ज करें', '▼ یا تصویری URL درج کریں', '▼ Or enter Image URL')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {showAvatarUrlFallback && (
+              <View style={{ marginTop: 10 }}>
+                <TextInput
+                  style={[s.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textMain }]}
+                  placeholder="https://images.unsplash.com/..."
+                  placeholderTextColor={theme.textSub}
+                  value={formData.avatar}
+                  onChangeText={v => setFormData(prev => ({ ...prev, avatar: v, avatarFileName: 'url_avatar.jpg' }))}
+                />
+              </View>
+            )}
+          </View>
+
+          {/* ──────────────── 2. BASIC DETAILS ──────────────── */}
+          <View style={[s.formCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+            <Text style={[s.sectionHeading, { color: theme.primary }]}>
+              {tr('2. मूल विवरण', '2. بنیادی تفصیلات', '2. Basic Details')}
+            </Text>
 
             <View style={s.formGroup}>
-              <Text style={[s.label, { color: theme.textSub }]}>Community Name *</Text>
+              <Text style={[s.label, { color: theme.textSub }]}>
+                {tr('समुदाय का नाम *', 'کمیونٹی کا نام *', 'Community Name *')}
+              </Text>
               <TextInput
                 style={[s.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textMain }]}
-                placeholder="e.g. Bareilly Central Care Society"
+                placeholder={tr('उदा. बरेली सेंट्रल केयर सोसाइटी', 'مثال: بریلی سنٹرل کیئر سوسائٹی', 'e.g. Bareilly Central Care Society')}
                 placeholderTextColor={theme.textSub}
                 value={formData.name}
                 onChangeText={v => setFormData(prev => ({ ...prev, name: v }))}
               />
             </View>
 
-            <View style={s.row2}>
-              <View style={s.flex1}>
-                <Text style={[s.label, { color: theme.textSub }]}>Established Year *</Text>
-                <TextInput
-                  style={[s.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textMain }]}
-                  placeholder="e.g. 2024"
-                  placeholderTextColor={theme.textSub}
-                  keyboardType="numeric"
-                  value={formData.establishedYear}
-                  onChangeText={v => setFormData(prev => ({ ...prev, establishedYear: v }))}
-                />
-              </View>
-              <View style={s.gap10} />
-              <View style={s.flex1}>
-                <Text style={[s.label, { color: theme.textSub }]}>City *</Text>
-                <TextInput
-                  style={[s.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textMain }]}
-                  placeholder="e.g. Bareilly"
-                  placeholderTextColor={theme.textSub}
-                  value={formData.city}
-                  onChangeText={v => setFormData(prev => ({ ...prev, city: v }))}
-                />
-              </View>
+            <View style={s.formGroup}>
+              <Text style={[s.label, { color: theme.textSub }]}>
+                {tr('स्थापना वर्ष *', 'سال قیام *', 'Established Year *')}
+              </Text>
+              <TextInput
+                style={[s.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textMain }]}
+                placeholder={tr('उदा. 2024', 'مثال: 2024', 'e.g. 2024')}
+                placeholderTextColor={theme.textSub}
+                keyboardType="numeric"
+                value={formData.establishedYear}
+                onChangeText={v => setFormData(prev => ({ ...prev, establishedYear: v }))}
+              />
             </View>
 
             <View style={s.formGroup}>
-              <Text style={[s.label, { color: theme.textSub }]}>State *</Text>
+              <Text style={[s.label, { color: theme.textSub }]}>
+                {tr('शहर / कस्बा *', 'شہر / قصبہ *', 'City *')}
+              </Text>
               <TextInput
                 style={[s.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textMain }]}
-                placeholder="e.g. UP"
+                placeholder={tr('उदा. बरेली', 'مثال: بریلی', 'e.g. Bareilly')}
+                placeholderTextColor={theme.textSub}
+                value={formData.city}
+                onChangeText={v => setFormData(prev => ({ ...prev, city: v }))}
+              />
+            </View>
+
+            <View style={s.formGroup}>
+              <Text style={[s.label, { color: theme.textSub }]}>
+                {tr('राज्य *', 'ریاست *', 'State *')}
+              </Text>
+              <TextInput
+                style={[s.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textMain }]}
+                placeholder={tr('उदा. उत्तर प्रदेश', 'مثال: اتر پردیش', 'e.g. UP')}
                 placeholderTextColor={theme.textSub}
                 value={formData.state}
                 onChangeText={v => setFormData(prev => ({ ...prev, state: v }))}
@@ -606,15 +932,23 @@ export default function CommunitiesAdminScreen() {
             </View>
           </View>
 
-          {/* ──────────────── 2. ASSIGN ADMIN ──────────────── */}
+          {/* ──────────────── 3. ASSIGN ADMIN ──────────────── */}
           <View style={[s.formCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[s.sectionHeading, { color: theme.primary }]}>2. Assign Admin</Text>
+            <Text style={[s.sectionHeading, { color: theme.primary }]}>
+              {tr('3. व्यवस्थापक नियुक्त करें', '3. ایڈمن تفویض کریں', '3. Assign Admin')}
+            </Text>
             <Text style={[s.hintText, { color: theme.textSub }]}>
-              Select a registered user to assign as the community administrator.
+              {tr(
+                'समुदाय व्यवस्थापक के रूप में असाइन करने के लिए पंजीकृत उपयोगकर्ता चुनें।',
+                'کمیونٹی ایڈمنسٹریٹر کے طور پر تفویض کرنے کے لیے رجسٹرڈ صارف منتخب کریں۔',
+                'Select a registered user to assign as the community administrator.'
+              )}
             </Text>
 
             <View style={s.formGroup}>
-              <Text style={[s.label, { color: theme.textSub }]}>Select User (Admin)</Text>
+              <Text style={[s.label, { color: theme.textSub }]}>
+                {tr('उपयोगकर्ता चुनें (व्यवस्थापक)', 'صارف منتخب کریں (ایڈمن)', 'Select User (Admin)')}
+              </Text>
               <TouchableOpacity
                 onPress={() => setShowAdminDropdown(!showAdminDropdown)}
                 style={[
@@ -626,7 +960,9 @@ export default function CommunitiesAdminScreen() {
                   <UserCheck color={theme.primary} size={18} />
                   <View style={{ flex: 1 }}>
                     <Text style={[s.dropdownSelectedText, { color: theme.textMain }]} numberOfLines={1}>
-                      {selectedAdminUser ? selectedAdminUser.name : formData.adminName || 'Select a registered user'}
+                      {selectedAdminUser
+                        ? selectedAdminUser.name
+                        : formData.adminName || tr('पंजीकृत उपयोगकर्ता चुनें', 'رجسٹرڈ صارف منتخب کریں', 'Select a registered user')}
                     </Text>
                     {selectedAdminUser ? (
                       <Text style={[s.dropdownSelectedSub, { color: theme.textSub }]}>
@@ -646,7 +982,9 @@ export default function CommunitiesAdminScreen() {
               {showAdminDropdown && (
                 <View style={[s.dropdownMenu, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
                   {availableUsers.length === 0 ? (
-                    <Text style={[s.emptyUserNotice, { color: theme.textSub }]}>No registered users found</Text>
+                    <Text style={[s.emptyUserNotice, { color: theme.textSub }]}>
+                      {tr('कोई पंजीकृत उपयोगकर्ता नहीं मिला', 'کوئی رجسٹرڈ صارف نہیں ملا', 'No registered users found')}
+                    </Text>
                   ) : (
                     availableUsers.map(user => {
                       const isSelected = formData.adminId === user.id;
@@ -683,7 +1021,9 @@ export default function CommunitiesAdminScreen() {
             </View>
 
             <View style={s.formGroup}>
-              <Text style={[s.label, { color: theme.textSub }]}>Admin Role Title</Text>
+              <Text style={[s.label, { color: theme.textSub }]}>
+                {tr('व्यवस्थापक पद शीर्षक', 'ایڈمن کا عہدہ', 'Admin Role Title')}
+              </Text>
               <TextInput
                 style={[
                   s.input,
@@ -696,12 +1036,16 @@ export default function CommunitiesAdminScreen() {
             </View>
           </View>
 
-          {/* ──────────────── 3. METRICS & STATUS ──────────────── */}
+          {/* ──────────────── 4. METRICS & STATUS ──────────────── */}
           <View style={[s.formCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[s.sectionHeading, { color: theme.primary }]}>3. Metrics & Status</Text>
+            <Text style={[s.sectionHeading, { color: theme.primary }]}>
+              {tr('4. मेट्रिक्स एवं स्थिति', '4. میٹرکس اور حیثیت', '4. Metrics & Status')}
+            </Text>
 
             <View style={s.formGroup}>
-              <Text style={[s.label, { color: theme.textSub }]}>Health Score (0-100)</Text>
+              <Text style={[s.label, { color: theme.textSub }]}>
+                {tr('स्वास्थ्य स्कोर (0-100)', 'ہیلتھ سکور (0-100)', 'Health Score (0-100)')}
+              </Text>
               <TextInput
                 style={[s.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textMain }]}
                 placeholder="100"
@@ -713,7 +1057,9 @@ export default function CommunitiesAdminScreen() {
             </View>
 
             <View style={s.formGroup}>
-              <Text style={[s.label, { color: theme.textSub }]}>Verified Status</Text>
+              <Text style={[s.label, { color: theme.textSub }]}>
+                {tr('सत्यापन स्थिति', 'تصدیق کی حیثیت', 'Verified Status')}
+              </Text>
               <View style={s.chipGroup}>
                 {(['Verified', 'Pending', 'Flagged'] as const).map(status => {
                   const isSelected = formData.verifiedStatus === status;
@@ -734,7 +1080,11 @@ export default function CommunitiesAdminScreen() {
                           isSelected ? { color: '#fff', fontWeight: '700' } : { color: theme.chipIdleText }
                         ]}
                       >
-                        {status}
+                        {status === 'Verified'
+                          ? tr('सत्यापित', 'تصدیق شدہ', 'Verified')
+                          : status === 'Pending'
+                            ? tr('लंबित', 'زیر التواء', 'Pending')
+                            : tr('चिह्नित', 'نشان زدہ', 'Flagged')}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -743,19 +1093,23 @@ export default function CommunitiesAdminScreen() {
             </View>
           </View>
 
-          {/* ──────────────── 4. MEDIA & DESCRIPTION ──────────────── */}
+          {/* ──────────────── 5. MEDIA & DESCRIPTION ──────────────── */}
           <View style={[s.formCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[s.sectionHeading, { color: theme.primary }]}>4. Media & Description</Text>
+            <Text style={[s.sectionHeading, { color: theme.primary }]}>
+              {tr('5. मीडिया (कवर फोटो) एवं विवरण', '5. میڈیا (کور تصویر) اور تفصیل', '5. Media & Description')}
+            </Text>
 
             <View style={s.formGroup}>
-              <Text style={[s.label, { color: theme.textSub }]}>Cover Image (From Phone Gallery)</Text>
+              <Text style={[s.label, { color: theme.textSub }]}>
+                {tr('कवर फोटो (फोन गैलरी से)', 'کور تصویر (فون گیلری سے)', 'Cover Image (From Phone Gallery)')}
+              </Text>
 
               {formData.coverImage ? (
                 <View style={s.previewContainer}>
                   <Image source={{ uri: formData.coverImage }} style={s.imagePreview} resizeMode="cover" />
                   <View style={s.previewOverlayBar}>
                     <Text style={s.previewFileName} numberOfLines={1}>
-                      {formData.coverImageFileName || 'Cover Photo Attached'}
+                      {formData.coverImageFileName || tr('कवर फोटो संलग्न', 'کور فوٹو منسلک', 'Cover Photo Attached')}
                     </Text>
                     <View style={s.previewActionGroup}>
                       <TouchableOpacity
@@ -763,7 +1117,7 @@ export default function CommunitiesAdminScreen() {
                         onPress={handlePickCoverImage}
                       >
                         <RefreshCw color="#fff" size={13} />
-                        <Text style={s.previewBtnText}>Change</Text>
+                        <Text style={s.previewBtnText}>{tr('बदलें', 'تبدیل کریں', 'Change')}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={s.previewRemoveBtn}
@@ -780,8 +1134,12 @@ export default function CommunitiesAdminScreen() {
                   onPress={handlePickCoverImage}
                 >
                   <Upload color={theme.primary} size={26} />
-                  <Text style={[s.uploadTitle, { color: theme.textMain }]}>Select Cover Photo from Gallery</Text>
-                  <Text style={[s.uploadSub, { color: theme.textSub }]}>Tap to pick image file</Text>
+                  <Text style={[s.uploadTitle, { color: theme.textMain }]}>
+                    {tr('गैलरी से कवर फोटो चुनें', 'گیلری سے کور تصویر منتخب کریں', 'Select Cover Photo from Gallery')}
+                  </Text>
+                  <Text style={[s.uploadSub, { color: theme.textSub }]}>
+                    {tr('छवि फ़ाइल चुनने के लिए टैप करें', 'تصویر فائل منتخب کرنے کے لیے ٹیپ کریں', 'Tap to pick image file')}
+                  </Text>
                 </TouchableOpacity>
               )}
 
@@ -791,7 +1149,9 @@ export default function CommunitiesAdminScreen() {
                 style={s.urlToggleBtn}
               >
                 <Text style={[s.urlToggleText, { color: theme.primary }]}>
-                  {showUrlFallback ? '▲ Hide Direct URL input' : '▼ Or enter direct Image URL'}
+                  {showUrlFallback
+                    ? tr('▲ डायरेक्ट URL छुपाएं', '▲ براہ راست URL چھپائیں', '▲ Hide Direct URL input')
+                    : tr('▼ या सीधा इमेज URL दर्ज करें', '▼ یا براہ راست تصویری URL درج کریں', '▼ Or enter direct Image URL')}
                 </Text>
               </TouchableOpacity>
 
@@ -809,14 +1169,18 @@ export default function CommunitiesAdminScreen() {
             </View>
 
             <View style={s.formGroup}>
-              <Text style={[s.label, { color: theme.textSub }]}>Description</Text>
+              <Text style={[s.label, { color: theme.textSub }]}>{tr('विवरण', 'تفصیل', 'Description')}</Text>
               <TextInput
                 style={[
                   s.input,
                   s.textArea,
                   { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textMain }
                 ]}
-                placeholder="Describe the community chapter's mission, members, and service scope..."
+                placeholder={tr(
+                  'समुदाय अध्याय के मिशन, सदस्यों और सेवा कार्य का वर्णन करें...',
+                  'کمیونٹی چیپٹر کے مشن، ارکان اور خدمات کے دائرہ کار کی وضاحت کریں...',
+                  "Describe the community chapter's mission, members, and service scope..."
+                )}
                 placeholderTextColor={theme.textSub}
                 multiline
                 textAlignVertical="top"
@@ -834,7 +1198,7 @@ export default function CommunitiesAdminScreen() {
                 onPress={() => setActiveSubTab('list')}
                 disabled={submitting}
               >
-                <Text style={[s.cancelBtnText, { color: theme.textSub }]}>Cancel</Text>
+                <Text style={[s.cancelBtnText, { color: theme.textSub }]}>{tr('रद्द करें', 'منسوخ کریں', 'Cancel')}</Text>
               </TouchableOpacity>
             )}
 
@@ -853,7 +1217,9 @@ export default function CommunitiesAdminScreen() {
                 <>
                   <CheckCircle2 color="#fff" size={18} />
                   <Text style={s.submitBtnText}>
-                    {editingId ? 'Save Community' : 'Save Community'}
+                    {editingId
+                      ? tr('समुदाय अपडेट करें', 'کمیونٹی اپ ڈیٹ کریں', 'Update Community')
+                      : tr('समुदाय सहेजें', 'کمیونٹی محفوظ کریں', 'Save Community')}
                   </Text>
                 </>
               )}
@@ -875,9 +1241,15 @@ export default function CommunitiesAdminScreen() {
               <Trash2 color="#ef4444" size={28} />
             </View>
 
-            <Text style={[s.deleteModalTitle, { color: theme.textMain }]}>Delete Community?</Text>
+            <Text style={[s.deleteModalTitle, { color: theme.textMain }]}>
+              {tr('समुदाय हटाएं?', 'کمیونٹی حذف کریں؟', 'Delete Community?')}
+            </Text>
             <Text style={[s.deleteModalSub, { color: theme.textSub }]}>
-              Are you sure you want to delete this community? This action cannot be undone and will affect all associated data.
+              {tr(
+                'क्या आप वाकई इस समुदाय को हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।',
+                'کیا آپ واقعی اس کمیونٹی کو حذف کرنا چاہتے ہیں؟ یہ عمل واپس نہیں کیا جا سکتا۔',
+                'Are you sure you want to delete this community? This action cannot be undone and will affect all associated data.'
+              )}
             </Text>
 
             <View style={[s.modalActions, { borderTopColor: theme.cardBorder }]}>
@@ -886,7 +1258,9 @@ export default function CommunitiesAdminScreen() {
                 onPress={() => setDeleteConfirmId(null)}
                 disabled={deletingId !== null}
               >
-                <Text style={[s.modalCancelBtnText, { color: theme.textSub }]}>Cancel</Text>
+                <Text style={[s.modalCancelBtnText, { color: theme.textSub }]}>
+                  {tr('रद्द करें', 'منسوخ کریں', 'Cancel')}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -899,7 +1273,9 @@ export default function CommunitiesAdminScreen() {
                 ) : (
                   <>
                     <Trash2 color="#fff" size={15} />
-                    <Text style={s.modalDeleteBtnText}>Yes, Delete</Text>
+                    <Text style={s.modalDeleteBtnText}>
+                      {tr('हां, हटाएं', 'ہاں، حذف کریں', 'Yes, Delete')}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -979,13 +1355,26 @@ const s = StyleSheet.create({
     marginBottom: 14,
     overflow: 'hidden',
   },
-  coverImg: { height: 90, width: '100%' },
+  cardCoverContainer: { position: 'relative', width: '100%', height: 100 },
+  coverImg: { height: 100, width: '100%' },
+  coverBadgeOverlay: { position: 'absolute', top: 8, right: 8 },
+  statPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+  statPillText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   cardBody: { padding: 14 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatar: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#e2e8f0' },
+  avatar: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#e2e8f0' },
   flex1: { flex: 1 },
-  cardTitle: { fontSize: 15, fontWeight: '700' },
-  cardMeta: { fontSize: 12, marginTop: 2 },
+  cardTitle: { fontSize: 15, fontWeight: '800' },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
+  cardMeta: { fontSize: 12, fontWeight: '500' },
   verifiedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -996,7 +1385,48 @@ const s = StyleSheet.create({
     borderWidth: 1,
   },
   verifiedText: { fontSize: 10, fontWeight: '700' },
-  adminText: { fontSize: 12, marginTop: 10 },
+
+  adminBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  adminTextNew: { fontSize: 11, flex: 1 },
+
+  descContainer: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  descHeader: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  descHeading: { fontSize: 11, fontWeight: '700' },
+  descText: { fontSize: 12, lineHeight: 18 },
+  descToggleBtn: { marginTop: 4, alignSelf: 'flex-start' },
+  descToggleText: { fontSize: 11, fontWeight: '700' },
+
+  gridStatsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  gridStatBox: {
+    flex: 1,
+    minWidth: '46%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  gridStatVal: { fontSize: 13, fontWeight: '800' },
+  gridStatLbl: { fontSize: 10, marginTop: 1 },
 
   healthSection: { marginTop: 12 },
   healthLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
@@ -1004,16 +1434,6 @@ const s = StyleSheet.create({
   healthPct: { fontSize: 11, fontWeight: '700' },
   healthTrack: { height: 6, borderRadius: 6, overflow: 'hidden' },
   healthFill: { height: 6, borderRadius: 6 },
-
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
-    padding: 10,
-    borderRadius: 10,
-  },
-  statItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  statText: { fontSize: 11, fontWeight: '600' },
 
   cardActionsRow: {
     flexDirection: 'row',
@@ -1106,6 +1526,72 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   chipText: { fontSize: 12, fontWeight: '600' },
+
+  // Avatar Logo Styles
+  avatarSectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 4,
+  },
+  avatarPreviewWrapper: {
+    position: 'relative',
+    width: 72,
+    height: 72,
+  },
+  avatarPreviewImg: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: '#10b981',
+  },
+  avatarCameraBtn: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  avatarUploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  avatarUploadBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  avatarFileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  avatarFileNameText: {
+    fontSize: 11,
+    fontWeight: '600',
+    flex: 1,
+  },
+  avatarClearBtn: {
+    padding: 2,
+  },
 
   // Upload Box
   uploadBox: {

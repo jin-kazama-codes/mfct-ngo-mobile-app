@@ -35,6 +35,8 @@ import {
 } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useTranslation } from 'react-i18next';
+import { getLanguageCode, translateCity, translateState, translateCommunityName } from '../../../src/lib/translateEntity';
+import { DynamicText } from '../../../src/components/DynamicText';
 
 interface ToastInfo {
     message: string;
@@ -44,7 +46,8 @@ interface ToastInfo {
 export default function KycApprovalScreen() {
     const { currentRole, activeUser } = useAppState();
     const { colorScheme } = useColorScheme();
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
+    const lang = getLanguageCode(i18n.language);
     const isDark = colorScheme === 'dark';
 
     const [users, setUsers] = useState<User[]>([]);
@@ -70,8 +73,13 @@ export default function KycApprovalScreen() {
         try {
             const data = await getUsers();
             let filtered = data;
-            if (currentRole === 'community_admin' && activeUser?.communityId) {
-                filtered = data.filter(u => u.communityId === activeUser.communityId);
+            const rawRole = (activeUser?.role || currentRole || '') as string;
+            const isCommAdmin = rawRole.toLowerCase().includes('community');
+            if (isCommAdmin && (activeUser?.communityId || activeUser?.communityName)) {
+                filtered = data.filter(u => 
+                    (activeUser.communityId && u.communityId === activeUser.communityId) ||
+                    (activeUser.communityName && u.communityName?.toLowerCase() === activeUser.communityName.toLowerCase())
+                );
             }
             setUsers(filtered);
         } catch (err: any) {
@@ -168,24 +176,24 @@ export default function KycApprovalScreen() {
                     <View style={[s.statCard, { backgroundColor: '#f59e0b' }]}>
                         <ShieldCheck color="#fff" size={22} />
                         <Text style={s.statCount}>{pendingUsers.length}</Text>
-                        <Text style={s.statLabel}>Pending Queue</Text>
+                        <Text style={s.statLabel}>{t('admin.kyc_subtitle', 'Pending Queue')}</Text>
                     </View>
 
                     <View style={[s.statCard, { backgroundColor: '#10b981' }]}>
                         <UserCheck color="#fff" size={22} />
                         <Text style={s.statCount}>{verifiedUsers.length}</Text>
-                        <Text style={s.statLabel}>Verified Members</Text>
+                        <Text style={s.statLabel}>{t('admin.statActiveMembers', 'Verified Members')}</Text>
                     </View>
                 </View>
 
                 {/* Pending Verification Section */}
                 <View style={s.sectionHeader}>
                     <Text style={[s.sectionTitle, { color: theme.textMain }]}>
-                        Pending KYC Queue ({pendingUsers.length})
+                        {t('admin.kyc_title', 'Pending KYC Queue')} ({pendingUsers.length})
                     </Text>
                     {pendingUsers.length > 0 && (
                         <View style={s.urgentBadge}>
-                            <Text style={s.urgentBadgeText}>Needs Review</Text>
+                            <Text style={s.urgentBadgeText}>{t('admin.kyc_subtitle', 'Needs Review')}</Text>
                         </View>
                     )}
                 </View>
@@ -195,14 +203,17 @@ export default function KycApprovalScreen() {
                         <View style={s.emptyIconCircle}>
                             <CheckCircle2 color="#10b981" size={32} />
                         </View>
-                        <Text style={[s.emptyTitle, { color: theme.textMain }]}>All Caught Up!</Text>
+                        <Text style={[s.emptyTitle, { color: theme.textMain }]}>{t('admin.all_caught_up', 'All Caught Up!')}</Text>
                         <Text style={[s.emptySub, { color: theme.textSub }]}>
-                            There are currently no users waiting for KYC approval. All member profiles are verified.
+                            {t('admin.no_pending_kyc', 'There are currently no users waiting for KYC approval. All member profiles are verified.')}
                         </Text>
                     </View>
                 ) : (
                     pendingUsers.map(user => {
                         const isProcessing = processingId === user.id;
+                        const userCity = translateCity(user.city || 'Bareilly', lang);
+                        const userState = translateState(user.state || 'UP', lang);
+                        const userComm = translateCommunityName(user.communityName || 'Bareilly Central Care Society (Headquarters)', lang);
 
                         return (
                             <View
@@ -238,15 +249,30 @@ export default function KycApprovalScreen() {
                                     )}
 
                                     <View style={{ flex: 1 }}>
-                                        <Text style={[s.userName, { color: theme.textMain }]} numberOfLines={1}>
-                                            {user.name}
-                                        </Text>
+                                        <DynamicText
+                                            text={user.name}
+                                            style={[s.userName, { color: theme.textMain }]}
+                                            numberOfLines={1}
+                                        />
                                         <Text style={[s.userContact, { color: theme.textSub }]}>
                                             {user.phone} {user.email ? `• ${user.email}` : ''}
                                         </Text>
-                                        <Text style={[s.userLocation, { color: theme.textSub }]}>
-                                            {user.city ? `${user.city}, ${user.state || 'UP'}` : 'Location N/A'} • {user.communityName || 'Bareilly Central'}
-                                        </Text>
+                                        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                                            <DynamicText
+                                                text={user.city || 'Bareilly'}
+                                                style={[s.userLocation, { color: theme.textSub }]}
+                                            />
+                                            <Text style={[s.userLocation, { color: theme.textSub }]}>, </Text>
+                                            <DynamicText
+                                                text={user.state || 'UP'}
+                                                style={[s.userLocation, { color: theme.textSub }]}
+                                            />
+                                            <Text style={[s.userLocation, { color: theme.textSub }]}> • </Text>
+                                            <DynamicText
+                                                text={user.communityName || 'Bareilly Central Care Society (Headquarters)'}
+                                                style={[s.userLocation, { color: theme.textSub }]}
+                                            />
+                                        </View>
                                     </View>
                                 </View>
 
@@ -285,7 +311,7 @@ export default function KycApprovalScreen() {
                                         onPress={() => setSelectedUser(user)}
                                     >
                                         <Eye color={theme.textSub} size={14} />
-                                        <Text style={[s.viewDetailsText, { color: theme.textMain }]}>View Details</Text>
+                                        <Text style={[s.viewDetailsText, { color: theme.textMain }]}>{t('btn.viewDetails', 'View Details')}</Text>
                                     </TouchableOpacity>
 
                                     <TouchableOpacity
@@ -298,7 +324,7 @@ export default function KycApprovalScreen() {
                                         ) : (
                                             <>
                                                 <Check color="#fff" size={14} />
-                                                <Text style={s.approveBtnText}>Approve</Text>
+                                                <Text style={s.approveBtnText}>{t('btn.approve', 'Approve')}</Text>
                                             </>
                                         )}
                                     </TouchableOpacity>
@@ -311,7 +337,7 @@ export default function KycApprovalScreen() {
                 {/* Verified Members Section */}
                 <View style={[s.sectionHeader, { marginTop: 24 }]}>
                     <Text style={[s.sectionTitle, { color: theme.textMain }]}>
-                        Verified Members ({verifiedUsers.length})
+                        {t('admin.statActiveMembers', 'Verified Members')} ({verifiedUsers.length})
                     </Text>
                 </View>
 
@@ -335,12 +361,20 @@ export default function KycApprovalScreen() {
                             )}
 
                             <View style={{ flex: 1 }}>
-                                <Text style={[s.verifiedName, { color: theme.textMain }]} numberOfLines={1}>
-                                    {user.name}
-                                </Text>
-                                <Text style={[s.verifiedSub, { color: theme.textSub }]}>
-                                    ID: {user.membershipId || user.id.slice(0, 8)} • {user.city || 'Bareilly'}
-                                </Text>
+                                <DynamicText
+                                    text={user.name}
+                                    style={[s.verifiedName, { color: theme.textMain }]}
+                                    numberOfLines={1}
+                                />
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Text style={[s.verifiedSub, { color: theme.textSub }]}>
+                                        ID: {user.membershipId || user.id.slice(0, 8)}{' • '}
+                                    </Text>
+                                    <DynamicText
+                                        text={user.city || 'Bareilly'}
+                                        style={[s.verifiedSub, { color: theme.textSub }]}
+                                    />
+                                </View>
                             </View>
                         </View>
 
@@ -393,7 +427,10 @@ export default function KycApprovalScreen() {
                                         </View>
                                     )}
                                     <View style={{ flex: 1 }}>
-                                        <Text style={[s.modalUserName, { color: theme.textMain }]}>{selectedUser.name}</Text>
+                                        <DynamicText
+                                            text={selectedUser.name}
+                                            style={[s.modalUserName, { color: theme.textMain }]}
+                                        />
                                         <Text style={[s.modalUserMeta, { color: theme.textSub }]}>
                                             Role: {selectedUser.role?.replace(/_/g, ' ').toUpperCase() || 'MEMBER'}
                                         </Text>
@@ -419,15 +456,24 @@ export default function KycApprovalScreen() {
                                     </View>
                                     <View style={s.modalInfoItem}>
                                         <Building2 color="#10b981" size={14} />
-                                        <Text style={[s.modalInfoText, { color: theme.textMain }]}>
-                                            {selectedUser.communityName || 'Bareilly Central Care Society'}
-                                        </Text>
+                                        <DynamicText
+                                            text={selectedUser.communityName || 'Bareilly Central Care Society'}
+                                            style={[s.modalInfoText, { color: theme.textMain }]}
+                                        />
                                     </View>
                                     <View style={s.modalInfoItem}>
                                         <MapPin color="#10b981" size={14} />
-                                        <Text style={[s.modalInfoText, { color: theme.textMain }]}>
-                                            {selectedUser.city || 'Bareilly'}, {selectedUser.state || 'UP'}
-                                        </Text>
+                                        <View style={{ flexDirection: 'row' }}>
+                                            <DynamicText
+                                                text={selectedUser.city || 'Bareilly'}
+                                                style={[s.modalInfoText, { color: theme.textMain }]}
+                                            />
+                                            <Text style={[s.modalInfoText, { color: theme.textMain }]}>, </Text>
+                                            <DynamicText
+                                                text={selectedUser.state || 'UP'}
+                                                style={[s.modalInfoText, { color: theme.textMain }]}
+                                            />
+                                        </View>
                                     </View>
                                     {selectedUser.paymentUtr ? (
                                         <View style={s.modalInfoItem}>

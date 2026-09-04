@@ -6,6 +6,7 @@ export interface GalleryPhoto {
   city: string;
   image: string;
   category: string;
+  description?: string;
   createdBy?: string;
   communityId?: string;
   status?: 'pending' | 'approved' | 'rejected';
