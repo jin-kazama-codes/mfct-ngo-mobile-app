@@ -1,30 +1,65 @@
+import '../global.css';
 import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { useColorScheme } from '@/components/useColorScheme';
+import { AppStateProvider } from '../src/context/AppStateProvider';
+import { useColorScheme } from 'nativewind';
+import '../src/i18n';
+import { useTranslation } from 'react-i18next';
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
+export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
   initialRouteName: '(tabs)',
 };
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
+
+// Restores saved theme & language before rendering anything
+function AppInit() {
+  const { setColorScheme } = useColorScheme();
+  const { i18n } = useTranslation();
+
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const [savedTheme, savedLang] = await Promise.all([
+          AsyncStorage.getItem('mfct_theme'),
+          AsyncStorage.getItem('mfct_language'),
+        ]);
+        if (savedTheme === 'dark' || savedTheme === 'light') {
+          setColorScheme(savedTheme);
+        } else {
+          setColorScheme('light'); // default
+        }
+        if (savedLang === 'hi' || savedLang === 'ur') {
+          i18n.changeLanguage(savedLang);
+        } else {
+          i18n.changeLanguage('hi');
+          await AsyncStorage.setItem('mfct_language', 'hi');
+        }
+      } catch (e) {
+        console.error('Failed to restore preferences:', e);
+        setColorScheme('light');
+        i18n.changeLanguage('hi');
+      }
+    };
+    restore();
+  }, []);
+
+  return null;
+}
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
@@ -39,18 +74,18 @@ export default function RootLayout() {
     return null;
   }
 
-  return <RootLayoutNav />;
-}
-
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AppStateProvider>
+        <AppInit />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
+          <Stack.Screen name="(stacks)" options={{ headerShown: false }} />
+        </Stack>
+      </AppStateProvider>
+    </GestureHandlerRootView>
   );
 }
+
