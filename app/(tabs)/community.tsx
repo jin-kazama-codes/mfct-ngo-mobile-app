@@ -69,7 +69,7 @@ interface DynamicCommunityCardProps {
   isDark: boolean;
   isUserInComm: boolean;
   onJoin: (comm: Community) => void;
-  t: (key: string, defaultVal?: string) => string;
+  t: any;
 }
 
 function DynamicCommunityCard({
@@ -508,7 +508,11 @@ const styles = StyleSheet.create({
     height: 130,
   },
   coverGradientOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   topRightBadgesRow: {

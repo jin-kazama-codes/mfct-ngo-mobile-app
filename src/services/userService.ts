@@ -16,8 +16,11 @@ function mapRow(row: Record<string, unknown>): User {
     isVerified: row.is_verified as boolean,
     joinDate: row.join_date as string,
     city: row.city as string,
+    district: (row.district || row.city) as string,
     state: row.state as string,
     address: (row.address || row.adderess || row.full_address) as string | undefined,
+    districtRole: (row.district_role || row.districtRole) as string | undefined,
+    district_role: (row.district_role || row.districtRole) as string | undefined,
     passwordHash: (row.password || row.password_hash || row.passwordHash) as string | undefined,
     aadhaarFrontUrl: (row.aadhaar_front_url || row.aadhaarFrontUrl) as string | undefined,
     aadhaarBackUrl: (row.aadhaar_back_url || row.aadhaarBackUrl) as string | undefined,
@@ -137,6 +140,8 @@ export async function createUser(user: User & { kycDocumentUrl?: string; aadhaar
     is_verified: user.isVerified ?? false,
     join_date: user.joinDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     city: city,
+    district: user.district || city,
+    district_role: user.districtRole || user.district_role || null,
     state: user.state || 'UP',
     password: passwordHash,
     aadhaar_front_url: user.aadhaarFrontUrl || null,
@@ -202,6 +207,9 @@ export async function updateUser(
   if (updates.phone !== undefined) payload.phone = updates.phone.trim();
   if (updates.role !== undefined) payload.role = updates.role;
   if (updates.city !== undefined) payload.city = updates.city.trim();
+  if (updates.district !== undefined) payload.district = updates.district.trim();
+  if (updates.districtRole !== undefined) payload.district_role = updates.districtRole;
+  else if (updates.district_role !== undefined) payload.district_role = updates.district_role;
   if (updates.state !== undefined) payload.state = updates.state.trim();
   if (updates.avatar !== undefined) payload.avatar = updates.avatar;
   if (updates.communityId !== undefined) payload.community_id = updates.communityId;

@@ -206,9 +206,12 @@ export default function ManageUsersScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<UserRole>('member');
   const [city, setCity] = useState('');
+  const [district, setDistrict] = useState('');
+  const [districtRole, setDistrictRole] = useState('');
   const [state, setState] = useState('');
   const [selectedCommunityId, setSelectedCommunityId] = useState('');
   const [paymentUtr, setPaymentUtr] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
 
   // Media states
   const [avatar, setAvatar] = useState('');
@@ -237,17 +240,26 @@ export default function ManageUsersScreen() {
   }, []);
 
   const filteredUsers = useMemo(() => {
+    let result = users;
+    if (roleFilter === 'district_committee') {
+      result = result.filter(u => u.districtRole || u.district_role);
+    } else if (roleFilter !== 'all') {
+      result = result.filter(u => u.role === roleFilter);
+    }
+
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return users;
-    return users.filter(u =>
+    if (!q) return result;
+    return result.filter(u =>
       (u.name && u.name.toLowerCase().includes(q)) ||
       (u.email && u.email.toLowerCase().includes(q)) ||
       (u.phone && u.phone.includes(q)) ||
       (u.membershipId && u.membershipId.toLowerCase().includes(q)) ||
       (u.city && u.city.toLowerCase().includes(q)) ||
+      (u.district && u.district.toLowerCase().includes(q)) ||
+      (u.districtRole && u.districtRole.toLowerCase().includes(q)) ||
       (u.role && u.role.toLowerCase().includes(q))
     );
-  }, [users, searchQuery]);
+  }, [users, searchQuery, roleFilter]);
 
   // Pick Image from Mobile
   const handlePickImage = async (field: 'avatar' | 'document' | 'screenshot') => {
@@ -287,6 +299,8 @@ export default function ManageUsersScreen() {
     setShowPassword(false);
     setRole('member');
     setCity('');
+    setDistrict('');
+    setDistrictRole('');
     setState('');
     setSelectedCommunityId('');
     setPaymentUtr('');
@@ -307,6 +321,8 @@ export default function ManageUsersScreen() {
     setShowPassword(false);
     setRole(user.role || 'member');
     setCity(user.city || '');
+    setDistrict(user.district || user.city || '');
+    setDistrictRole((user.districtRole || user.district_role || '') as string);
     setState(user.state || '');
     setSelectedCommunityId(user.communityId || '');
     setPaymentUtr(user.paymentUtr || '');
@@ -341,6 +357,9 @@ export default function ManageUsersScreen() {
         await updateUser(editingId, {
           name: name.trim(),
           role,
+          district: district.trim() || city.trim() || undefined,
+          districtRole: districtRole || undefined,
+          district_role: districtRole || undefined,
           city: city.trim(),
           state: state.trim(),
           communityId: comm?.id || selectedCommunityId || '',
@@ -362,6 +381,9 @@ export default function ManageUsersScreen() {
           email: finalEmail,
           phone: phone.trim(),
           role,
+          district: district.trim() || city.trim() || 'Bareilly',
+          districtRole: districtRole || undefined,
+          district_role: districtRole || undefined,
           avatar: avatar.trim() || defaultAvatar,
           communityId: comm?.id || selectedCommunityId || '',
           communityName: comm?.name || '',
@@ -528,6 +550,46 @@ export default function ManageUsersScreen() {
                 <X color={theme.textSub} size={16} />
               </TouchableOpacity>
             ) : null}
+          </View>
+
+          {/* Role Filter Pills */}
+          <View style={{ backgroundColor: theme.tabHeaderBg, borderBottomWidth: 1, borderBottomColor: theme.tabBorder, paddingVertical: 8, paddingHorizontal: 12 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {[
+                { id: 'all', label: 'All Users' },
+                { id: 'district_committee', label: '★ District Committee' },
+                { id: 'member', label: 'Members' },
+                { id: 'community_admin', label: 'Community Admins' },
+                { id: 'executive_admin', label: 'Executive Admins' },
+                { id: 'super_admin', label: 'Super Admins' },
+              ].map(rf => {
+                const isSelected = roleFilter === rf.id;
+                return (
+                  <TouchableOpacity
+                    key={rf.id}
+                    onPress={() => setRoleFilter(rf.id)}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 5,
+                      borderRadius: 20,
+                      backgroundColor: isSelected ? (rf.id === 'district_committee' ? '#d97706' : theme.primary) : (isDark ? '#1e293b' : '#f1f5f9'),
+                      borderWidth: 1,
+                      borderColor: isSelected ? 'transparent' : theme.cardBorder,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '700',
+                        color: isSelected ? '#fff' : theme.chipIdleText,
+                      }}
+                    >
+                      {rf.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
 
           {loading ? (

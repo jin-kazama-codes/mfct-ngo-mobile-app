@@ -15,6 +15,7 @@ import {
   Moon,
   ExternalLink,
   CheckCircle2,
+  Award,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from 'nativewind';
@@ -23,6 +24,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getLanguageCode,
   translateRole,
+  translateDistrictRole,
   translateCommunityName,
   translateCity,
   translateState,
@@ -123,6 +125,16 @@ export default function ProfileScreen() {
               {roleName}
             </Text>
           </View>
+
+          {(activeUser?.districtRole || activeUser?.district_role) ? (
+            <View className="flex-row items-center gap-1 mt-1.5 bg-amber-50 dark:bg-amber-950/80 px-3 py-1 rounded-full border border-amber-300 dark:border-amber-700">
+              <Award color="#d97706" size={14} />
+              <Text className="text-amber-800 dark:text-amber-300 text-xs font-bold tracking-wide">
+                {translateDistrictRole((activeUser?.districtRole || activeUser?.district_role) as string, currentLang as any)}
+                {activeUser?.district || activeUser?.city ? ` • ${activeUser?.district || activeUser?.city}` : ''}
+              </Text>
+            </View>
+          ) : null}
 
           <Text className="text-xs text-slate-500 dark:text-slate-400 mt-2 font-mono">
             ID: {activeUser?.membershipId || 'MEM-2024-001'}

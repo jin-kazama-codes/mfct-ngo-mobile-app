@@ -7,6 +7,13 @@ export type UserRole =
   | 'member'
   | 'premium_donor';
 
+export type DistrictRole =
+  | 'district_president'
+  | 'district_coordinator'
+  | 'district_gen_secretary'
+  | 'district_secretary'
+  | 'district_finance_coord';
+
 export type DonationCategory =
   | 'General'
   | 'Sadakah'
@@ -32,9 +39,12 @@ export interface User {
   email?: string;
   phone: string;
   city: string;
+  district?: string;
   state: string;
   address?: string;
   role: UserRole;
+  districtRole?: DistrictRole | string;
+  district_role?: DistrictRole | string;
   avatar: string;
   communityId: string;
   communityName: string;

@@ -1,10 +1,12 @@
 import React from 'react';
 import { View, Text, ScrollView, Image } from 'react-native';
 import { useAppState } from '../../../src/context/AppStateProvider';
-import { ShieldCheck, CheckCircle, Building2, QrCode } from 'lucide-react-native';
+import { ShieldCheck, CheckCircle, Building2, QrCode, Award } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import {
   getLanguageCode,
+  translateRole,
+  translateDistrictRole,
   translateCommunityName,
   translateCity,
   translateState,
@@ -51,10 +53,19 @@ export default function MyIdCardScreen() {
             </View>
           </View>
 
-          <View className="flex-row items-center gap-1 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30">
-            <CheckCircle color="#34d399" size={12} />
-            <Text className="text-emerald-300 text-xs font-bold">{t('id_card.verified_badge', 'Verified Member')}</Text>
-          </View>
+          {(activeUser?.districtRole || activeUser?.district_role) ? (
+            <View className="flex-row items-center gap-1 px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40">
+              <Award color="#fbbf24" size={12} />
+              <Text className="text-amber-300 text-xs font-bold">
+                {translateDistrictRole((activeUser?.districtRole || activeUser?.district_role) as string, lang as any)}
+              </Text>
+            </View>
+          ) : (
+            <View className="flex-row items-center gap-1 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30">
+              <CheckCircle color="#34d399" size={12} />
+              <Text className="text-emerald-300 text-xs font-bold">{t('id_card.verified_badge', 'Verified Member')}</Text>
+            </View>
+          )}
         </View>
 
         {/* User Info inside card */}

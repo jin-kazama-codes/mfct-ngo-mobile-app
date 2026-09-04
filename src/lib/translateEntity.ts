@@ -118,6 +118,29 @@ const ROLE_MAP: Record<string, { en: string, hi: string; ur: string }> = {
   'community_admin': { en: 'Community Admin', hi: 'सामुदायिक प्रशासक', ur: 'کمیونٹی ایڈمن' },
   'member': { en: 'Member', hi: 'सदस्य', ur: 'ممبر' },
   'premium_donor': { en: 'Premium Donor', hi: 'विशिष्ट दानदाता', ur: 'پریمیم ڈونر' },
+  'district_president': { en: 'District President', hi: 'जिला अध्यक्ष', ur: 'ضلعی صدر' },
+  'District President': { en: 'District President', hi: 'जिला अध्यक्ष', ur: 'ضلعی صدر' },
+  'district_coordinator': { en: 'District Coordinator', hi: 'जिला समन्वयक', ur: 'ضلعی کوآرڈینیٹر' },
+  'District Coordinator': { en: 'District Coordinator', hi: 'जिला समन्वयक', ur: 'ضلعی کوآرڈینیٹر' },
+  'district_gen_secretary': { en: 'District General Secretary', hi: 'जिला महासचिव', ur: 'ضلعی جنرل سیکرٹری' },
+  'District General Secretary': { en: 'District General Secretary', hi: 'जिला महासचिव', ur: 'ضلعی جنرل سیکرٹری' },
+  'district_secretary': { en: 'District Secretary', hi: 'जिला सचिव', ur: 'ضلعی سیکرٹری' },
+  'District Secretary': { en: 'District Secretary', hi: 'जिला सचिव', ur: 'ضلعی سیکرٹری' },
+  'district_finance_coord': { en: 'District Finance Coordinator', hi: 'जिला वित्त समन्वयक', ur: 'ضلعی فنانس کوآرڈینیٹر' },
+  'District Finance Coordinator': { en: 'District Finance Coordinator', hi: 'जिला वित्त समन्वयक', ur: 'ضلعی فنانس کوآرڈینیٹر' },
+};
+
+export const DISTRICT_ROLE_MAP: Record<string, { en: string; hi: string; ur: string }> = {
+  'district_president': { en: 'District President', hi: 'जिला अध्यक्ष', ur: 'ضلعی صدر' },
+  'district_coordinator': { en: 'District Coordinator', hi: 'जिला समन्वयक', ur: 'ضلعی کوآرڈینیٹر' },
+  'district_gen_secretary': { en: 'District General Secretary', hi: 'जिला महासचिव', ur: 'ضلعی جنرل سیکرٹری' },
+  'district_secretary': { en: 'District Secretary', hi: 'जिला सचिव', ur: 'ضلعی سیکرٹری' },
+  'district_finance_coord': { en: 'District Finance Coordinator', hi: 'जिला वित्त समन्वयक', ur: 'ضلعی فنانس کوآرڈینیٹر' },
+  'District President': { en: 'District President', hi: 'जिला अध्यक्ष', ur: 'ضلعی صدر' },
+  'District Coordinator': { en: 'District Coordinator', hi: 'जिला समन्वयक', ur: 'ضلعی کوآرڈینیٹر' },
+  'District General Secretary': { en: 'District General Secretary', hi: 'जिला महासचिव', ur: 'ضلعی جنرل سیکرٹری' },
+  'District Secretary': { en: 'District Secretary', hi: 'जिला सचिव', ur: 'ضلعی سیکرٹری' },
+  'District Finance Coordinator': { en: 'District Finance Coordinator', hi: 'जिला वित्त समन्वयक', ur: 'ضلعی فنانس کوآرڈینیٹر' },
 };
 
 
@@ -190,6 +213,13 @@ export function translateRole(role: string, lang: Language): string {
   const localized = getLocalizedValue(role, lang);
   if (localized !== role) return localized;
   return resolveEnumTranslation(role, ROLE_MAP, lang);
+}
+
+export function translateDistrictRole(districtRole: string, lang: Language): string {
+  if (!districtRole) return '';
+  const localized = getLocalizedValue(districtRole, lang);
+  if (localized !== districtRole) return localized;
+  return resolveEnumTranslation(districtRole, DISTRICT_ROLE_MAP, lang);
 }
 
 function normalizeQuote(str: string): string {

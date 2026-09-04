@@ -6,7 +6,7 @@ const TRANSLATION_CACHE_KEY = 'mfct_translation_cache_v2';
 
 let memoryCache: Record<string, string> = {};
 let isCacheLoaded = false;
-const inFlightRequests: Record<string, Promise<string>> = {};
+const inFlightRequests: Record<string, Promise<string> | undefined> = {};
 
 // Universal High-Accuracy Dictionary for Indian States, Common Locations, Honorifics & Names
 export const AUTO_TRANSLATE_DICTIONARY: Record<string, { hi: string; ur: string; en?: string }> = {
@@ -292,7 +292,7 @@ export async function autoTranslateText(text: string, targetLang: Language): Pro
   if (memoryCache[cacheKey] && isValidScript(memoryCache[cacheKey], targetLang)) {
     return memoryCache[cacheKey];
   }
-  if (inFlightRequests[cacheKey]) return inFlightRequests[cacheKey];
+  if (inFlightRequests[cacheKey]) return await inFlightRequests[cacheKey];
 
   const translationPromise = (async (): Promise<string> => {
     try {
