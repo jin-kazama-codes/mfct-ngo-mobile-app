@@ -390,3 +390,58 @@ export function useDynamicTranslatedText(rawText: string | undefined, targetLang
 
   return translated;
 }
+
+/**
+ * Multi-language community translation for name, description, city, and state.
+ */
+export async function autoTranslateCommunityData(
+  name?: string,
+  description?: string,
+  city?: string,
+  state?: string
+): Promise<{
+  hi: { name: string; description: string; city: string; state: string };
+  ur: { name: string; description: string; city: string; state: string };
+  en: { name: string; description: string; city: string; state: string };
+}> {
+  const [
+    name_hi, name_ur, name_en,
+    desc_hi, desc_ur, desc_en,
+    city_hi, city_ur, city_en,
+    state_hi, state_ur, state_en,
+  ] = await Promise.all([
+    autoTranslateText(name || '', 'hi'),
+    autoTranslateText(name || '', 'ur'),
+    autoTranslateText(name || '', 'en'),
+    autoTranslateText(description || '', 'hi'),
+    autoTranslateText(description || '', 'ur'),
+    autoTranslateText(description || '', 'en'),
+    autoTranslateText(city || '', 'hi'),
+    autoTranslateText(city || '', 'ur'),
+    autoTranslateText(city || '', 'en'),
+    autoTranslateText(state || '', 'hi'),
+    autoTranslateText(state || '', 'ur'),
+    autoTranslateText(state || '', 'en'),
+  ]);
+
+  return {
+    hi: {
+      name: name_hi || name || '',
+      description: desc_hi || description || '',
+      city: city_hi || city || '',
+      state: state_hi || state || '',
+    },
+    ur: {
+      name: name_ur || name || '',
+      description: desc_ur || description || '',
+      city: city_ur || city || '',
+      state: state_ur || state || '',
+    },
+    en: {
+      name: name_en || name || '',
+      description: desc_en || description || '',
+      city: city_en || city || '',
+      state: state_en || state || '',
+    },
+  };
+}

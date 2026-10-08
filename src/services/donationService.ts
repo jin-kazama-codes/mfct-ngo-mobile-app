@@ -1,5 +1,21 @@
 import { supabase } from '../lib/supabase';
-import { Donation, DonationCategory, UserRole } from '../types';
+import { Donation, DonationCategory, UserRole, WakalahInformation } from '../types';
+
+function parseWakalahInfo(val: unknown): WakalahInformation[] | undefined {
+  if (!val) return undefined;
+  if (Array.isArray(val)) return val as WakalahInformation[];
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed as WakalahInformation[];
+      if (parsed && typeof parsed === 'object') return [parsed as WakalahInformation];
+    } catch {
+      return undefined;
+    }
+  }
+  if (typeof val === 'object') return [val as WakalahInformation];
+  return undefined;
+}
 
 function mapRow(row: Record<string, unknown>): Donation {
   return {
@@ -7,9 +23,9 @@ function mapRow(row: Record<string, unknown>): Donation {
     transactionId: (row.transactionId || row.transaction_id) as string,
     utrNumber: (row.utrNumber || row.utr_number) as string,
     donorName: (row.donorName || row.donor_name) as string,
-    donorId: (row.donorId || row.donor_id) as string,
+    donorId: (row.donorId || row.donor_id || 'anonymous') as string,
     donorRole: (row.donorRole || row.donor_role) as UserRole,
-    campaignId: (row.campaignId || row.campaign_id) as string,
+    campaignId: (row.campaignId || row.campaign_id || 'general') as string,
     campaignTitle: (row.campaignTitle || row.campaign_title) as string,
     communityName: (row.communityName || row.community_name) as string,
     amountINR: Number(row.amountINR ?? row.amount_inr ?? 0),
@@ -20,6 +36,8 @@ function mapRow(row: Record<string, unknown>): Donation {
     status: ((row.status as Donation['status']) || 'verified'),
     date: (row.date as string) || '',
     receiptNumber: (row.receiptNumber || row.receipt_number) as string,
+    district: (row.district as string) || undefined,
+    wakalahInformation: parseWakalahInfo(row.wakalahInformation ?? row.wakalah_information),
   };
 }
 
@@ -52,16 +70,19 @@ export async function getRecentDonations(limit = 10): Promise<Donation[]> {
 }
 
 export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Donation> {
-  const payload = {
+  const campaignId = (!donation.campaignId || donation.campaignId === 'general') ? null : donation.campaignId;
+  const donorId = (!donation.donorId || donation.donorId === 'anonymous') ? null : donation.donorId;
+
+  const payload: Record<string, any> = {
     id: `don_${Date.now()}`,
     transaction_id: donation.transactionId || `TXN${Math.floor(100000000 + Math.random() * 900000000)}`,
     utr_number: donation.utrNumber,
     donor_name: donation.donorName || 'Generous Member',
-    donor_id: donation.donorId || 'anonymous',
+    donor_id: donorId,
     donor_role: donation.donorRole || 'member',
-    campaign_id: donation.campaignId,
-    campaign_title: donation.campaignTitle,
-    community_name: donation.communityName || 'Bareilly Central Care Society (Headquarters)',
+    campaign_id: campaignId,
+    campaign_title: donation.campaignTitle || 'General Fund',
+    community_name: donation.communityName || 'Mohammad Faeem Charitable Trust (MFCT)',
     amount_inr: Number(donation.amountINR || 0),
     category: donation.category || 'General',
     is_outside_community: Boolean(donation.isOutsideCommunity),
@@ -70,12 +91,45 @@ export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Do
     status: donation.status || 'pending_verification',
     date: donation.date || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
     receipt_number: donation.receiptNumber || `RCP-${Date.now().toString().slice(-6)}`,
+    district: donation.district || null,
+    wakalahInformation: donation.wakalahInformation
+      ? JSON.stringify(donation.wakalahInformation)
+      : null,
   };
 
   try {
-    const { data, error } = await supabase.from('donations').insert(payload).select().single();
+    let { data, error } = await supabase.from('donations').insert(payload).select().single();
+
     if (error) {
       console.warn('Supabase donation insert error:', error);
+
+      // If foreign key violation on campaign_id, retry with null
+      if (error.message?.includes('donations_campaign_id_fkey') || error.message?.includes('campaign_id')) {
+        payload.campaign_id = null;
+        const retry = await supabase.from('donations').insert(payload).select().single();
+        if (!retry.error) {
+          data = retry.data;
+          error = null;
+        } else {
+          error = retry.error;
+        }
+      }
+
+      // If foreign key violation on donor_id, retry with null
+      if (error && (error.message?.includes('donations_donor_id_fkey') || error.message?.includes('donor_id'))) {
+        payload.donor_id = null;
+        const retry = await supabase.from('donations').insert(payload).select().single();
+        if (!retry.error) {
+          data = retry.data;
+          error = null;
+        } else {
+          error = retry.error;
+        }
+      }
+    }
+
+    if (error) {
+      console.error('Failed to insert donation after retries:', error);
       return {
         id: payload.id,
         ...donation,
@@ -86,6 +140,7 @@ export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Do
       };
     }
     return mapRow(data);
+
   } catch (err) {
     console.warn('createDonation error:', err);
     return {

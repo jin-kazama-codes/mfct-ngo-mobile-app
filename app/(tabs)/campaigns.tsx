@@ -9,7 +9,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getCampaigns, getEmergencyCampaigns } from '../../src/services/campaignService';
+import { getCampaigns, getEmergencyCampaigns, calculateDaysLeft } from '../../src/services/campaignService';
 import { Campaign } from '../../src/types';
 import { Search, Heart, Clock, Flame, ShieldCheck, Sparkles } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +21,7 @@ import {
   translateCampaignTitle,
 } from '../../src/lib/translateEntity';
 import DynamicText from '../../src/components/DynamicText';
+import CampaignImageCarousel from '../../src/components/CampaignImageCarousel';
 
 const CATEGORIES = ['All', 'Urgent', 'Zakat', 'Sadqa', 'Fitra', 'Medical', 'Education', 'Food', 'Marriage', 'Janazah', 'Emergency Relief'];
 
@@ -201,46 +202,39 @@ export default function CampaignsScreen() {
                   key={campaign.id}
                   className="bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm"
                 >
-                  {/* Image */}
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/(stacks)/campaign-details',
-                        params: { id: campaign.id },
-                      })
+                  {/* Campaign Image Carousel */}
+                  <CampaignImageCarousel
+                    images={[campaign.mainImage, ...(campaign.galleryImages || [])].filter(Boolean)}
+                    height={176}
+                    showDots={true}
+                    showCounter={true}
+                    showChevrons={true}
+                    overlayBadges={
+                      <View className="flex-row flex-wrap gap-1">
+                        {campaign.isUrgent && (
+                          <View className="bg-red-500 px-2 py-0.5 rounded-full flex-row items-center gap-1">
+                            <Flame color="#fff" size={12} />
+                            <Text className="text-white text-xs font-bold">{translateCategory('Urgent', lang)}</Text>
+                          </View>
+                        )}
+                        {campaign.isZakatEligible && (
+                          <View className="bg-emerald-500 px-2 py-0.5 rounded-full">
+                            <Text className="text-white text-xs font-bold">{translateCategory('Zakat', lang)}</Text>
+                          </View>
+                        )}
+                        {campaign.isSadqaEligible && (
+                          <View className="bg-teal-600 px-2 py-0.5 rounded-full">
+                            <Text className="text-white text-xs font-bold">{translateCategory('Sadqa', lang)}</Text>
+                          </View>
+                        )}
+                        {campaign.isFitrahEligible && (
+                          <View className="bg-amber-600 px-2 py-0.5 rounded-full">
+                            <Text className="text-white text-xs font-bold">{translateCategory('Fitra', lang)}</Text>
+                          </View>
+                        )}
+                      </View>
                     }
-                    className="relative"
-                  >
-                    <Image
-                      source={{ uri: campaign.mainImage }}
-                      className="w-full h-44"
-                      resizeMode="cover"
-                    />
-                    <View className="absolute top-2 left-2 flex-row flex-wrap gap-1">
-                      {campaign.isUrgent && (
-                        <View className="bg-red-500 px-2 py-0.5 rounded-full flex-row items-center gap-1">
-                          <Flame color="#fff" size={12} />
-                          <Text className="text-white text-xs font-bold">{translateCategory('Urgent', lang)}</Text>
-                        </View>
-                      )}
-                      {campaign.isZakatEligible && (
-                        <View className="bg-emerald-500 px-2 py-0.5 rounded-full">
-                          <Text className="text-white text-xs font-bold">{translateCategory('Zakat', lang)}</Text>
-                        </View>
-                      )}
-                      {campaign.isSadqaEligible && (
-                        <View className="bg-teal-600 px-2 py-0.5 rounded-full">
-                          <Text className="text-white text-xs font-bold">{translateCategory('Sadqa', lang)}</Text>
-                        </View>
-                      )}
-                      {campaign.isFitrahEligible && (
-                        <View className="bg-amber-600 px-2 py-0.5 rounded-full">
-                          <Text className="text-white text-xs font-bold">{translateCategory('Fitra', lang)}</Text>
-                        </View>
-                      )}
-                    </View>
-                  </TouchableOpacity>
+                  />
 
                   {/* Content */}
                   <View className="p-4">
@@ -286,7 +280,9 @@ export default function CampaignsScreen() {
                       </View>
                       <View className="flex-row items-center gap-1">
                         <Clock color="#94a3b8" size={12} />
-                        <Text className="text-xs text-slate-500 font-semibold">{campaign.daysLeft}{t('campaigns.days_left', 'd left')}</Text>
+                        <Text className="text-xs text-slate-500 font-semibold">
+                          {typeof campaign.daysLeft === 'number' ? campaign.daysLeft : calculateDaysLeft(campaign as any)} {t('card.daysLeft', 'Days Left')}
+                        </Text>
                       </View>
                     </View>
 

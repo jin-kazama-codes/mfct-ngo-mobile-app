@@ -7,6 +7,7 @@ import {
   getLanguageCode,
   translateRole,
   translateDistrictRole,
+  translateRoleResponsibility,
   translateCommunityName,
   translateCity,
   translateState,
@@ -18,11 +19,11 @@ export default function MyIdCardScreen() {
   const { t, i18n } = useTranslation();
   const lang = getLanguageCode(i18n.language);
 
-  const memberId = activeUser?.membershipId || 'MFCT-BAR-2024-7185';
-  const joinDate = activeUser?.joinDate || '13 Aug 2026';
-  const rawCommunity = activeUser?.communityName || 'Bareilly Central Care Society (Headquarters)';
+  const memberId = activeUser?.membershipId || (activeUser?.id ? `MFCT-${activeUser.id.slice(0, 8).toUpperCase()}` : 'N/A');
+  const joinDate = activeUser?.joinDate || (activeUser?.created_at ? new Date(activeUser.created_at).toLocaleDateString() : 'Active');
+  const rawCommunity = activeUser?.communityName || 'MFCT Trust';
   const communityName = translateCommunityName(rawCommunity, lang);
-  const cityName = translateCity(activeUser?.city || 'Bareilly', lang);
+  const cityName = translateCity(activeUser?.city || activeUser?.district || '', lang);
   const stateName = translateState(activeUser?.state || 'UP', lang);
 
   return (
@@ -53,11 +54,11 @@ export default function MyIdCardScreen() {
             </View>
           </View>
 
-          {(activeUser?.districtRole || activeUser?.district_role) ? (
+          {((activeUser?.role && activeUser.role.startsWith('district_')) || activeUser?.districtRole || activeUser?.district_role) ? (
             <View className="flex-row items-center gap-1 px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40">
               <Award color="#fbbf24" size={12} />
               <Text className="text-amber-300 text-xs font-bold">
-                {translateDistrictRole((activeUser?.districtRole || activeUser?.district_role) as string, lang as any)}
+                {translateRole((activeUser?.role || activeUser?.districtRole || activeUser?.district_role) as string, lang as any)}
               </Text>
             </View>
           ) : (
@@ -91,7 +92,7 @@ export default function MyIdCardScreen() {
             </View>
             <View className="flex-row items-center mt-0.5">
               <DynamicText
-                text={activeUser?.city || 'Bareilly'}
+                text={activeUser?.city || activeUser?.district || ''}
                 className="text-xs text-slate-400"
               />
               <Text className="text-xs text-slate-400">, </Text>
@@ -121,8 +122,26 @@ export default function MyIdCardScreen() {
         </View>
       </View>
 
+      {/* Official Assigned Responsibility Card for District Office Bearers */}
+      {activeUser?.role && activeUser.role.startsWith('district_') && (
+        <View className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 p-4 rounded-2xl mt-4">
+          <View className="flex-row items-center gap-2 mb-1.5">
+            <ShieldCheck color="#d97706" size={16} />
+            <Text className="text-xs font-bold uppercase tracking-wider text-amber-900 dark:text-amber-300">
+              {lang === 'hi' ? 'आधिकारिक पद एवं दायित्व' : lang === 'ur' ? 'سرکاری عہدہ اور ذمہ داری' : 'Official Designation & Responsibility'}
+            </Text>
+          </View>
+          <Text className="text-sm font-bold text-slate-900 dark:text-white">
+            {translateRole(activeUser.role, lang)}
+          </Text>
+          <Text className="text-xs font-medium text-amber-800 dark:text-amber-200 mt-1 leading-5">
+            {translateRoleResponsibility(activeUser.role, lang)}
+          </Text>
+        </View>
+      )}
+
       {/* Info Card */}
-      <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 mt-6 gap-2">
+      <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 mt-4 gap-2">
         <Text className="text-slate-900 dark:text-white font-bold text-sm">
           {t('admin.kyc_title', 'Identity Verification')}
         </Text>

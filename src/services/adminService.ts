@@ -244,6 +244,28 @@ export async function getAccountDetails(): Promise<AccountDetails[]> {
 }
 
 export async function createAccountDetails(details: Omit<AccountDetails, 'id' | 'created_at' | 'updated_at'>): Promise<AccountDetails> {
+  try {
+    const payload = {
+      bank_name: details.bank_name,
+      account_number: details.account_number,
+      ifsc_code: details.ifsc_code,
+      upi_id: details.upi_id,
+      qr_code_url: details.qr_code_url || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase
+      .from('account_details')
+      .insert(payload)
+      .select()
+      .single();
+    if (!error && data) {
+      return data as AccountDetails;
+    }
+    if (error) console.warn('Supabase insert error, falling back to API route:', error.message);
+  } catch (err) {
+    console.warn('createAccountDetails direct insert error, trying fallback:', err);
+  }
+
   const res = await fetch('/api/account-details', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -255,6 +277,29 @@ export async function createAccountDetails(details: Omit<AccountDetails, 'id' | 
 }
 
 export async function updateAccountDetails(details: Partial<AccountDetails> & { id: string }): Promise<AccountDetails> {
+  try {
+    const { id, ...rest } = details;
+    const payload: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (rest.bank_name !== undefined) payload.bank_name = rest.bank_name;
+    if (rest.account_number !== undefined) payload.account_number = rest.account_number;
+    if (rest.ifsc_code !== undefined) payload.ifsc_code = rest.ifsc_code;
+    if (rest.upi_id !== undefined) payload.upi_id = rest.upi_id;
+    if (rest.qr_code_url !== undefined) payload.qr_code_url = rest.qr_code_url;
+
+    const { data, error } = await supabase
+      .from('account_details')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+    if (!error && data) {
+      return data as AccountDetails;
+    }
+    if (error) console.warn('Supabase update error, falling back to API route:', error.message);
+  } catch (err) {
+    console.warn('updateAccountDetails direct update error, trying fallback:', err);
+  }
+
   const res = await fetch('/api/account-details', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -266,6 +311,17 @@ export async function updateAccountDetails(details: Partial<AccountDetails> & { 
 }
 
 export async function deleteAccountDetails(id: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('account_details')
+      .delete()
+      .eq('id', id);
+    if (!error) return;
+    console.warn('Supabase delete error, falling back to API route:', error.message);
+  } catch (err) {
+    console.warn('deleteAccountDetails direct delete error, trying fallback:', err);
+  }
+
   const res = await fetch(`/api/account-details?id=${id}`, {
     method: 'DELETE',
   });

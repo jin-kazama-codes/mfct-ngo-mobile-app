@@ -11,9 +11,11 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { useColorScheme } from 'nativewind';
 import { useAppState } from '../../../src/context/AppStateProvider';
 import { getDonations } from '../../../src/services/donationService';
 import { Donation, Language } from '../../../src/types';
+import { MyDonationsListSkeleton } from '../../../src/components/SkeletonLoader';
 import {
   CreditCard,
   FileText,
@@ -138,12 +140,11 @@ export default function MyDonationsScreen() {
     }
   };
 
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
   if (loading) {
-    return (
-      <View className="flex-1 items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <ActivityIndicator color="#10b981" size="large" />
-      </View>
-    );
+    return <MyDonationsListSkeleton isDark={isDark} />;
   }
 
   return (
@@ -231,7 +232,7 @@ export default function MyDonationsScreen() {
           donations.map((don) => {
             const displayTitle = translateCampaignTitle(don.campaignTitle || 'General Support', lang);
             const displayComm = translateCommunityName(
-              don.communityName || 'Bareilly Central Care Society',
+              don.communityName || 'MFCT Community',
               lang
             );
             const displayCat = translateCategory(don.category || 'General', lang);
@@ -293,7 +294,7 @@ export default function MyDonationsScreen() {
 
                 <View className="flex-row flex-wrap items-center mb-3">
                   <DynamicText
-                    text={don.communityName || 'Bareilly Central Care Society'}
+                    text={don.communityName || 'MFCT Community'}
                     className="text-xs text-slate-500 dark:text-slate-400"
                   />
                   <Text className="text-xs text-slate-500 dark:text-slate-400">
@@ -358,7 +359,7 @@ export default function MyDonationsScreen() {
             const don = selectedReceipt;
             const displayTitle = translateCampaignTitle(don.campaignTitle || 'General Support', lang);
             const displayComm = translateCommunityName(
-              don.communityName || 'Bareilly Central Care Society',
+              don.communityName || 'MFCT Community',
               lang
             );
             const displayCat = translateCategory(don.category || 'General', lang);
@@ -433,7 +434,7 @@ export default function MyDonationsScreen() {
                         {t('modal.community', 'Community Hub:')}
                       </Text>
                       <DynamicText
-                        text={don.communityName || 'Bareilly Central Care Society'}
+                        text={don.communityName || 'MFCT Community'}
                         className="text-xs font-bold text-slate-900 dark:text-white"
                       />
                     </View>

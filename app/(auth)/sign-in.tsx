@@ -56,7 +56,18 @@ export default function SignInScreen() {
             const result = await handleLogin(identifier.trim(), password);
             setIsLoading(false);
 
-            if (result.success) {
+            if (result.success && result.user) {
+                const u = result.user;
+                const isDistrictOfficer = !!(u.district_role || u.districtRole);
+                const isAdmin = u.role === 'super_admin' || u.role === 'executive_admin' || u.role === 'community_admin' || isDistrictOfficer;
+                const isApproved = u.status === 'approved' || (u.isVerified && u.status !== 'reject' && u.status !== 'rejected');
+
+                if (isAdmin || isApproved) {
+                    router.replace('/(drawer)/dashboard');
+                } else {
+                    router.replace('/(auth)/under-review');
+                }
+            } else if (result.success) {
                 router.replace('/(drawer)/dashboard');
             } else {
                 setError(
@@ -171,7 +182,7 @@ export default function SignInScreen() {
                             {/* Phone Input */}
                             <View className="gap-1">
                                 <Text className="text-slate-700 dark:text-slate-300 font-semibold text-xs ml-1">
-                                    {tr('मोबाइल नंबर / ईमेल', 'Phone Number / Email')}
+                                    {tr('मोबाइल नंबर ', 'Phone Number')}
                                 </Text>
                                 <View className="flex-row items-center bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl px-3.5">
                                     <Phone color="#94a3b8" size={17} />
@@ -181,7 +192,8 @@ export default function SignInScreen() {
                                         placeholderTextColor="#94a3b8"
                                         autoCapitalize="none"
                                         autoCorrect={false}
-                                        keyboardType="default"
+                                        keyboardType="numeric"
+                                        maxLength={10}
                                         returnKeyType="next"
                                         value={identifier}
                                         onChangeText={(txt) => {

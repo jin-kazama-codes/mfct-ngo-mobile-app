@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Image, ActivityIndicator } from 'react-native';
+import { useColorScheme } from 'nativewind';
 import { useAppState } from '../../../src/context/AppStateProvider';
 import { getUsers } from '../../../src/services/userService';
 import { User } from '../../../src/types';
+import { UserListSkeleton } from '../../../src/components/SkeletonLoader';
 import { Users, ShieldCheck } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import {
@@ -47,11 +49,14 @@ export default function CommunityMembersScreen() {
     fetchMembers();
   }, [activeUser?.communityId, activeUser?.communityName]);
 
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-white dark:bg-slate-950">
-        <ActivityIndicator color="#10b981" size="large" />
-      </View>
+      <ScrollView className="flex-1 bg-slate-50 dark:bg-slate-950" contentContainerStyle={{ padding: 16 }}>
+        <UserListSkeleton isDark={isDark} />
+      </ScrollView>
     );
   }
 

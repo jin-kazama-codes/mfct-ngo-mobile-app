@@ -6,15 +6,39 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://tyiecstaywsocmqsabhg.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_02kGJR-DB9gOz0RGANer7A_aygtlC64",
+        "EXPO_PUBLIC_SUPABASE_SCHEMA": "dev",
+        "EXPO_PUBLIC_ENV": "development",
+        "EXPO_PUBLIC_EMAIL_FROM": "MFCT Portal <info@mfcttrust.com>"
+      }
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "preview",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://tyiecstaywsocmqsabhg.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_02kGJR-DB9gOz0RGANer7A_aygtlC64",
+        "EXPO_PUBLIC_SUPABASE_SCHEMA": "dev",
+        "EXPO_PUBLIC_ENV": "development",
+        "EXPO_PUBLIC_EMAIL_FROM": "MFCT Portal <info@mfcttrust.com>"
+      }
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://tyiecstaywsocmqsabhg.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_02kGJR-DB9gOz0RGANer7A_aygtlC64",
+        "EXPO_PUBLIC_SUPABASE_SCHEMA": "public",
+        "EXPO_PUBLIC_ENV": "production",
+        "EXPO_PUBLIC_EMAIL_FROM": "MFCT Portal <info@mfcttrust.com>"
+      }
     }
   },
   "submit": {

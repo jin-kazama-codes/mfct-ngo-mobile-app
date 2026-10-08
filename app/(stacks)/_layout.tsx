@@ -10,6 +10,7 @@ export default function StacksLayout() {
         >
             <Stack.Screen name="campaign-details" options={{ headerShown: false }} />
             <Stack.Screen name="donation" options={{ headerShown: false }} />
+            <Stack.Screen name="change-password" options={{ headerShown: false }} />
         </Stack>
     );
 }

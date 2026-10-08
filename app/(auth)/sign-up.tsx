@@ -1,22 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, ScrollView,
     ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet,
     Image, Modal, Alert
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useAppState } from '../../src/context/AppStateProvider';
 import { Community, User } from '../../src/types';
 import { getCommunities } from '../../src/services/communityService';
 import { createUser } from '../../src/services/userService';
+import { uploadImageToSupabase } from '../../src/services/storageService';
 import { hashPassword } from '../../src/lib/auth';
 import { useColorScheme } from 'nativewind';
 import { useTranslation } from 'react-i18next';
 import {
     Sparkles, ArrowLeft, ArrowRight, UserCheck, Eye, EyeOff,
     Upload, QrCode, ChevronDown, Check, Copy, Camera, Image as ImageIcon,
-    Trash2, FileText, CheckCircle2, X, Globe, ShieldCheck, HeartHandshake,
+    Trash2, FileText, CheckCircle2, AlertCircle, X, Globe, ShieldCheck, HeartHandshake,
     HandHeart, Building2, MapPin, Mail, Phone, Lock, User as UserIcon
 } from 'lucide-react-native';
 
@@ -52,6 +54,7 @@ export default function SignUpScreen() {
     const [communities, setCommunities] = useState<Community[]>([]);
     const [selectedCommunityId, setSelectedCommunityId] = useState('');
     const [showCommunityPicker, setShowCommunityPicker] = useState(false);
+    const [showAllInPicker, setShowAllInPicker] = useState(false);
     const [showReligionPicker, setShowReligionPicker] = useState(false);
 
     // Media upload states
@@ -76,6 +79,137 @@ export default function SignUpScreen() {
     const [submitting, setSubmitting] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' } | null>(null);
     const [registeredUser, setRegisteredUser] = useState<User | null>(null);
+    const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (redirectTimerRef.current) {
+                clearTimeout(redirectTimerRef.current);
+            }
+        };
+    }, []);
+
+    const saveDraftState = async (currentTarget?: string) => {
+        try {
+            const draft = {
+                step,
+                fullName,
+                phone,
+                email,
+                password,
+                city,
+                state,
+                address,
+                religion,
+                isMalikENisab,
+                helpType,
+                helpDetails,
+                selectedCommunityId,
+                paymentMethod,
+                utrNumber,
+                isFeePaid,
+                avatarUri,
+                avatarFileName,
+                aadhaarFrontUri,
+                aadhaarFrontFileName,
+                aadhaarBackUri,
+                aadhaarBackFileName,
+                screenshotUri,
+                screenshotFileName,
+            };
+            await AsyncStorage.setItem('@signup_form_draft', JSON.stringify(draft));
+            if (currentTarget) {
+                await AsyncStorage.setItem('@camera_active_target', currentTarget);
+                await AsyncStorage.setItem('@camera_launch_origin', '/(auth)/sign-up');
+            }
+        } catch (e) {
+            console.warn('Failed to save sign-up draft:', e);
+        }
+    };
+
+    // Restore draft form & recover camera asset if Android killed activity
+    useEffect(() => {
+        const restoreDraftAndPendingImage = async () => {
+            try {
+                const draftStr = await AsyncStorage.getItem('@signup_form_draft');
+                if (draftStr) {
+                    const d = JSON.parse(draftStr);
+                    if (d.step) setStep(d.step);
+                    if (d.fullName) setFullName(d.fullName);
+                    if (d.phone) setPhone(d.phone);
+                    if (d.email) setEmail(d.email);
+                    if (d.password) setPassword(d.password);
+                    if (d.city) setCity(d.city);
+                    if (d.state) setState(d.state);
+                    if (d.address) setAddress(d.address);
+                    if (d.religion) setReligion(d.religion);
+                    if (d.isMalikENisab !== undefined) setIsMalikENisab(d.isMalikENisab);
+                    if (d.helpType) setHelpType(d.helpType);
+                    if (d.helpDetails) setHelpDetails(d.helpDetails);
+                    if (d.selectedCommunityId) setSelectedCommunityId(d.selectedCommunityId);
+                    if (d.paymentMethod) setPaymentMethod(d.paymentMethod);
+                    if (d.utrNumber) setUtrNumber(d.utrNumber);
+                    if (d.isFeePaid !== undefined) setIsFeePaid(d.isFeePaid);
+                    if (d.avatarUri) setAvatarUri(d.avatarUri);
+                    if (d.avatarFileName) setAvatarFileName(d.avatarFileName);
+                    if (d.aadhaarFrontUri) setAadhaarFrontUri(d.aadhaarFrontUri);
+                    if (d.aadhaarFrontFileName) setAadhaarFrontFileName(d.aadhaarFrontFileName);
+                    if (d.aadhaarBackUri) setAadhaarBackUri(d.aadhaarBackUri);
+                    if (d.aadhaarBackFileName) setAadhaarBackFileName(d.aadhaarBackFileName);
+                    if (d.screenshotUri) setScreenshotUri(d.screenshotUri);
+                    if (d.screenshotFileName) setScreenshotFileName(d.screenshotFileName);
+                }
+
+                if (Platform.OS === 'android') {
+                    const pendingResult = await ImagePicker.getPendingResultAsync();
+                    const pendingTarget = await AsyncStorage.getItem('@camera_active_target');
+
+                    await AsyncStorage.removeItem('@camera_launch_origin');
+                    await AsyncStorage.removeItem('@camera_active_target');
+
+                    if (
+                        pendingResult &&
+                        !('canceled' in pendingResult && pendingResult.canceled) &&
+                        'assets' in pendingResult &&
+                        pendingResult.assets &&
+                        pendingResult.assets.length > 0
+                    ) {
+                        const asset = pendingResult.assets[0];
+                        const defaultName = pendingTarget === 'avatar'
+                            ? 'profile_photo.jpg'
+                            : pendingTarget === 'aadhaarFront'
+                                ? 'aadhaar_front.jpg'
+                                : pendingTarget === 'aadhaarBack'
+                                    ? 'aadhaar_back.jpg'
+                                    : 'payment_receipt.jpg';
+                        const fname = asset.fileName || defaultName;
+
+                        if (pendingTarget === 'avatar') {
+                            setAvatarUri(asset.uri);
+                            setAvatarFileName(fname);
+                            showToast(tr('प्रोफ़ाइल फ़ोटो कैप्चर की गई!', 'پروفائل تصویر لی گئی!', 'Profile photo captured!'), 'success');
+                        } else if (pendingTarget === 'aadhaarFront') {
+                            setAadhaarFrontUri(asset.uri);
+                            setAadhaarFrontFileName(fname);
+                            showToast(tr('आधार सामने का भाग कैप्चर किया गया!', 'آدھار سامنے کا حصہ لیا گیا!', 'Aadhaar front captured!'), 'success');
+                        } else if (pendingTarget === 'aadhaarBack') {
+                            setAadhaarBackUri(asset.uri);
+                            setAadhaarBackFileName(fname);
+                            showToast(tr('आधार पीछे का भाग कैप्चर किया गया!', 'آدھار پیچھے کا حصہ لیا گیا!', 'Aadhaar back captured!'), 'success');
+                        } else if (pendingTarget === 'screenshot') {
+                            setScreenshotUri(asset.uri);
+                            setScreenshotFileName(fname);
+                            showToast(tr('रसीद कैप्चर की गई!', 'رسید لی گئی!', 'Receipt captured!'), 'success');
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to restore sign up draft or camera asset:', e);
+            }
+        };
+
+        restoreDraftAndPendingImage();
+    }, []);
 
     const showToast = (message: string, type: 'error' | 'success' = 'error') => {
         setToast({ message, type });
@@ -87,7 +221,7 @@ export default function SignUpScreen() {
             if (typeof navigator !== 'undefined' && navigator.clipboard) {
                 navigator.clipboard.writeText(text);
             }
-        } catch {}
+        } catch { }
         showToast(tr(`${label} कॉपी किया गया!`, `${label} کاپی ہو گیا!`, `${label} copied!`), 'success');
     };
 
@@ -98,7 +232,42 @@ export default function SignUpScreen() {
         }).catch(console.error);
     }, []);
 
-    const activeCommunity = communities.find((c) => c.id === selectedCommunityId) || communities[0];
+    // Filter communities strictly by city typed by user
+    const filteredCommunities = useMemo(() => {
+        const q = city.trim().toLowerCase();
+        if (!q) return communities;
+        return communities.filter((c) => {
+            const cCity = (c.city || '').trim().toLowerCase();
+            const cDist = (c.district || '').trim().toLowerCase();
+            const matchCity = cCity.length > 0 && (cCity.includes(q) || q.includes(cCity));
+            const matchDist = cDist.length > 0 && (cDist.includes(q) || q.includes(cDist));
+            return matchCity || matchDist;
+        });
+    }, [communities, city]);
+
+    const hasCitySpecificCommunities = useMemo(() => {
+        return city.trim().length > 0 && filteredCommunities.length > 0;
+    }, [city, filteredCommunities]);
+
+    // Auto-select first matching community when city changes
+    useEffect(() => {
+        if (filteredCommunities.length > 0) {
+            const exists = filteredCommunities.some((c) => c.id === selectedCommunityId);
+            if (!exists) {
+                setSelectedCommunityId(filteredCommunities[0].id);
+            }
+        } else if (communities.length > 0) {
+            const exists = communities.some((c) => c.id === selectedCommunityId);
+            if (!exists) {
+                setSelectedCommunityId(communities[0].id);
+            }
+        }
+    }, [filteredCommunities, communities, selectedCommunityId]);
+
+    const activeCommunity =
+        filteredCommunities.find((c) => c.id === selectedCommunityId) ||
+        communities.find((c) => c.id === selectedCommunityId) ||
+        communities[0];
 
     const handleReligionChange = (newRel: 'Hindu' | 'Muslim' | 'Sikh' | 'Christian' | '') => {
         setReligion(newRel);
@@ -123,6 +292,9 @@ export default function SignUpScreen() {
         setPickerTarget(null);
         if (!target) return;
 
+        // Persist draft form state and camera lock flags before opening picker
+        await saveDraftState(target);
+
         try {
             if (source === 'camera') {
                 const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -137,8 +309,11 @@ export default function SignUpScreen() {
                 const result = await ImagePicker.launchCameraAsync({
                     allowsEditing: target === 'avatar',
                     aspect: target === 'avatar' ? [1, 1] : undefined,
-                    quality: 0.8,
+                    quality: 0.7,
                 });
+
+                await AsyncStorage.removeItem('@camera_launch_origin');
+                await AsyncStorage.removeItem('@camera_active_target');
 
                 if (!result.canceled && result.assets && result.assets.length > 0) {
                     const asset = result.assets[0];
@@ -183,8 +358,11 @@ export default function SignUpScreen() {
                     mediaTypes: ['images'],
                     allowsEditing: target === 'avatar',
                     aspect: target === 'avatar' ? [1, 1] : undefined,
-                    quality: 0.8,
+                    quality: 0.7,
                 });
+
+                await AsyncStorage.removeItem('@camera_launch_origin');
+                await AsyncStorage.removeItem('@camera_active_target');
 
                 if (!result.canceled && result.assets && result.assets.length > 0) {
                     const asset = result.assets[0];
@@ -223,6 +401,31 @@ export default function SignUpScreen() {
     };
 
     const handleNextStep1 = () => {
+        if (!email.trim()) {
+            showToast(
+                tr(
+                    'ईमेल फ़ील्ड आवश्यक है। कृपया अपना ईमेल पता दर्ज करें।',
+                    'ای میل کا خانہ ضروری ہے۔ براہ کرم اپنا ای میل درج کریں۔',
+                    'Email field is required. Please enter your email address.'
+                ),
+                'error'
+            );
+            return;
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            showToast(
+                tr(
+                    'कृपया एक वैध ईमेल पता दर्ज करें।',
+                    'براہ کرم درست ای میل درج کریں۔',
+                    'Please enter a valid email address.'
+                ),
+                'error'
+            );
+            return;
+        }
+
         const missingFields: string[] = [];
         if (!fullName.trim()) missingFields.push(tr('पूरा नाम', 'مکمل نام', 'Full Name'));
         if (!phone.trim()) missingFields.push(tr('मोबाइल नंबर', 'موبائل نمبر', 'Mobile Number'));
@@ -344,31 +547,39 @@ export default function SignUpScreen() {
 
         setSubmitting(true);
         try {
+            // Upload local images to Supabase storage IMAGES bucket so they get public HTTPS URLs
+            const [uploadedAvatar, uploadedScreenshot, uploadedAadhaarFront, uploadedAadhaarBack] = await Promise.all([
+                avatarUri ? uploadImageToSupabase(avatarUri, 'users') : Promise.resolve(''),
+                screenshotUri ? uploadImageToSupabase(screenshotUri, 'receipts') : Promise.resolve(''),
+                aadhaarFrontUri ? uploadImageToSupabase(aadhaarFrontUri, 'kyc') : Promise.resolve(''),
+                aadhaarBackUri ? uploadImageToSupabase(aadhaarBackUri, 'kyc') : Promise.resolve(''),
+            ]);
+
             const hashedPassword = await hashPassword(password);
-            const userCity = city.trim() || 'Bareilly';
+            const userCity = city.trim() || activeCommunity.city || '';
 
             const newMember: User = {
                 id: `usr_new_${Date.now()}`,
                 name: fullName.trim(),
-                email: email.trim() ? email.trim().toLowerCase() : undefined,
+                email: email.trim().toLowerCase(),
                 phone: phone.trim(),
                 city: userCity,
                 state: state.trim(),
                 address: address.trim(),
                 role: 'member',
-                avatar: avatarUri,
+                avatar: uploadedAvatar || avatarUri,
                 communityId: activeCommunity.id,
                 communityName: activeCommunity.name,
-                membershipId: `SS-${userCity.substring(0, 3).toUpperCase()}-2024-${Math.floor(1000 + Math.random() * 9000)}`,
+                membershipId: `SS-${userCity.substring(0, 3).toUpperCase()}-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+                status: 'pending',
                 isVerified: false,
-                isPremium: false,
                 joinDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
                 passwordHash: hashedPassword,
                 paymentMethod: paymentMethod,
                 paymentUtr: utrNumber.trim() || undefined,
-                paymentScreenshotUrl: screenshotUri || undefined,
-                aadhaarFrontUrl: aadhaarFrontUri || undefined,
-                aadhaarBackUrl: aadhaarBackUri || undefined,
+                paymentScreenshotUrl: uploadedScreenshot || screenshotUri || undefined,
+                aadhaarFrontUrl: uploadedAadhaarFront || aadhaarFrontUri || undefined,
+                aadhaarBackUrl: uploadedAadhaarBack || aadhaarBackUri || undefined,
                 religion: religion || undefined,
                 isMalikENisab: religion === 'Muslim' ? (isMalikENisab ?? undefined) : undefined,
                 is_malik_e_nisab: religion === 'Muslim' ? (isMalikENisab ?? undefined) : undefined,
@@ -379,25 +590,63 @@ export default function SignUpScreen() {
             };
 
             const created = await createUser({ ...newMember });
+            const finalUser = created || newMember;
 
-            setRegisteredUser(created || newMember);
+            setRegisteredUser(finalUser);
             setStep(3);
-        } catch (err) {
+
+            // Clean up drafts from storage upon successful registration
+            try {
+                await AsyncStorage.removeItem('@signup_form_draft');
+                await AsyncStorage.removeItem('@camera_active_target');
+                await AsyncStorage.removeItem('@camera_launch_origin');
+            } catch {}
+
+            // Auto redirect to Under Review screen after allowing user to view Step 3
+            if (redirectTimerRef.current) {
+                clearTimeout(redirectTimerRef.current);
+            }
+            redirectTimerRef.current = setTimeout(async () => {
+                await handleCompleteAndNavigate(finalUser);
+            }, 3000);
+        } catch (err: any) {
             console.error('Registration error:', err);
-            showToast(
-                tr('पंजीकरण विफल रहा। कृपया पुनः प्रयास करें।', 'رجسٹریشن ناکام رہی۔ دوبارہ کوشش کریں۔', 'Registration failed. Please try again.'),
-                'error'
-            );
+            if (err?.code === '23505' && (err?.message?.includes('users_email_key') || err?.details?.includes('email'))) {
+                showToast(
+                    tr('यह ईमेल पता पहले से पंजीकृत है। कृपया दूसरा ईमेल दर्ज करें।', 'یہ ای میل ایڈریس پہلے سے رجسٹرڈ ہے۔ براہ کرم دوسرا ای میل درج کریں۔', 'This email is already registered. Please use another email.'),
+                    'error'
+                );
+            } else if (err?.code === '23505' && (err?.message?.includes('phone') || err?.details?.includes('phone'))) {
+                showToast(
+                    tr('यह फोन नंबर पहले से पंजीकृत है।', 'یہ فون نمبر پہلے سے رجسٹرڈ ہے۔', 'This phone number is already registered.'),
+                    'error'
+                );
+            } else {
+                showToast(
+                    tr('पंजीकरण विफल रहा। कृपया पुनः प्रयास करें।', 'رجسٹریشن ناکام رہی۔ دوبارہ کوشش کریں۔', 'Registration failed. Please try again.'),
+                    'error'
+                );
+            }
         } finally {
             setSubmitting(false);
         }
     };
 
-    const handleCompleteAndNavigate = async () => {
-        if (registeredUser) {
-            await handleRegisterSession(registeredUser);
+    const handleCompleteAndNavigate = async (userOverride?: User) => {
+        if (redirectTimerRef.current) {
+            clearTimeout(redirectTimerRef.current);
+            redirectTimerRef.current = null;
         }
-        router.replace('/(drawer)/dashboard');
+        const userToSave = userOverride || registeredUser;
+        if (userToSave) {
+            await handleRegisterSession(userToSave);
+        }
+        try {
+            await AsyncStorage.removeItem('@signup_form_draft');
+            await AsyncStorage.removeItem('@camera_active_target');
+            await AsyncStorage.removeItem('@camera_launch_origin');
+        } catch {}
+        router.replace('/(auth)/under-review');
     };
 
     const dynamicBg = isDark ? '#020617' : '#f8f6f1';
@@ -521,7 +770,7 @@ export default function SignUpScreen() {
                         {/* Email Address */}
                         <View style={s.fieldGroup}>
                             <Text style={[s.label, { color: dynamicSubText }]}>
-                                {tr('ईमेल पता (वैकल्पिक)', 'ای میل (اختیاری)', 'Email Address (Optional)')}
+                                {tr('ईमेल पता *', 'ای میل ایڈریس *', 'Email Address *')}
                             </Text>
                             <View style={[s.inputWithIcon, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}>
                                 <Mail color={placeholderColor} size={18} />
@@ -620,7 +869,10 @@ export default function SignUpScreen() {
                                 {tr('स्थानीय समुदाय *', 'مقامی کمیونٹی *', 'Local Community *')}
                             </Text>
                             <TouchableOpacity
-                                onPress={() => setShowCommunityPicker(true)}
+                                onPress={() => {
+                                    setShowAllInPicker(false);
+                                    setShowCommunityPicker(true);
+                                }}
                                 style={[s.pickerTrigger, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}
                             >
                                 <Text style={[s.pickerTriggerText, { color: activeCommunity ? dynamicText : placeholderColor }]} numberOfLines={1}>
@@ -628,6 +880,32 @@ export default function SignUpScreen() {
                                 </Text>
                                 <ChevronDown color={placeholderColor} size={18} />
                             </TouchableOpacity>
+
+                            {city.trim() ? (
+                                hasCitySpecificCommunities ? (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 }}>
+                                        <CheckCircle2 color="#10b981" size={13} />
+                                        <Text style={{ fontSize: 11, fontWeight: '600', color: '#10b981' }}>
+                                            {tr(
+                                                `"${city.trim()}" के लिए ${filteredCommunities.length} समुदाय उपलब्ध`,
+                                                `"${city.trim()}" کے لیے ${filteredCommunities.length} کمیونٹیز دستیاب`,
+                                                `${filteredCommunities.length} communities available for "${city.trim()}"`
+                                            )}
+                                        </Text>
+                                    </View>
+                                ) : (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 }}>
+                                        <AlertCircle color={isDark ? '#fbbf24' : '#d97706'} size={13} />
+                                        <Text style={{ fontSize: 11, fontWeight: '500', color: isDark ? '#fbbf24' : '#d97706' }}>
+                                            {tr(
+                                                `"${city.trim()}" के लिए कोई विशिष्ट समुदाय नहीं, सभी दिखाए जा रहे हैं`,
+                                                `"${city.trim()}" کے لیے کوئی مخصوص کمیونٹی نہیں، تمام دکھائی جا رہی ہیں`,
+                                                `No specific community for "${city.trim()}", showing all communities`
+                                            )}
+                                        </Text>
+                                    </View>
+                                )
+                            ) : null}
                         </View>
 
                         {/* Religion Field */}
@@ -1239,9 +1517,20 @@ export default function SignUpScreen() {
                             ))}
                         </View>
 
-                        <TouchableOpacity onPress={handleCompleteAndNavigate} style={s.primaryBtn}>
+                        <View style={{ width: '100%', alignItems: 'center', marginTop: 4, marginBottom: 2 }}>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#059669' }}>
+                                {tr(
+                                    'समीक्षा स्थिति पृष्ठ पर स्वतः भेजा जा रहा है…',
+                                    'آپ کو خود بخود جائزہ صفحہ پر لے جایا جا رہا ہے…',
+                                    'Automatically redirecting to Under Review page…'
+                                )}
+                            </Text>
+                        </View>
+
+                        <TouchableOpacity onPress={() => handleCompleteAndNavigate()} style={s.primaryBtn}>
+                            <ActivityIndicator size="small" color="#f0c868" />
                             <Text style={s.primaryBtnText}>
-                                {tr('होम डैशबोर्ड पर जाएं', 'ہوم ڈیش بورڈ پر جائیں', 'Go to Home Dashboard')}
+                                {tr('खाता समीक्षा स्थिति देखें', 'اکاؤنٹ اسٹیٹس دیکھیں', 'View Account Review Status')}
                             </Text>
                             <ArrowRight color="#f0c868" size={18} />
                         </TouchableOpacity>
@@ -1409,62 +1698,96 @@ export default function SignUpScreen() {
             )}
 
             {/* Community Picker Modal */}
-            {showCommunityPicker && (
-                <Modal
-                    visible={showCommunityPicker}
-                    transparent
-                    animationType="fade"
-                    onRequestClose={() => setShowCommunityPicker(false)}
-                >
-                    <TouchableOpacity
-                        style={s.modalBackdrop}
-                        activeOpacity={1}
-                        onPress={() => setShowCommunityPicker(false)}
+            {showCommunityPicker && (() => {
+                const displayCommunities = (hasCitySpecificCommunities && !showAllInPicker) ? filteredCommunities : communities;
+
+                return (
+                    <Modal
+                        visible={showCommunityPicker}
+                        transparent
+                        animationType="fade"
+                        onRequestClose={() => setShowCommunityPicker(false)}
                     >
-                        <View style={[s.pickerSheet, { backgroundColor: dynamicCardBg }]}>
-                            <View style={[s.pickerHeader, { borderBottomColor: dynamicBorder }]}>
-                                <Text style={[s.pickerTitle, { color: dynamicText }]}>
-                                    {tr('अपना स्थानीय समुदाय चुनें', 'اپنی مقامی کمیونٹی منتخب کریں', 'Select Your Local Community')}
-                                </Text>
-                                <TouchableOpacity
-                                    onPress={() => setShowCommunityPicker(false)}
-                                    style={[s.pickerClose, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}
-                                >
-                                    <X color={dynamicSubText} size={18} />
-                                </TouchableOpacity>
-                            </View>
-                            <ScrollView style={s.pickerList}>
-                                {communities.map((item) => {
-                                    const isSelected = item.id === selectedCommunityId;
-                                    return (
-                                        <TouchableOpacity
-                                            key={item.id}
-                                            onPress={() => {
-                                                setSelectedCommunityId(item.id);
-                                                setShowCommunityPicker(false);
-                                            }}
-                                            style={[
-                                                s.communityItem,
-                                                isSelected
-                                                    ? [s.communityItemActive, { backgroundColor: isDark ? '#14281f' : '#ecfdf5', borderColor: '#059669' }]
-                                                    : [s.communityItemIdle, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]
-                                            ]}
-                                        >
-                                            <View style={s.flex1}>
-                                                <Text style={[s.communityItemName, { color: dynamicText }]}>{item.name}</Text>
-                                                <Text style={[s.communityItemSub, { color: dynamicSubText }]}>
-                                                    {item.city} • {tr('प्रशासक:', 'ایڈمن:', 'Admin:')} {item.adminName}
+                        <TouchableOpacity
+                            style={s.modalBackdrop}
+                            activeOpacity={1}
+                            onPress={() => setShowCommunityPicker(false)}
+                        >
+                            <View style={[s.pickerSheet, { backgroundColor: dynamicCardBg }]}>
+                                <View style={[s.pickerHeader, { borderBottomColor: dynamicBorder }]}>
+                                    <Text style={[s.pickerTitle, { color: dynamicText }]}>
+                                        {tr('अपना स्थानीय समुदाय चुनें', 'اپنی مقامی کمیونٹی منتخب کریں', 'Select Your Local Community')}
+                                    </Text>
+                                    <TouchableOpacity
+                                        onPress={() => setShowCommunityPicker(false)}
+                                        style={[s.pickerClose, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}
+                                    >
+                                        <X color={dynamicSubText} size={18} />
+                                    </TouchableOpacity>
+                                </View>
+
+                                {city.trim() ? (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: dynamicBorder, backgroundColor: isDark ? '#1e293b50' : '#f8fafc' }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1 }}>
+                                            {hasCitySpecificCommunities ? (
+                                                <CheckCircle2 color="#10b981" size={14} />
+                                            ) : (
+                                                <AlertCircle color={isDark ? '#fbbf24' : '#d97706'} size={14} />
+                                            )}
+                                            <Text style={{ fontSize: 12, fontWeight: '700', color: hasCitySpecificCommunities ? '#10b981' : (isDark ? '#fbbf24' : '#d97706') }}>
+                                                {hasCitySpecificCommunities && !showAllInPicker
+                                                    ? tr(`"${city.trim()}" के समुदाय (${filteredCommunities.length})`, `"${city.trim()}" کی کمیونٹیز (${filteredCommunities.length})`, `"${city.trim()}" Communities (${filteredCommunities.length})`)
+                                                    : tr('सभी समुदाय', 'تمام کمیونٹیز', 'All Communities')}
+                                            </Text>
+                                        </View>
+                                        {hasCitySpecificCommunities && (
+                                            <TouchableOpacity
+                                                onPress={() => setShowAllInPicker(!showAllInPicker)}
+                                                style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: isDark ? '#334155' : '#e2e8f0' }}
+                                            >
+                                                <Text style={{ fontSize: 11, fontWeight: '700', color: dynamicText }}>
+                                                    {showAllInPicker
+                                                        ? tr(`केवल ${city.trim()}`, `صرف ${city.trim()}`, `Only ${city.trim()}`)
+                                                        : tr('सभी दिखाएं', 'تمام دکھائیں', 'Show All')}
                                                 </Text>
-                                            </View>
-                                            {isSelected && <Check color="#059669" size={20} />}
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </ScrollView>
-                        </View>
-                    </TouchableOpacity>
-                </Modal>
-            )}
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+                                ) : null}
+
+                                <ScrollView style={s.pickerList}>
+                                    {displayCommunities.map((item) => {
+                                        const isSelected = item.id === selectedCommunityId;
+                                        return (
+                                            <TouchableOpacity
+                                                key={item.id}
+                                                onPress={() => {
+                                                    setSelectedCommunityId(item.id);
+                                                    setShowCommunityPicker(false);
+                                                }}
+                                                style={[
+                                                    s.communityItem,
+                                                    isSelected
+                                                        ? [s.communityItemActive, { backgroundColor: isDark ? '#14281f' : '#ecfdf5', borderColor: '#059669' }]
+                                                        : [s.communityItemIdle, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]
+                                                ]}
+                                            >
+                                                <View style={s.flex1}>
+                                                    <Text style={[s.communityItemName, { color: dynamicText }]}>{item.name}</Text>
+                                                    <Text style={[s.communityItemSub, { color: dynamicSubText }]}>
+                                                        {item.city} • {tr('प्रशासक:', 'ایڈمن:', 'Admin:')} {item.adminName}
+                                                    </Text>
+                                                </View>
+                                                {isSelected && <Check color="#059669" size={20} />}
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </ScrollView>
+                            </View>
+                        </TouchableOpacity>
+                    </Modal>
+                );
+            })()}
         </KeyboardAvoidingView>
     );
 }

@@ -1,20 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { getRecentDonations } from '../../../src/services/donationService';
 import { Donation } from '../../../src/types';
-import { TrendingUp } from 'lucide-react-native';
+import { TrendingUp, FileCheck, ShieldCheck } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
+import { useColorScheme } from 'nativewind';
+import { FinancialAnalyticsSkeleton } from '../../../src/components/SkeletonLoader';
 import {
   getLanguageCode,
   translateCategory,
   translateDonorName,
   translateStatus,
+  translateRole,
+  translateRoleResponsibility,
 } from '../../../src/lib/translateEntity';
 import { DynamicText } from '../../../src/components/DynamicText';
 
 export default function FinancialAnalyticsScreen() {
   const { t, i18n } = useTranslation();
   const lang = getLanguageCode(i18n.language);
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
   const [donations, setDonations] = useState<Donation[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -32,14 +38,58 @@ export default function FinancialAnalyticsScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-white dark:bg-slate-950">
-        <ActivityIndicator color="#10b981" />
-      </View>
+      <ScrollView
+        className="flex-1 bg-slate-50 dark:bg-slate-950"
+        contentContainerStyle={{ paddingBottom: 60 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <FinancialAnalyticsSkeleton isDark={isDark} />
+      </ScrollView>
     );
   }
 
   return (
     <ScrollView className="flex-1 bg-slate-50 dark:bg-slate-950" contentContainerStyle={{ padding: 16 }}>
+      {/* Official Responsibilities Banner for District Finance Coordinator */}
+      <View className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-transparent border border-amber-300 dark:border-amber-800/60 rounded-2xl p-4 mb-4 shadow-sm">
+        <View className="flex-row items-center justify-between mb-2">
+          <View className="flex-row items-center gap-2">
+            <View className="w-8 h-8 rounded-xl bg-amber-500 items-center justify-center">
+              <FileCheck color="#fff" size={18} />
+            </View>
+            <View>
+              <Text className="text-amber-900 dark:text-amber-300 font-bold text-xs uppercase tracking-wider">
+                {translateRole('district_finance_coord', lang)}
+              </Text>
+              <Text className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                {lang === 'hi' ? 'आधिकारिक कार्यक्षेत्र एवं दायित्व' : lang === 'ur' ? 'سرکاری ورک اسپیس اور ذمہ داری' : 'Official Mandate & Responsibilities'}
+              </Text>
+            </View>
+          </View>
+          <View className="bg-amber-100 dark:bg-amber-950 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">
+            <Text className="text-amber-800 dark:text-amber-300 text-[10px] font-bold">
+              {lang === 'hi' ? 'दस्तावेजी सत्यापन' : lang === 'ur' ? 'دستاویزی تصدیق' : 'Documentary Audit'}
+            </Text>
+          </View>
+        </View>
+
+        <View className="bg-white dark:bg-slate-900/90 rounded-xl p-3 border border-amber-200 dark:border-amber-900/50">
+          <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+            {lang === 'hi' ? 'प्रमुख जिम्मेदारी:' : lang === 'ur' ? 'اہم ذمہ داری:' : 'Key Responsibility:'}
+          </Text>
+          <Text className="text-slate-800 dark:text-slate-200 text-xs font-bold leading-5">
+            {translateRoleResponsibility('district_finance_coord', lang)}
+          </Text>
+          <Text className="text-slate-500 dark:text-slate-400 text-[11px] mt-1 leading-4">
+            {lang === 'hi'
+              ? 'आधिकारिक लेन-देन, यूटीआर बैंक सत्यापन और वित्तीय बहीखाता प्रविष्टियों का पूर्ण दस्तावेजी संधारण।'
+              : lang === 'ur'
+              ? 'سرکاری لین دین، UTR بینک تصدیق اور مالیاتی کھاتہ جات کا مکمل دستاویزی اندراج۔'
+              : 'End-to-end documentary maintenance of official transactions, UTR bank validations, and financial audit registers.'}
+          </Text>
+        </View>
+      </View>
+
       {/* Summary Cards */}
       <View className="flex-row gap-3 mb-4">
         <View className="flex-1 bg-emerald-500 rounded-2xl p-4">

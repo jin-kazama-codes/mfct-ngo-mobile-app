@@ -178,7 +178,7 @@ export default function GalleryScreen() {
                       <View className="flex-row items-center mt-0.5">
                         <MapPin color="#34d399" size={10} />
                         <DynamicText
-                          text={rawPhoto.city || 'Bareilly'}
+                          text={rawPhoto.city || ''}
                           className="text-emerald-300 text-[10px] ml-1 font-medium"
                           numberOfLines={1}
                         />
@@ -228,7 +228,7 @@ export default function GalleryScreen() {
                       {displayCat}
                     </Text>
                     <DynamicText
-                      text={selectedPhoto.city || 'Bareilly'}
+                      text={selectedPhoto.city || ''}
                       className="text-slate-400 text-xs font-medium"
                     />
                   </View>

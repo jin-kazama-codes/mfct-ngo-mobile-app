@@ -10,10 +10,13 @@ import {
   Linking,
   Alert,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useGlobalSearchParams, router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { useColorScheme } from 'nativewind';
 import { getCampaignById } from '../../src/services/campaignService';
 import { Campaign } from '../../src/types';
+import { CampaignDetailsSkeleton } from '../../src/components/SkeletonLoader';
+import CampaignImageCarousel from '../../src/components/CampaignImageCarousel';
 import {
   getLanguageCode,
   translateCategory,
@@ -44,8 +47,8 @@ import {
 export default function CampaignDetailsScreen() {
   const { t, i18n } = useTranslation();
   const lang = getLanguageCode(i18n.language);
-  const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string }>();
+  // router imported as static module - avoids NavigationContainer context errors during re-renders
+  const params = useGlobalSearchParams<{ id?: string }>();
 
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,12 +106,11 @@ export default function CampaignDetailsScreen() {
     });
   };
 
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
   if (loading) {
-    return (
-      <View className="flex-1 bg-slate-50 dark:bg-slate-950 items-center justify-center">
-        <ActivityIndicator size="large" color="#10b981" />
-      </View>
-    );
+    return <CampaignDetailsSkeleton isDark={isDark} />;
   }
 
   if (!campaign) {
@@ -158,51 +160,53 @@ export default function CampaignDetailsScreen() {
       </View>
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        {/* Hero Image & Badges */}
-        <View className="relative">
-          <Image
-            source={{ uri: campaign.mainImage }}
-            className="w-full h-64"
-            resizeMode="cover"
-          />
-          <View className="absolute top-3 left-3 flex-row flex-wrap gap-1.5">
-            <View className="bg-white/90 dark:bg-slate-900/90 px-2.5 py-1 rounded-md shadow-sm">
-              <Text className="text-slate-900 dark:text-white font-extrabold text-[10px] uppercase">
-                {displayCat}
-              </Text>
+        {/* Hero Image Carousel (Supports Multiple Photos) */}
+        <CampaignImageCarousel
+          images={[campaign.mainImage, ...(campaign.galleryImages || [])].filter(Boolean)}
+          height={260}
+          showDots={true}
+          showCounter={true}
+          showChevrons={true}
+          overlayBadges={
+            <View className="flex-row flex-wrap gap-1.5">
+              <View className="bg-white/90 dark:bg-slate-900/90 px-2.5 py-1 rounded-md shadow-sm">
+                <Text className="text-slate-900 dark:text-white font-extrabold text-[10px] uppercase">
+                  {displayCat}
+                </Text>
+              </View>
+              {campaign.isZakatEligible && (
+                <View className="bg-amber-500 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
+                  <Sparkles color="#ffffff" size={10} />
+                  <Text className="text-white font-bold text-[10px] ml-1">{translateCategory('Zakat', lang)}</Text>
+                </View>
+              )}
+              {campaign.isSadqaEligible && (
+                <View className="bg-teal-600 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
+                  <Heart color="#ffffff" size={10} />
+                  <Text className="text-white font-bold text-[10px] ml-1">{translateCategory('Sadqa', lang)}</Text>
+                </View>
+              )}
+              {campaign.isFitrahEligible && (
+                <View className="bg-amber-600 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
+                  <Sparkles color="#ffffff" size={10} />
+                  <Text className="text-white font-bold text-[10px] ml-1">{translateCategory('Fitra', lang)}</Text>
+                </View>
+              )}
+              {campaign.isUrgent && (
+                <View className="bg-red-600 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
+                  <Flame color="#ffffff" size={10} />
+                  <Text className="text-white font-bold text-[10px] ml-1">{translateCategory('Urgent', lang)}</Text>
+                </View>
+              )}
+              {campaign.isVerified && (
+                <View className="bg-emerald-700 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
+                  <ShieldCheck color="#ffffff" size={10} />
+                  <Text className="text-white font-bold text-[10px] ml-1">{t('campaign_details.verified_aid', 'Verified Aid')}</Text>
+                </View>
+              )}
             </View>
-            {campaign.isZakatEligible && (
-              <View className="bg-amber-500 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
-                <Sparkles color="#ffffff" size={10} />
-                <Text className="text-white font-bold text-[10px] ml-1">{translateCategory('Zakat', lang)}</Text>
-              </View>
-            )}
-            {campaign.isSadqaEligible && (
-              <View className="bg-teal-600 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
-                <Heart color="#ffffff" size={10} />
-                <Text className="text-white font-bold text-[10px] ml-1">{translateCategory('Sadqa', lang)}</Text>
-              </View>
-            )}
-            {campaign.isFitrahEligible && (
-              <View className="bg-amber-600 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
-                <Sparkles color="#ffffff" size={10} />
-                <Text className="text-white font-bold text-[10px] ml-1">{translateCategory('Fitra', lang)}</Text>
-              </View>
-            )}
-            {campaign.isUrgent && (
-              <View className="bg-red-600 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
-                <Flame color="#ffffff" size={10} />
-                <Text className="text-white font-bold text-[10px] ml-1">{translateCategory('Urgent', lang)}</Text>
-              </View>
-            )}
-            {campaign.isVerified && (
-              <View className="bg-emerald-700 px-2.5 py-1 rounded-md flex-row items-center shadow-sm">
-                <ShieldCheck color="#ffffff" size={10} />
-                <Text className="text-white font-bold text-[10px] ml-1">{t('campaign_details.verified_aid', 'Verified Aid')}</Text>
-              </View>
-            )}
-          </View>
-        </View>
+          }
+        />
 
         <View className="p-4 space-y-4">
           {/* Location & Title */}
@@ -252,7 +256,7 @@ export default function CampaignDetailsScreen() {
                 <View className="flex-row items-center">
                   <Clock color="#eab308" size={14} />
                   <Text className="text-xs text-amber-600 dark:text-amber-400 ml-1.5 font-semibold">
-                    {campaign.daysLeft} {t('campaigns.days_left', 'Days Left')}
+                    {campaign.daysLeft} {t('card.daysLeft', 'Days Left')}
                   </Text>
                 </View>
               </View>
@@ -324,28 +328,28 @@ export default function CampaignDetailsScreen() {
             <View className="flex-row items-center">
               <ShieldCheck color="#34d399" size={18} />
               <Text className="text-white font-bold text-xs ml-2">
-                100% Verified Community Escrow
+                {t('campaign_details.escrow_guarantee', '100% Verified Community Escrow')}
               </Text>
             </View>
 
             <View className="flex-row items-center">
               <CheckCircle2 color="#34d399" size={14} />
               <Text className="text-slate-300 text-[11px] ml-2">
-                Funds disbursed directly to hospitals / institutions
+                {t('campaign_details.direct_disbursement', 'Funds disbursed directly to hospitals / institutions')}
               </Text>
             </View>
 
             <View className="flex-row items-center">
               <CheckCircle2 color="#34d399" size={14} />
               <Text className="text-slate-300 text-[11px] ml-2">
-                0% Platform Deductions • Tax & Zakat Compliant
+                {t('campaign_details.zero_deductions', '0% Platform Deductions • Tax & Zakat Compliant')}
               </Text>
             </View>
 
             <View className="flex-row items-center">
               <CheckCircle2 color="#34d399" size={14} />
               <Text className="text-slate-300 text-[11px] ml-2">
-                Live UTR payment tracking & Digital receipts
+                {t('campaign_details.live_tracking', 'Live UTR payment tracking & Digital receipts')}
               </Text>
             </View>
           </View>

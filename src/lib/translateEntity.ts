@@ -1,4 +1,4 @@
-import { Language, Campaign, Community, Testimonial, CommunityStory } from '../types';
+import { Language, Campaign, Community, Testimonial } from '../types';
 import { GalleryPhoto } from '../services/galleryService';
 import { getMemoryCache, lookupDictionary, isValidScript } from './autoTranslate';
 
@@ -63,7 +63,7 @@ const STATUS_MAP: Record<string, { hi: string; ur: string }> = {
   'completed': { hi: 'पूर्ण', ur: 'مکمل' },
   'Completed': { hi: 'पूर्ण', ur: 'مکمل' },
   'success': { hi: 'सफल', ur: 'کامیاب' },
-  'failed': { hi: 'असफल', ur: 'नाकाम' },
+  'failed': { hi: 'असफल', ur: 'ناکام' },
 };
 
 const CATEGORY_MAP: Record<string, { hi: string; ur: string; en?: string }> = {
@@ -81,14 +81,14 @@ const CATEGORY_MAP: Record<string, { hi: string; ur: string; en?: string }> = {
   Food: { hi: 'राशन / भोजन राहत', ur: 'राशन و خوراک', en: 'Food Relief' },
   'Food Relief': { hi: 'राशन / भोजन राहत', ur: 'राशन و خوراک', en: 'Food Relief' },
   Janazah: { hi: 'जनाज़ा व कफ़न सहायता', ur: 'جنازہ و تجہیز و تکفین', en: 'Janazah Aid' },
-  'Janazah Aid': { hi: 'जनाज़ा व कफ़न सहायता', ur: 'جनाزہ و تجہیز و تکفین', en: 'Janazah Aid' },
+  'Janazah Aid': { hi: 'जनाज़ा व कफ़न सहायता', ur: 'جنازہ و تجہیز و تکفین', en: 'Janazah Aid' },
   Community: { hi: 'सामुदायिक कार्य', ur: 'کمیونٹی فلاح', en: 'Community' },
-  Zakat: { hi: 'ज़कात पात्र', ur: 'مستحقین زکوٰۃ', en: 'Zakat' },
-  Sadqa: { hi: 'सदका पात्र', ur: 'صدقہ کے اہل', en: 'Sadaka' },
-  Sadakah: { hi: 'सदका पात्र', ur: 'صدقہ کے اہل', en: 'Sadaka' },
-  Sadaqah: { hi: 'सदका पात्र', ur: 'صدقہ के اہل', en: 'Sadaka' },
-  Fitra: { hi: 'फ़ितरा पात्र', ur: 'فطرہ के اہل', en: 'Fitrah' },
-  Fitrah: { hi: 'फ़ितरा पात्र', ur: 'فطرہ کے اہل', en: 'Fitrah' },
+  Zakat: { hi: 'ज़कात', ur: 'زکوٰۃ', en: 'Zakat' },
+  Sadqa: { hi: 'सदक़ा', ur: 'صدقہ', en: 'Sadaqah' },
+  Sadakah: { hi: 'सदक़ा', ur: 'صدقہ', en: 'Sadaqah' },
+  Sadaqah: { hi: 'सदक़ा', ur: 'صدقہ', en: 'Sadaqah' },
+  Fitra: { hi: 'फ़ितरा', ur: 'فطرہ', en: 'Fitra' },
+  Fitrah: { hi: 'फ़ितरा', ur: 'فطرہ', en: 'Fitrah' },
   Masjid: { hi: 'मस्जिद सहायता', ur: 'مسجد امداد', en: 'Masjid' },
   Madarsa: { hi: 'मदरसा सहायता', ur: 'مدرسہ امداد', en: 'Madarsa' },
   'Emergency Relief': { hi: 'आपातकालीन राहत', ur: 'ہنگامی امداد', en: 'Emergency Relief' },
@@ -97,7 +97,7 @@ const CATEGORY_MAP: Record<string, { hi: string; ur: string; en?: string }> = {
   'Disability Support': { hi: 'दिव्यांग सहायता', ur: 'معذور افراد کی امداد', en: 'Disability Support' },
   'Widow Support': { hi: 'विधवा सहायता', ur: 'بیوہ امداد', en: 'Widow Support' },
   'Orphan Support': { hi: 'अनाथ सहायता', ur: 'یتیم امداد', en: 'Orphan Support' },
-  General: { hi: 'सामान्य दान', ur: 'عام عطیہ', en: 'General' },
+  General: { hi: 'सामान्य', ur: 'عام عطیہ', en: 'General' },
 };
 
 const ROLE_MAP: Record<string, { en: string, hi: string; ur: string }> = {
@@ -142,6 +142,43 @@ export const DISTRICT_ROLE_MAP: Record<string, { en: string; hi: string; ur: str
   'District Secretary': { en: 'District Secretary', hi: 'जिला सचिव', ur: 'ضلعی سیکرٹری' },
   'District Finance Coordinator': { en: 'District Finance Coordinator', hi: 'जिला वित्त समन्वयक', ur: 'ضلعی فنانس کوآرڈینیٹر' },
 };
+
+export const DISTRICT_ROLE_RESPONSIBILITIES: Record<string, { en: string; hi: string; ur: string }> = {
+  district_president: {
+    en: 'Overall district leadership, executive administration, and community outreach representation.',
+    hi: 'समग्र जिला नेतृत्व, कार्यकारी प्रशासन एवं सामुदायिक पहुंच प्रतिनिधित्व।',
+    ur: 'مجموعی ضلعی قیادت، ایگزیکٹو انتظامیہ اور کمیونٹی رسائی کی نمائندگی۔',
+  },
+  district_coordinator: {
+    en: 'Inter-community coordination, program facilitation, and volunteer alignment.',
+    hi: 'अंतर-सामुदायिक समन्वय, कार्यक्रम सुगमीकरण एवं स्वयंसेवक सहयोग।',
+    ur: 'باہمی روابط، پروگرام سہولت کاری اور رضاکارانہ ہم آہنگی۔',
+  },
+  district_gen_secretary: {
+    en: 'District record management, organizational communications, and general secretarial duties.',
+    hi: 'जिला रिकॉर्ड प्रबंधन, संगठनात्मक संचार एवं सामान्य सचिवीय कार्य।',
+    ur: 'ضلعی ریکارڈ مینجمنٹ، تنظیمی مواصلات اور عمومی سیکرٹری فرائض۔',
+  },
+  district_secretary: {
+    en: 'Meeting records, local chapter administration, and executive correspondence.',
+    hi: 'बैठक रिकॉर्ड, स्थानीय शाखा प्रशासन एवं कार्यकारी पत्राचार।',
+    ur: 'میٹنگ ریکارڈ، مقامی برانچ انتظامیہ और ایگزیکٹو خط و کتابت۔',
+  },
+  district_finance_coord: {
+    en: 'Financial records and documentary support for official transactions.',
+    hi: 'आधिकारिक लेन-देन के लिए वित्तीय रिकॉर्ड और दस्तावेजी सहायता।',
+    ur: 'سرکاری لین دین के لیے مالیاتی ریکارڈ اور دستاویزی معاونت۔',
+  },
+};
+
+export function translateRoleResponsibility(role: string, lang: Language): string {
+  if (!role) return '';
+  const normalized = role.toLowerCase().trim().replace(/\s+/g, '_');
+  const match = DISTRICT_ROLE_RESPONSIBILITIES[normalized];
+  if (!match) return '';
+  return match[lang] || match.en || '';
+}
+
 
 
 export function detectScript(text: string): 'hi' | 'ur' | 'en' {

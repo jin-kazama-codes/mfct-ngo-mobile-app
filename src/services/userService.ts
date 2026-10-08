@@ -1,8 +1,90 @@
 import { supabase } from '../lib/supabase';
 import { User, UserRole } from '../types';
 import { verifyPassword, hashPassword } from '../lib/auth';
+import { updateCommunityStats } from './communityService';
+
+const memoryStatusOverrides: Record<string, { status?: string; rejectionReason?: string }> = {};
+
+function getStatusOverrides(): Record<string, { status?: string; rejectionReason?: string }> {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem('ngo_user_status_overrides');
+      return raw ? { ...memoryStatusOverrides, ...JSON.parse(raw) } : memoryStatusOverrides;
+    }
+  } catch { }
+  return memoryStatusOverrides;
+}
+
+function saveStatusOverride(userId: string, data: { status?: string; rejectionReason?: string }) {
+  memoryStatusOverrides[userId] = {
+    ...memoryStatusOverrides[userId],
+    ...data,
+  };
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('ngo_user_status_overrides', JSON.stringify(memoryStatusOverrides));
+    }
+  } catch { }
+}
+
+export function extractMissingColumn(error: any): string | null {
+  if (!error) return null;
+  const msg = [
+    error.message,
+    error.details,
+    error.hint,
+    typeof error === 'string' ? error : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  // 1. PostgREST: Could not find the 'xyz' column of 'users' in the schema cache
+  const postgrestMatch = msg.match(/Could not find the '([^']+)' column/i);
+  if (postgrestMatch && postgrestMatch[1]) return postgrestMatch[1];
+
+  // 2. PostgREST generic schema cache
+  const schemaMatch = msg.match(/Could not find the column '([^']+)'/i);
+  if (schemaMatch && schemaMatch[1]) return schemaMatch[1];
+
+  // 3. Postgres relation: column "xyz" of relation "users" does not exist
+  const relMatch = msg.match(/column "([^"]+)" of relation/i);
+  if (relMatch && relMatch[1]) return relMatch[1];
+
+  // 4. Postgres generic: column "xyz" does not exist
+  const colMatch = msg.match(/column "([^"]+)" does not exist/i);
+  if (colMatch && colMatch[1]) return colMatch[1];
+
+  // 5. Dot notation: column users.xyz does not exist
+  const dotMatch = msg.match(/column [a-zA-Z0-9_]+\.([a-zA-Z0-9_]+) does not exist/i);
+  if (dotMatch && dotMatch[1]) return dotMatch[1];
+
+  return null;
+}
 
 function mapRow(row: Record<string, unknown>): User {
+  const overrides = getStatusOverrides();
+  const override = overrides[row.id as string];
+
+  const rawStatus = ((row.status as string) || override?.status)?.toLowerCase();
+  let userStatus: 'pending' | 'approved' | 'reject' | 'rejected' = 'pending';
+  if (rawStatus === 'approved' || rawStatus === 'approve') {
+    userStatus = 'approved';
+  } else if (rawStatus === 'reject') {
+    userStatus = 'reject';
+  } else if (rawStatus === 'rejected') {
+    userStatus = 'rejected';
+  } else if (rawStatus === 'pending') {
+    userStatus = 'pending';
+  } else if (row.is_verified === true) {
+    userStatus = 'approved';
+  } else {
+    userStatus = 'pending';
+  }
+
+  const effectiveRejectionReason =
+    (row.rejection_reason || row.rejectionReason) as string | undefined ||
+    override?.rejectionReason;
+
   return {
     id: row.id as string,
     name: row.name as string,
@@ -13,12 +95,15 @@ function mapRow(row: Record<string, unknown>): User {
     communityId: row.community_id as string,
     communityName: row.community_name as string,
     membershipId: row.membership_id as string,
-    isVerified: row.is_verified as boolean,
+    status: userStatus,
+    isVerified: userStatus === 'approved',
+    rejectionReason: effectiveRejectionReason,
+    rejection_reason: effectiveRejectionReason,
     joinDate: row.join_date as string,
     city: row.city as string,
-    district: (row.district || row.city) as string,
+    district: (row.district as string) || undefined,
     state: row.state as string,
-    address: (row.address || row.adderess || row.full_address) as string | undefined,
+    address: (row.address || row.address || row.full_address) as string | undefined,
     districtRole: (row.district_role || row.districtRole) as string | undefined,
     district_role: (row.district_role || row.districtRole) as string | undefined,
     passwordHash: (row.password || row.password_hash || row.passwordHash) as string | undefined,
@@ -68,17 +153,44 @@ export async function getUserByPhone(phone: string): Promise<User | null> {
   return null;
 }
 
-export async function getUsers(communityId?: string): Promise<User[]> {
+export async function getUsers(district?: string): Promise<User[]> {
   let query = supabase.from('users').select('*').order('created_at', { ascending: false });
-  if (communityId) query = query.eq('community_id', communityId);
+  if (district && district !== 'all') {
+    if (district.startsWith('comm_')) {
+      query = query.eq('community_id', district);
+    } else {
+      query = query.eq('city', district);
+    }
+  }
   const { data, error } = await query;
   if (error) throw error;
   return (data ?? []).map(mapRow);
 }
 
-export async function getUnverifiedUsers(communityId?: string): Promise<User[]> {
+export async function getUnverifiedUsers(district?: string): Promise<User[]> {
+  try {
+    let query = supabase.from('users').select('*').or('is_verified.eq.false,status.eq.pending').order('created_at', { ascending: false });
+    if (district && district !== 'all') {
+      if (district.startsWith('comm_')) {
+        query = query.eq('community_id', district);
+      } else {
+        query = query.eq('city', district);
+      }
+    }
+    const { data, error } = await query;
+    if (!error && data) return data.map(mapRow);
+  } catch {
+    // Fallback if status column is not present in schema
+  }
+
   let query = supabase.from('users').select('*').eq('is_verified', false).order('created_at', { ascending: false });
-  if (communityId) query = query.eq('community_id', communityId);
+  if (district && district !== 'all') {
+    if (district.startsWith('comm_')) {
+      query = query.eq('community_id', district);
+    } else {
+      query = query.eq('city', district);
+    }
+  }
   const { data, error } = await query;
   if (error) throw error;
   return (data ?? []).map(mapRow);
@@ -126,21 +238,24 @@ export async function createUser(user: User & { kycDocumentUrl?: string; aadhaar
     ? user.passwordHash
     : await hashPassword('Member@123');
 
-  const city = user.city || 'Bareilly';
+  const city = user.city || '';
+  const initialStatus = user.status || (user.isVerified ? 'approved' : 'pending');
   const payload: Record<string, unknown> = {
     id: user.id || `usr_${Date.now()}`,
     name: user.name,
-    email: user.email?.trim().toLowerCase() || `${user.phone}@mfct.org`,
+    email: user.email?.trim() ? user.email.trim().toLowerCase() : null,
     phone: user.phone.trim(),
     role: user.role || 'member',
     avatar: user.avatar || null,
-    community_id: user.communityId || 'comm_bareilly_hq',
-    community_name: user.communityName || 'Bareilly Central Care Society (Headquarters)',
-    membership_id: user.membershipId || `SS-${city.substring(0, 3).toUpperCase()}-2024-${Math.floor(1000 + Math.random() * 9000)}`,
-    is_verified: user.isVerified ?? false,
+    community_id: user.communityId || null,
+    community_name: user.communityName || null,
+    membership_id: user.membershipId || `MFCT-${(city || 'IND').substring(0, 3).toUpperCase()}-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+    status: initialStatus,
+    is_verified: initialStatus === 'approved',
+    rejection_reason: user.rejectionReason || user.rejection_reason || null,
     join_date: user.joinDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     city: city,
-    district: user.district || city,
+    district: user.district || null,
     district_role: user.districtRole || user.district_role || null,
     state: user.state || 'UP',
     password: passwordHash,
@@ -149,7 +264,7 @@ export async function createUser(user: User & { kycDocumentUrl?: string; aadhaar
     payment_method: user.paymentMethod || null,
     payment_utr: user.paymentUtr || null,
     payment_screenshot_url: user.paymentScreenshotUrl || null,
-    adderess: user.address || null,
+    address: user.address || null,
     religion: user.religion || null,
     is_malik_e_nisab: user.isMalikENisab !== undefined ? user.isMalikENisab : null,
     help_type: user.helpType || null,
@@ -161,27 +276,31 @@ export async function createUser(user: User & { kycDocumentUrl?: string; aadhaar
   let lastError = null;
 
   for (let attempt = 0; attempt < 5; attempt++) {
-    const { data, error } = await supabase.from('users').insert(currentPayload).select().single();
+    const { data, error } = await supabase.from('users').insert(currentPayload).select().maybeSingle();
     if (!error && data) {
       insertResult = data;
+      break;
+    }
+
+    // If RLS prevents anon SELECT (PGRST116), the insert was still successful
+    if (error && (error as { code?: string }).code === 'PGRST116') {
       break;
     }
 
     lastError = error;
     console.warn(`createUser insert attempt ${attempt + 1}:`, error?.message);
 
-    const match = error?.message?.match(/column "([^"]+)" of relation "users" does not exist/);
-    if (match && match[1]) {
-      const missingCol = match[1];
+    const missingCol = extractMissingColumn(error);
+    if (missingCol && currentPayload[missingCol] !== undefined) {
       delete currentPayload[missingCol];
-      if (missingCol === 'adderess' && user.address) {
+      if (missingCol === 'address' && user.address) {
         currentPayload['address'] = user.address;
       }
       continue;
     }
 
-    if (currentPayload['adderess'] !== undefined) {
-      delete currentPayload['adderess'];
+    if (currentPayload['address'] !== undefined) {
+      delete currentPayload['address'];
       if (user.address) currentPayload['address'] = user.address;
       continue;
     }
@@ -189,12 +308,31 @@ export async function createUser(user: User & { kycDocumentUrl?: string; aadhaar
     break;
   }
 
-  if (!insertResult) {
-    if (lastError) throw lastError;
-    throw new Error('Failed to create user');
+  if (!insertResult && lastError && (lastError as { code?: string }).code !== 'PGRST116') {
+    throw lastError;
   }
 
-  return mapRow(insertResult);
+  const createdUser = insertResult ? mapRow(insertResult) : (user as User);
+
+  if (createdUser.communityId) {
+    try {
+      const { data: comm } = await supabase
+        .from('communities')
+        .select('total_members')
+        .eq('id', createdUser.communityId)
+        .single();
+
+      if (comm) {
+        await updateCommunityStats(createdUser.communityId, {
+          totalMembers: (comm.total_members || 0) + 1,
+        });
+      }
+    } catch (cErr) {
+      console.warn('Failed to increment community member count:', cErr);
+    }
+  }
+
+  return createdUser;
 }
 
 export async function updateUser(
@@ -202,8 +340,28 @@ export async function updateUser(
   updates: Partial<User> & { password?: string; plainPassword?: string }
 ): Promise<User> {
   const payload: Record<string, any> = {};
+
+  if (updates.status !== undefined) {
+    payload.status = updates.status;
+    payload.is_verified = updates.status === 'approved';
+  } else if (updates.isVerified !== undefined) {
+    payload.status = updates.isVerified ? 'approved' : 'reject';
+    payload.is_verified = updates.isVerified;
+  }
+
+  if (updates.rejectionReason !== undefined || updates.rejection_reason !== undefined) {
+    payload.rejection_reason = updates.rejectionReason ?? updates.rejection_reason ?? null;
+  }
+
+  if (updates.status !== undefined || updates.rejectionReason !== undefined || updates.rejection_reason !== undefined) {
+    saveStatusOverride(id, {
+      status: updates.status,
+      rejectionReason: updates.rejectionReason ?? updates.rejection_reason,
+    });
+  }
+
   if (updates.name !== undefined) payload.name = updates.name.trim();
-  if (updates.email !== undefined) payload.email = updates.email.trim().toLowerCase();
+  if (updates.email !== undefined) payload.email = updates.email?.trim() ? updates.email.trim().toLowerCase() : null;
   if (updates.phone !== undefined) payload.phone = updates.phone.trim();
   if (updates.role !== undefined) payload.role = updates.role;
   if (updates.city !== undefined) payload.city = updates.city.trim();
@@ -217,7 +375,6 @@ export async function updateUser(
   if (updates.documentUrl !== undefined) payload.document_url = updates.documentUrl;
   if (updates.paymentUtr !== undefined) payload.payment_utr = updates.paymentUtr;
   if (updates.paymentScreenshotUrl !== undefined) payload.payment_screenshot_url = updates.paymentScreenshotUrl;
-  if (updates.isVerified !== undefined) payload.is_verified = updates.isVerified;
   if (updates.religion !== undefined) payload.religion = updates.religion;
   if (updates.isMalikENisab !== undefined) payload.is_malik_e_nisab = updates.isMalikENisab;
   if (updates.helpType !== undefined) payload.help_type = updates.helpType;
@@ -230,26 +387,63 @@ export async function updateUser(
     payload.password = updates.passwordHash;
   }
 
-  // Use .select() without mandatory .single() to prevent PGRST116 coerce errors
-  const { data, error } = await supabase
-    .from('users')
-    .update(payload)
-    .eq('id', id)
-    .select();
+  let currentPayload = { ...payload };
+  let updateResult = null;
+  let lastError = null;
 
-  if (error) {
-    console.error('updateUser error:', error);
-    throw error;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data, error } = await supabase
+      .from('users')
+      .update(currentPayload)
+      .eq('id', id)
+      .select();
+
+    if (!error && data && data.length > 0) {
+      updateResult = data[0];
+      break;
+    }
+
+    if (error && (error as { code?: string }).code === 'PGRST116') {
+      break;
+    }
+
+    lastError = error;
+    const missingCol = extractMissingColumn(error);
+    if (missingCol && currentPayload[missingCol] !== undefined) {
+      delete currentPayload[missingCol];
+      continue;
+    }
+    break;
   }
 
-  if (data && data.length > 0) {
-    return mapRow(data[0]);
+  if (!updateResult && lastError && (lastError as { code?: string }).code !== 'PGRST116') {
+    console.error('updateUser error:', lastError);
+    throw lastError;
+  }
+
+  const effectiveReason = updates.rejectionReason ?? updates.rejection_reason;
+  if (updateResult) {
+    const mapped = mapRow(updateResult);
+    return {
+      ...mapped,
+      status: updates.status ?? mapped.status,
+      isVerified: updates.status ? updates.status === 'approved' : mapped.isVerified,
+      rejectionReason: effectiveReason !== undefined ? effectiveReason : mapped.rejectionReason,
+      rejection_reason: effectiveReason !== undefined ? effectiveReason : mapped.rejection_reason,
+    };
   }
 
   const fresh = await getUserById(id);
   if (fresh) return fresh;
 
-  return { id, ...updates } as User;
+  return {
+    id,
+    ...updates,
+    status: updates.status ?? 'pending',
+    isVerified: updates.status === 'approved',
+    rejectionReason: effectiveReason,
+    rejection_reason: effectiveReason,
+  } as User;
 }
 
 export async function deleteUser(id: string): Promise<void> {

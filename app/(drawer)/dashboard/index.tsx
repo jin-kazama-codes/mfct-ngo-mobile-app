@@ -2,13 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Image, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { useColorScheme } from 'nativewind';
 import { useAppState } from '../../../src/context/AppStateProvider';
+import {
+  DashboardHomeSkeleton,
+  DistrictPresidentSkeleton,
+  DistrictCoordinatorSkeleton,
+  GenSecretarySkeleton,
+  SecretarySkeleton,
+  FinanceCoorSkeleton,
+  CommunityAdminSkeleton,
+} from '../../../src/components/SkeletonLoader';
 import { getDonations } from '../../../src/services/donationService';
 import { getCampaigns } from '../../../src/services/campaignService';
 import { getUsers, getUnverifiedUsers } from '../../../src/services/userService';
 import { getCommunities } from '../../../src/services/communityService';
 import { broadcastAnnouncement } from '../../../src/services/adminService';
-import { Campaign, Donation, User, UserRole, Community } from '../../../src/types';
+import { Campaign, Donation, User, UserRole, Community, DistrictRoleKey } from '../../../src/types';
 import {
   getLanguageCode,
   translateRole,
@@ -18,20 +28,38 @@ import {
   translateDonorName,
   translateStatus,
   translateCity,
+  DISTRICT_ROLE_MAP,
+  DISTRICT_ROLE_RESPONSIBILITIES,
 } from '../../../src/lib/translateEntity';
 import {
   Building2, Activity, TrendingUp, Heart, ShieldCheck, Users,
   CreditCard, Award, ArrowRight, BarChart3, PieChart,
-  PlusCircle, CheckCircle2, Megaphone, UserCheck, Banknote
+  PlusCircle, CheckCircle2, Megaphone, UserCheck, Banknote,
+  Calendar, Network, MapPin, AlertCircle, Clock
 } from 'lucide-react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 import { useDynamicTranslatedText } from '@/src/lib/autoTranslate';
+import FinancialAnalyticsScreen from './financial-analytics';
+import { KycUpdateModal } from '../../../src/components/KycUpdateModal';
+import DistrictPresidentDashboard from '../../../src/components/DistrictPresidentDashboard';
+import DistrictCoordinatorDashboard from '../../../src/components/DistrictCoordinatorDashboard';
+import DistrictGeneralSecretaryDashboard from '../../../src/components/GenSecretary';
+import DistrictSecretaryDashboard from '../../../src/components/SecretaryDashboard';
+import DistrictFinanceCoordinatorDashboard from '../../../src/components/FinanceCoor';
+
+const DISTRICT_ROLES_TABS: { key: DistrictRoleKey; labelEn: string; labelHi: string; labelUr: string }[] = [
+  { key: 'district_president', labelEn: 'President', labelHi: 'अध्यक्ष', labelUr: 'صدر' },
+  { key: 'district_coordinator', labelEn: 'Coordinator', labelHi: 'संयोजक', labelUr: 'کوآرڈینیٹر' },
+  { key: 'district_gen_secretary', labelEn: 'Gen Sec', labelHi: 'महासचिव', labelUr: 'جنرل سیکرٹری' },
+  { key: 'district_secretary', labelEn: 'Secretary', labelHi: 'सचिव', labelUr: 'سیکرٹری' },
+  { key: 'district_finance_coord', labelEn: 'Finance', labelHi: 'वित्त', labelUr: 'فنانس' },
+];
 
 export default function DashboardIndex() {
   const router = useRouter();
   const { t, i18n } = useTranslation();
   const lang = getLanguageCode(i18n.language);
-  const { currentRole, activeUser, campaignsList } = useAppState();
+  const { currentRole, activeUser, campaignsList, handleUpdateActiveUser } = useAppState();
 
   const [donations, setDonations] = useState<Donation[]>([]);
   const [communityCampaigns, setCommunityCampaigns] = useState<Campaign[]>([]);
@@ -44,25 +72,144 @@ export default function DashboardIndex() {
   const [announcementSent, setAnnouncementSent] = useState(false);
   const [broadcasting, setBroadcasting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [kycModalVisible, setKycModalVisible] = useState(false);
+  const [selectedDistrictRole, setSelectedDistrictRole] = useState<DistrictRoleKey | null>(null);
+
+  const handleDistrictNavigate = (tab: string) => {
+    switch (tab) {
+      case 'kyc_queue':
+        router.push('/(drawer)/dashboard/kyc-aproved');
+        break;
+      case 'teams_manage':
+        router.push('/(drawer)/dashboard/teams');
+        break;
+      case 'meetings_manage':
+      case 'announcements':
+        router.push('/(drawer)/dashboard/meetings');
+        break;
+      case 'financial_analytics':
+        router.push('/(drawer)/dashboard/financial-analytics');
+        break;
+      case 'utr_audit':
+        router.push('/(drawer)/dashboard/utr-aproved');
+        break;
+      case 'campaigns':
+        router.push('/(drawer)/dashboard/campaigns');
+        break;
+      case 'community_members':
+        router.push('/(drawer)/dashboard/manage-users');
+        break;
+      case 'communities_manage':
+        router.push('/(drawer)/dashboard/communities');
+        break;
+      case 'district-committee':
+        router.push('/(drawer)/dashboard/district-committee');
+        break;
+      default:
+        router.push(`/(drawer)/dashboard/${tab}` as any);
+    }
+  };
 
   const displayName = useDynamicTranslatedText(activeUser?.name, lang);
 
-  const rawRole = (activeUser?.role || currentRole || 'member') as string;
-  let userRole = rawRole.toLowerCase().trim().replace(/ /g, '_') as UserRole;
-  if (userRole.includes('executive')) userRole = 'executive_admin';
-  else if (userRole.includes('community')) userRole = 'community_admin';
-  else if (userRole.includes('super')) userRole = 'super_admin';
-  else if (userRole.includes('premium')) userRole = 'premium_donor';
-  else if (userRole.includes('member')) userRole = 'member';
+  // ─── Resolve District Role vs Primary System Role (Matching website AdminPanel.tsx) ──────
+  const distRoleKeys: DistrictRoleKey[] = [
+    'district_president',
+    'district_coordinator',
+    'district_gen_secretary',
+    'district_secretary',
+    'district_finance_coord',
+    'community_admin',
+  ];
+
+  const resolveDistrictRole = (val?: string | null): DistrictRoleKey | null => {
+    if (!val || typeof val !== 'string') return null;
+    const v = val.toLowerCase().trim().replace(/\s+/g, '_');
+    if (distRoleKeys.includes(v as DistrictRoleKey)) return v as DistrictRoleKey;
+    if (v.includes('community')) return 'community_admin';
+    if (v.includes('president') || v.includes('अध्यक्ष') || v.includes('صدر')) return 'district_president';
+    if (v.includes('coordinator') || v.includes('संयोजक') || v.includes('समन्वयक') || v.includes('کوآرڈینیٹر')) return 'district_coordinator';
+    if (v.includes('gen_sec') || v.includes('general') || v.includes('महासचिव') || v.includes('جنرل')) return 'district_gen_secretary';
+    if (v.includes('secretary') || v.includes('सचिव') || v.includes('سیکرٹری')) return 'district_secretary';
+    if (v.includes('finance') || v.includes('वित्त') || v.includes('فنانस') || v.includes('कोषाध्यक्ष')) return 'district_finance_coord';
+    return null;
+  };
+
+  const rawDistrictRole = (activeUser?.district_role || activeUser?.districtRole || (activeUser?.role as string) || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_');
+
+  const effectiveDistrictRole: DistrictRoleKey | null =
+    resolveDistrictRole(activeUser?.district_role) ||
+    resolveDistrictRole(activeUser?.districtRole) ||
+    resolveDistrictRole((activeUser as any)?.districtRoleKey) ||
+    resolveDistrictRole(rawDistrictRole);
+
+  const rawCurrentRole = ((currentRole as string) || '').toLowerCase().trim().replace(/\s+/g, '_');
+  const previewDistrictRole: DistrictRoleKey | null =
+    distRoleKeys.find((k) => k === rawCurrentRole || rawCurrentRole.includes(k.replace('district_', ''))) ||
+    resolveDistrictRole(currentRole);
+
+  let normalizedRole: UserRole = 'member';
+  if (activeUser?.role === 'super_admin') {
+    normalizedRole = 'super_admin';
+  } else if (activeUser?.role === 'executive_admin') {
+    normalizedRole = 'executive_admin';
+  } else if (
+    effectiveDistrictRole === 'community_admin' ||
+    activeUser?.role === 'community_admin' ||
+    (currentRole as string) === 'community_admin' ||
+    rawDistrictRole === 'community_admin' ||
+    rawDistrictRole.includes('community')
+  ) {
+    normalizedRole = 'community_admin';
+  } else if (effectiveDistrictRole) {
+    normalizedRole = effectiveDistrictRole;
+  } else if (previewDistrictRole) {
+    normalizedRole = previewDistrictRole;
+  } else {
+    normalizedRole = (currentRole as UserRole) || 'member';
+  }
+
+  const userRole: UserRole = normalizedRole;
+
+  const isDistrictRole =
+    userRole === 'district_president' ||
+    userRole === 'district_coordinator' ||
+    userRole === 'district_gen_secretary' ||
+    userRole === 'district_secretary' ||
+    userRole === 'district_finance_coord';
+
+  const isExecGroup =
+    userRole === 'super_admin' ||
+    userRole === 'executive_admin';
+
+  const isCommGroup =
+    userRole === 'community_admin';
+
+  const isFinanceGroup = userRole === 'district_finance_coord';
+  const isMember = userRole === 'member' && !isDistrictRole && !isCommGroup && !isExecGroup;
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        if (userRole === 'member' || userRole === 'premium_donor') {
+        if (isMember) {
           const myDons = await getDonations(activeUser?.id);
           setDonations(myDons);
-        } else if (userRole === 'community_admin') {
+        } else if (isDistrictRole) {
+          const [allDons, usersList, allCamps, commList] = await Promise.all([
+            getDonations(),
+            getUsers(),
+            getCampaigns(),
+            getCommunities(),
+          ]);
+          setDonations(allDons);
+          setAllUsers(usersList);
+          setCommunityCampaigns(allCamps);
+          setCommunities(commList);
+        } else if (isCommGroup) {
           const [comms, allDons, allCamps, unverified] = await Promise.all([
             getCommunities(),
             getDonations(),
@@ -83,12 +230,6 @@ export default function DashboardIndex() {
               c.name.toLowerCase() === activeUser.communityName.toLowerCase() ||
               c.city.toLowerCase() === activeUser.communityName.toLowerCase()
             ) || null;
-          }
-          if (!userCommunity && activeUser?.name) {
-            userCommunity = comms.find(c => c.adminName?.toLowerCase() === activeUser.name?.toLowerCase()) || null;
-          }
-          if (!userCommunity && comms.length > 0) {
-            userCommunity = comms[0];
           }
           setCommunity(userCommunity);
 
@@ -161,20 +302,123 @@ export default function DashboardIndex() {
     }
   };
 
+  const { colorScheme } = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
   if (loading) {
+    if (isDistrictRole) {
+      const activeRoleKey: DistrictRoleKey =
+        selectedDistrictRole ||
+        (isDistrictRole ? (userRole as DistrictRoleKey) : null) ||
+        effectiveDistrictRole ||
+        previewDistrictRole ||
+        'district_president';
+      switch (activeRoleKey) {
+        case 'district_coordinator':
+          return <DistrictCoordinatorSkeleton isDark={isDark} />;
+        case 'district_gen_secretary':
+          return <GenSecretarySkeleton isDark={isDark} />;
+        case 'district_secretary':
+          return <SecretarySkeleton isDark={isDark} />;
+        case 'district_finance_coord':
+          return <FinanceCoorSkeleton isDark={isDark} />;
+        case 'district_president':
+        default:
+          return <DistrictPresidentSkeleton isDark={isDark} />;
+      }
+    }
+    if (isCommGroup) {
+      return <CommunityAdminSkeleton isDark={isDark} />;
+    }
+    return <DashboardHomeSkeleton isDark={isDark} />;
+  }
+
+  // ----------------------------------------------------
+  // 0. DISTRICT EXECUTIVE ROLE DASHBOARDS
+  // ----------------------------------------------------
+  if (isDistrictRole) {
+    const activeRoleKey: DistrictRoleKey =
+      selectedDistrictRole ||
+      (isDistrictRole ? (userRole as DistrictRoleKey) : null) ||
+      effectiveDistrictRole ||
+      previewDistrictRole ||
+      'district_president';
+
+    const renderRoleDashboard = () => {
+      switch (activeRoleKey) {
+        case 'district_coordinator':
+          return <DistrictCoordinatorDashboard activeUser={activeUser} onNavigateTab={handleDistrictNavigate} />;
+        case 'district_gen_secretary':
+          return <DistrictGeneralSecretaryDashboard activeUser={activeUser} onNavigateTab={handleDistrictNavigate} />;
+        case 'district_secretary':
+          return <DistrictSecretaryDashboard activeUser={activeUser} onNavigateTab={handleDistrictNavigate} />;
+        case 'district_finance_coord':
+          return <DistrictFinanceCoordinatorDashboard activeUser={activeUser} onNavigateTab={handleDistrictNavigate} />;
+        case 'district_president':
+        default:
+          return <DistrictPresidentDashboard activeUser={activeUser} onNavigateTab={handleDistrictNavigate} />;
+      }
+    };
+
     return (
-      <View className="flex-1 items-center justify-center bg-white dark:bg-slate-950">
-        <ActivityIndicator color="#10b981" size="large" />
+      <View className="flex-1 bg-slate-50 dark:bg-slate-950">
+        {/* District Role Perspectives Pills (matching website committee scope) */}
+        <View className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2.5">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            {DISTRICT_ROLES_TABS.map((tab) => {
+              const isSelected = activeRoleKey === tab.key;
+              const isUserAssignedRole = (effectiveDistrictRole || userRole) === tab.key;
+              const tabLabel = lang === 'hi' ? tab.labelHi : lang === 'ur' ? tab.labelUr : tab.labelEn;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  onPress={() => setSelectedDistrictRole(tab.key)}
+                  className={`px-3.5 py-1.5 rounded-full flex-row items-center border ${
+                    isSelected
+                      ? 'bg-emerald-600 border-emerald-600'
+                      : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                  }`}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    className={`text-xs font-bold ${
+                      isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {tabLabel}
+                  </Text>
+                  {isUserAssignedRole && (
+                    <View
+                      className={`ml-1.5 w-1.5 h-1.5 rounded-full ${
+                        isSelected ? 'bg-amber-300' : 'bg-emerald-500'
+                      }`}
+                    />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {/* Active Role Dashboard */}
+        <View className="flex-1">
+          {renderRoleDashboard()}
+        </View>
       </View>
     );
   }
 
   // ----------------------------------------------------
-  // 1. MEMBER / PREMIUM DONOR DASHBOARD
+  // 1. MEMBER /  DONOR DASHBOARD
   // ----------------------------------------------------
-  if (userRole === 'member' || userRole === 'premium_donor') {
+  if (isMember) {
     const verifiedDonations = donations.filter(d => d.status === 'verified');
     const totalDonatedINR = verifiedDonations.reduce((acc, d) => acc + d.amountINR, 0);
+
+    const userStatus = activeUser?.status || (activeUser?.isVerified ? 'approved' : 'pending');
+    const isRejected = userStatus === 'reject' || userStatus === 'rejected';
+    const isPending = userStatus === 'pending';
+    const rejectionReason = activeUser?.rejectionReason || (activeUser as any)?.rejection_reason;
 
     return (
       <ScrollView className="flex-1 bg-slate-50 dark:bg-slate-950" contentContainerStyle={{ padding: 16 }}>
@@ -191,14 +435,60 @@ export default function DashboardIndex() {
             <Text className="text-lg font-bold text-slate-900 dark:text-white">{activeUser?.name || 'User'}</Text>
             <Text className="text-xs text-slate-500 dark:text-slate-400">{activeUser?.email || ''}</Text>
             <View className="flex-row items-center gap-2 mt-1.5">
-              <View className={`px-2.5 py-0.5 rounded-full ${userRole === 'premium_donor' ? 'bg-amber-100 dark:bg-amber-900' : 'bg-emerald-100 dark:bg-emerald-900'}`}>
-                <Text className={`text-xs font-bold ${userRole === 'premium_donor' ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
+              <View className="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900">
+                <Text className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
                   {translateRole(userRole, lang)}
                 </Text>
               </View>
             </View>
           </View>
         </View>
+
+        {/* KYC Status Alerts */}
+        {isRejected ? (
+          <View className="bg-red-50 dark:bg-red-950/60 border-2 border-red-300 dark:border-red-800 p-4 rounded-2xl mb-4 shadow-sm">
+            <View className="flex-row items-start gap-3">
+              <View className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/60 items-center justify-center">
+                <AlertCircle color="#dc2626" size={22} />
+              </View>
+              <View className="flex-1">
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm font-bold text-red-900 dark:text-red-200">
+                    KYC Verification Rejected
+                  </Text>
+                  <View className="px-2 py-0.5 rounded-full bg-red-200 dark:bg-red-900">
+                    <Text className="text-[10px] font-black text-red-800 dark:text-red-200 uppercase">Action Needed</Text>
+                  </View>
+                </View>
+                <Text className="text-xs text-red-700 dark:text-red-300 mt-1">
+                  Reason: <Text className="font-semibold">{rejectionReason || 'Please review your uploaded documents and details.'}</Text>
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setKycModalVisible(true)}
+                  className="mt-3 bg-red-600 active:bg-red-700 py-2 px-3.5 rounded-xl flex-row items-center justify-center gap-1.5 self-start"
+                >
+                  <Text className="text-white font-bold text-xs">Update KYC Details Now →</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        ) : isPending ? (
+          <View className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 p-3.5 rounded-2xl mb-4 flex-row items-center justify-between shadow-sm">
+            <View className="flex-row items-center gap-2.5 flex-1 mr-2">
+              <Clock color="#d97706" size={18} />
+              <View className="flex-1">
+                <Text className="text-xs font-bold text-amber-900 dark:text-amber-200">KYC Verification Under Review</Text>
+                <Text className="text-[11px] text-amber-700 dark:text-amber-300">Need to update your details?</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              onPress={() => setKycModalVisible(true)}
+              className="bg-amber-600 active:bg-amber-700 py-1.5 px-3 rounded-lg"
+            >
+              <Text className="text-white font-bold text-xs">Edit</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {/* Stats Grid */}
         <View className="flex-row gap-3 mb-4">
@@ -229,6 +519,12 @@ export default function DashboardIndex() {
           <ArrowRight color="#fff" size={20} />
         </TouchableOpacity>
 
+        <KycUpdateModal
+          visible={kycModalVisible}
+          user={activeUser}
+          onClose={() => setKycModalVisible(false)}
+          onUpdated={(updated) => handleUpdateActiveUser(updated)}
+        />
       </ScrollView>
     );
   }
@@ -236,7 +532,7 @@ export default function DashboardIndex() {
   // ----------------------------------------------------
   // 2. COMMUNITY ADMIN DASHBOARD
   // ----------------------------------------------------
-  if (userRole === 'community_admin') {
+  if (isCommGroup) {
     const commTotalMembers = community?.totalMembers ?? community?.total_members ?? 0;
     const commActiveCampaigns = community?.activeCampaigns ?? community?.active_campaigns ?? communityCampaigns.filter(c => c.status === 'active').length;
     const commTotalRaised = community?.totalRaisedINR ?? community?.total_raised_inr ?? communityCampaigns.reduce((sum, c) => sum + (c.raisedINR || 0), 0);
@@ -253,12 +549,12 @@ export default function DashboardIndex() {
                 {translateCommunityName(community?.name || activeUser?.communityName || t('admin.community_hub', 'Community Hub'), lang)}
               </Text>
               <Text className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                {t('admin.adminLabel', 'Admin')}: <Text className="font-bold text-slate-800 dark:text-slate-200">{displayName || community?.adminName || t('admin.adminLabel', 'Admin')}</Text> • {translateCity(community?.city || activeUser?.city || 'Bareilly', lang)} {t('admin.chapter', 'Chapter')}
+                {t('admin.adminLabel', 'Admin')}: <Text className="font-bold text-slate-800 dark:text-slate-200">{displayName || community?.adminName || t('admin.adminLabel', 'Admin')}</Text> • {translateCity(community?.city || activeUser?.city || '', lang)} {t('admin.chapter', 'Chapter')}
               </Text>
             </View>
             <View className="bg-amber-100 dark:bg-amber-950/80 px-3 py-1.5 rounded-full border border-amber-300 dark:border-amber-800/60 flex-row items-center gap-1.5 self-start">
               <ShieldCheck color="#d97706" size={14} />
-              <Text className="text-amber-800 dark:text-amber-300 text-xs font-bold">{translateRole('community_admin', lang)}</Text>
+              <Text className="text-amber-800 dark:text-amber-300 text-xs font-bold">{translateRole(userRole, lang)}</Text>
             </View>
           </View>
         </View>
@@ -289,7 +585,7 @@ export default function DashboardIndex() {
             {/* Active Campaigns */}
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => router.push('/(drawer)/campaigns')}
+              onPress={() => router.push('/(drawer)/dashboard/campaigns')}
               className="flex-1 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm"
             >
               <View className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/40 items-center justify-center mb-2">
@@ -372,7 +668,7 @@ export default function DashboardIndex() {
           {/* Pending Campaigns */}
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={() => router.push('/(drawer)/campaigns')}
+            onPress={() => router.push('/(drawer)/dashboard/campaigns')}
             className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex-row items-center justify-between shadow-sm"
           >
             <View className="flex-1 mr-3">
@@ -478,7 +774,7 @@ export default function DashboardIndex() {
           <Text className="text-base font-bold text-slate-900 dark:text-white">
             {t('tabs.campaigns', 'Community Campaigns')} ({communityCampaigns.length})
           </Text>
-          <TouchableOpacity onPress={() => router.push('/(drawer)/campaigns')}>
+          <TouchableOpacity onPress={() => router.push('/(drawer)/dashboard/campaigns')}>
             <Text className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">
               {t('home.view_all_campaigns', 'View All')}
             </Text>
@@ -550,12 +846,37 @@ export default function DashboardIndex() {
     }));
   const maxRaised = Math.max(...communityGrowth.map(c => c.raised), 1);
 
-  const categoryData = [
-    { name: t('cat.medical', 'Medical'), value: 45, color: '#059669' },
-    { name: t('cat.education', 'Education'), value: 25, color: '#2563eb' },
-    { name: t('cat.food', 'Food Relief'), value: 18, color: '#d97706' },
-    { name: t('cat.marriage', 'Marriage'), value: 12, color: '#9333ea' },
-  ];
+  const categoryColorMap: Record<string, string> = {
+    Medical: '#059669',
+    Education: '#2563eb',
+    'Food & Relief': '#d97706',
+    Food: '#d97706',
+    Marriage: '#9333ea',
+    Sadakah: '#0891b2',
+    Zakat: '#16a34a',
+    General: '#4f46e5',
+    'Emergency Relief': '#e11d48',
+  };
+
+  const categoryTotals: Record<string, number> = {};
+  let totalRaisedAll = 0;
+  campaignsList.forEach((c) => {
+    const cat = c.category || 'General';
+    const amount = Number(c.raisedINR || c.goalINR || 1);
+    categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
+    totalRaisedAll += amount;
+  });
+
+  const categoryData =
+    Object.keys(categoryTotals).length > 0 && totalRaisedAll > 0
+      ? Object.entries(categoryTotals).map(([cat, amount]) => ({
+          name: t(`cat.${cat.toLowerCase().replace(/\s+/g, '')}`, cat),
+          value: Math.max(1, Math.round((amount / totalRaisedAll) * 100)),
+          color: categoryColorMap[cat] || '#10b981',
+        }))
+      : [
+          { name: t('cat.general', 'General Fund'), value: 100, color: '#059669' },
+        ];
 
   const donutRadius = 45;
   const donutCircumference = 2 * Math.PI * donutRadius;

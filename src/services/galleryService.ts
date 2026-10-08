@@ -67,7 +67,7 @@ export async function getGalleryPhotos(): Promise<GalleryPhoto[]> {
 export async function createGalleryPhoto(photo: Omit<GalleryPhoto, 'id'>): Promise<GalleryPhoto> {
   const payload: Record<string, any> = {
     title: photo.title,
-    city: photo.city || 'Bareilly',
+    city: photo.city || '',
     image: photo.image,
     category: photo.category || 'Community',
   };
@@ -96,7 +96,7 @@ export async function createGalleryPhoto(photo: Omit<GalleryPhoto, 'id'>): Promi
     const localCreated: GalleryPhoto = {
       id: generateUUID(),
       title: photo.title,
-      city: photo.city || 'Bareilly',
+      city: photo.city || '',
       image: photo.image,
       category: photo.category || 'Community',
       createdBy: photo.createdBy,
@@ -110,7 +110,7 @@ export async function createGalleryPhoto(photo: Omit<GalleryPhoto, 'id'>): Promi
     const localCreated: GalleryPhoto = {
       id: generateUUID(),
       title: photo.title,
-      city: photo.city || 'Bareilly',
+      city: photo.city || '',
       image: photo.image,
       category: photo.category || 'Community',
       createdBy: photo.createdBy,

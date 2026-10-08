@@ -17,19 +17,22 @@ import {
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppState } from '../../src/context/AppStateProvider';
 import { AboutUs } from '../../src/components/AboutUs';
+import { CampaignCardSkeleton, ShimmerBlock } from '../../src/components/SkeletonLoader';
 import { getCampaigns, getEmergencyCampaigns } from '../../src/services/campaignService';
 import { getTestimonials } from '../../src/services/testimonialService';
-import { getCommunityStories } from '../../src/services/storiesService';
 import { getRecentDonations } from '../../src/services/donationService';
 import { getCommunities } from '../../src/services/communityService';
 import { getUsers } from '../../src/services/userService';
 import { getAccountDetails } from '../../src/services/adminService';
+import { getAllAnnouncements, Announcement } from '../../src/services/announcementService';
+import { submitContactMessage } from '../../src/services/contactService';
 import {
   Campaign,
   Testimonial,
-  CommunityStory,
   Donation,
   Community,
   AccountDetails,
@@ -44,8 +47,6 @@ import {
   translateCampaignStory,
   translateTestimonial,
   translateDonorName,
-  translateRole,
-  translateQuote,
 } from '../../src/lib/translateEntity';
 import DynamicText from '../../src/components/DynamicText';
 import {
@@ -72,6 +73,18 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Globe,
+  Moon,
+  Sun,
+  User,
+  LayoutDashboard,
+  Briefcase,
+  Newspaper,
+  Image as ImageIcon,
+  MoreHorizontal,
+  FileText,
+  Scale,
+  HelpCircle,
 } from 'lucide-react-native';
 
 // ─── Local Assets ──────────────────────────────────────────────────────────
@@ -82,6 +95,9 @@ const marriageImage = require('../../assets/images/marriage-support.jpeg');
 const janazahImage = require('../../assets/images/zanaza.jpeg');
 const foodImage = require('../../assets/images/food-ration.jpeg');
 const zakatImage = require('../../assets/images/zakat-eligiable.jpeg');
+const mfctHeaderMosqueBg = require('../../assets/images/mfct-header-mosque.jpg');
+const mfctEmblem = require('../../assets/images/mfct-emblem.png');
+const greenGoldWave = require('../../assets/images/green-gold-wave.png');
 
 // ─── Brand Color Constants ─────────────────────────────────────────────────
 const C = {
@@ -281,7 +297,7 @@ export default function HomeScreen() {
   const { t, i18n } = useTranslation();
   const lang = getLanguageCode(i18n.language);
   const router = useRouter();
-  const { isAuthenticated, activeUser } = useAppState();
+  const { isAuthenticated, activeUser, isInitialized } = useAppState();
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -307,11 +323,22 @@ export default function HomeScreen() {
   // Data states
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
-  const [stories, setStories] = useState<CommunityStory[]>([]);
   const [recentDonations, setRecentDonations] = useState<Donation[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [realTotalMembers, setRealTotalMembers] = useState(0);
   const [accountDetails, setAccountDetails] = useState<AccountDetails | null>(null);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+
+  // Direct Contact Form State
+  const [contactName, setContactName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactMessage, setContactMessage] = useState('');
+  const [submittingContact, setSubmittingContact] = useState(false);
+
+  // Policy Modals
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
 
   // UI Interactive states
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -326,29 +353,82 @@ export default function HomeScreen() {
   const [zakatInvestments, setZakatInvestments] = useState('');
   const [zakatLiabilities, setZakatLiabilities] = useState('');
 
+  // Insets & Theme/Lang Handlers
+  const insets = useSafeAreaInsets();
+  const { toggleColorScheme } = useColorScheme();
+
+  const isHi = (i18n.resolvedLanguage || i18n.language || 'en').startsWith('hi');
+  const handleToggleLanguage = async () => {
+    const next = isHi ? 'en' : 'hi';
+    i18n.changeLanguage(next);
+    try { await AsyncStorage.setItem('mfct_language', next); } catch { }
+  };
+  const langLabel = isHi ? 'HI' : 'EN';
+
+  const handleToggleTheme = async () => {
+    toggleColorScheme();
+    const next = isDark ? 'light' : 'dark';
+    try { await AsyncStorage.setItem('mfct_theme', next); } catch { }
+  };
+
+  // Modals for the 8 Grid Action Buttons
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
+  const [isSchemesModalOpen, setIsSchemesModalOpen] = useState(false);
+  const [isNewsModalOpen, setIsNewsModalOpen] = useState(false);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [isMoreModalOpen, setIsMoreModalOpen] = useState(false);
+
+  const handleSendContactMessage = async () => {
+    if (!contactName.trim() || !contactPhone.trim() || !contactMessage.trim()) {
+      Alert.alert('Incomplete Form', 'Please enter your name, phone number, and message.');
+      return;
+    }
+    setSubmittingContact(true);
+    try {
+      await submitContactMessage({
+        name: contactName.trim(),
+        phone: contactPhone.trim(),
+        email: contactEmail.trim() || undefined,
+        message: contactMessage.trim(),
+      });
+      setContactName('');
+      setContactPhone('');
+      setContactEmail('');
+      setContactMessage('');
+      Alert.alert(
+        'Message Sent',
+        'Thank you! Your message has been submitted to the MFCT Trust desk. Our team will contact you shortly.'
+      );
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to submit message. Please try again or call our helpline.');
+    } finally {
+      setSubmittingContact(false);
+    }
+  };
+
   const loadData = useCallback(async () => {
     try {
-      const [cData, eData, tData, sData, dData, commData, uData, accData] = await Promise.all([
+      const [cData, eData, tData, dData, commData, uData, accData, annData] = await Promise.all([
         getCampaigns(),
         getEmergencyCampaigns(),
         getTestimonials(),
-        getCommunityStories(),
         getRecentDonations(5),
         getCommunities(),
         getUsers(),
         getAccountDetails(),
+        getAllAnnouncements(),
       ]);
 
       const allCamps = [...(cData || []), ...(eData || [])];
       setCampaigns(allCamps);
       setTestimonials(tData || []);
-      setStories(sData || []);
       setRecentDonations(dData || []);
       setCommunities(commData || []);
       setRealTotalMembers(uData?.length || 0);
       if (accData && accData.length > 0) {
         setAccountDetails(accData[0]);
       }
+      setAnnouncements(annData || []);
     } catch (err) {
       console.warn('Error loading home data:', err);
     } finally {
@@ -495,312 +575,716 @@ export default function HomeScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.screenBg }}
-      contentContainerStyle={{ width: '100%' }}
+      contentContainerStyle={{ width: '100%', flexGrow: 1 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[C.gold]} />}
     >
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 1. HERO SECTION                                                    */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View style={{ backgroundColor: C.darkGreen, overflow: 'hidden', width: '100%' }}>
-        {/* Hero Background Image */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 1. MOCKUP HERO HEADER & 8-BUTTON DASHBOARD                         */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <View style={{ backgroundColor: isDark ? '#080d1a' : '#06311e', width: '100%', flex: 1, overflow: 'hidden' }}>
+        {/* Single Unified Header Background: Mosque Skyline & Sky */}
         <ImageBackground
-          source={{ uri: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&w=800&q=70' }}
-          style={{ minHeight: 380, width: '100%' }}
+          source={mfctHeaderMosqueBg}
+          style={{ width: '100%', height: 350 }}
           resizeMode="cover"
         >
-          {/* Cinematic Gradient Overlay */}
+          {/* Subtle light/warm gradient wash */}
           <View
             style={{
               position: 'absolute',
-              inset: 0,
               top: 0,
               left: 0,
               right: 0,
               bottom: 0,
-              backgroundColor: 'rgba(8,24,16,0.88)',
+              backgroundColor: isDark ? 'rgba(8,13,26,0.35)' : 'rgba(255,255,255,0.02)',
             }}
           />
 
-          {/* Hero Content */}
-          <View style={{ paddingHorizontal: 16, paddingTop: 48, paddingBottom: 28, width: '100%' }}>
-            {/* Tagline Badge */}
-            <View
+          {/* Top Floating Utility Bar (Lang, Theme, Dashboard/Sign In) */}
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'flex-end',
+              alignItems: 'center',
+              paddingTop: Math.max(insets.top + 4, 12),
+              paddingHorizontal: 16,
+              gap: 8,
+              zIndex: 30,
+            }}
+          >
+            {/* Language toggle: HI / EN */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleToggleLanguage}
               style={{
-                alignSelf: 'flex-start',
                 flexDirection: 'row',
                 alignItems: 'center',
-                backgroundColor: 'rgba(26,60,44,0.9)',
-                borderWidth: 1,
-                borderColor: 'rgba(200,168,75,0.4)',
-                paddingHorizontal: 12,
-                paddingVertical: 5,
+                gap: 4,
+                paddingHorizontal: 8,
+                paddingVertical: 3.5,
                 borderRadius: 999,
-                marginBottom: 14,
+                backgroundColor: 'rgba(255,255,255,0.92)',
+                borderWidth: 1,
+                borderColor: 'rgba(200,168,75,0.5)',
+                shadowColor: '#000',
+                shadowOpacity: 0.12,
+                shadowRadius: 4,
+                elevation: 3,
               }}
             >
-              <ArrowRight size={12} color={C.gold} style={{ marginRight: 5 }} />
-              <Text style={{ color: C.gold, fontWeight: '800', fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-                {t('home.hero_tagline', 'Together for a Better Tomorrow')}
+              <Globe color="#073820" size={12} />
+              <Text style={{ color: '#073820', fontSize: 10, fontWeight: '900' }}>
+                {langLabel}
               </Text>
-            </View>
+            </TouchableOpacity>
 
-            {/* Main Headline */}
-            <Text style={{ fontSize: 32, fontWeight: '900', color: C.white, lineHeight: 38, marginBottom: 10, letterSpacing: -0.5 }}>
-              {t('home.hero_line1', 'Yaad Unki,')}{' '}
-              <Text style={{ color: C.gold }}>{t('home.hero_line2_giving', 'Seva Hamari')}</Text>
-            </Text>
+            {/* Theme Toggle */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleToggleTheme}
+              style={{
+                padding: 5,
+                borderRadius: 999,
+                backgroundColor: 'rgba(255,255,255,0.92)',
+                borderWidth: 1,
+                borderColor: 'rgba(200,168,75,0.5)',
+                shadowColor: '#000',
+                shadowOpacity: 0.12,
+                shadowRadius: 4,
+                elevation: 3,
+              }}
+            >
+              {isDark ? <Sun color="#073820" size={13} /> : <Moon color="#073820" size={13} />}
+            </TouchableOpacity>
 
-            {/* Description */}
-            <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', lineHeight: 20, marginBottom: 18 }}>
-              {t('home.hero_desc', '100% verified direct relief for hospital care, orphan education, dignified nikah support, janazah burial services, and ration kits.')}
-            </Text>
-
-            {/* Trust Badges */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
-              {[
-                { icon: <ShieldCheck size={12} color={C.gold} />, label: t('home.trust_zakat', 'Zakat Compliant') },
-                { icon: <CheckCircle2 size={12} color={C.gold} />, label: t('home.trust_verified', 'UTR Verified') },
-                { icon: <Building2 size={12} color={C.gold} />, label: t('home.trust_registered', 'Govt. Registered NGO') },
-              ].map(({ icon, label }) => (
-                <View
-                  key={label}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: C.goldBg,
-                    borderWidth: 1,
-                    borderColor: C.goldBorder,
-                    paddingHorizontal: 8,
-                    paddingVertical: 4,
-                    borderRadius: 999,
-                  }}
-                >
-                  {icon}
-                  <Text style={{ color: C.white, fontSize: 10, fontWeight: '600', marginLeft: 4 }}>{label}</Text>
-                </View>
-              ))}
-            </View>
-
-            {/* CTA Buttons */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 24, width: '100%' }}>
-              {/* Become a Member */}
-              <TouchableOpacity
-                onPress={() => router.push('/(auth)/sign-up')}
+            {/* Profile / Member Dashboard */}
+            {!isInitialized ? (
+              <View
                 style={{
-                  flex: 1.15,
-                  minWidth: 0,
                   flexDirection: 'row',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: 'transparent',
-                  borderWidth: 1.5,
+                  paddingHorizontal: 8,
+                  paddingVertical: 5,
+                  borderRadius: 999,
+                  backgroundColor: 'rgba(255,255,255,0.7)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(200,168,75,0.4)',
+                }}
+              >
+                <ShimmerBlock width={48} height={12} borderRadius={999} />
+              </View>
+            ) : (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (isAuthenticated) {
+                    const status = (activeUser?.status || '').toLowerCase();
+                    if (status === 'pending' || status === 'reject' || status === 'rejected' || (!activeUser?.isVerified && status !== 'approved')) {
+                      router.push('/(auth)/under-review');
+                    } else {
+                      router.push('/(drawer)/dashboard');
+                    }
+                  } else {
+                    router.push('/(auth)/sign-in');
+                  }
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3.5,
+                  borderRadius: 999,
+                  backgroundColor: isAuthenticated ? '#073820' : 'rgba(255,255,255,0.92)',
+                  borderWidth: 1,
                   borderColor: 'rgba(200,168,75,0.6)',
-                  paddingVertical: 10,
-                  paddingHorizontal: 4,
-                  borderRadius: 12,
-                  overflow: 'hidden',
+                  shadowColor: '#000',
+                  shadowOpacity: 0.12,
+                  shadowRadius: 4,
+                  elevation: 3,
                 }}
               >
-                <UserPlus size={12} color={C.white} style={{ flexShrink: 0 }} />
-                <Text
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.7}
-                  ellipsizeMode="tail"
-                  style={{
-                    flexShrink: 1,
-                    color: C.white,
-                    fontWeight: '800',
-                    fontSize: 10.5,
-                    marginLeft: 3,
-                    marginRight: 2,
-                  }}
-                >
-                  {t('home.become_member', 'Become a Member')}
-                </Text>
-                <View
-                  style={{
-                    backgroundColor: C.goldBg,
-                    paddingHorizontal: 3.5,
-                    paddingVertical: 1,
-                    borderRadius: 4,
-                    flexShrink: 0,
-                    borderWidth: 0.5,
-                    borderColor: 'rgba(200,168,75,0.3)',
-                  }}
-                >
-                  <Text style={{ color: C.gold, fontSize: 8, fontWeight: '800' }}>₹100</Text>
-                </View>
+                {isAuthenticated ? (
+                  <>
+                    <LayoutDashboard color={C.gold} size={12} />
+                    <Text style={{ color: C.gold, fontSize: 10, fontWeight: '900', maxWidth: 85 }} numberOfLines={1}>
+                      {activeUser?.name ? (activeUser.name.split(' ')[0] || activeUser.name) : t('drawer.dashboard', 'Portal')}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <User color="#073820" size={12} />
+                    <Text style={{ color: '#073820', fontSize: 10, fontWeight: '900' }}>
+                      {t('auth.sign_in', 'Login')}
+                    </Text>
+                  </>
+                )}
               </TouchableOpacity>
+            )}
+          </View>
 
-              {/* Donate Now (Gold) */}
-              <TouchableOpacity
-                onPress={() => router.push('/(stacks)/donation')}
-                style={{
-                  flex: 0.92,
-                  minWidth: 0,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: C.gold,
-                  paddingVertical: 10,
-                  paddingHorizontal: 4,
-                  borderRadius: 12,
-                  shadowColor: C.gold,
-                  shadowOpacity: 0.4,
-                  shadowRadius: 8,
-                  elevation: 4,
-                  overflow: 'hidden',
-                }}
-              >
-                <Heart size={12} color={C.deepGreen} fill={C.deepGreen} style={{ flexShrink: 0 }} />
-                <Text
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.7}
-                  ellipsizeMode="tail"
-                  style={{
-                    flexShrink: 1,
-                    color: C.deepGreen,
-                    fontWeight: '800',
-                    fontSize: 10.5,
-                    marginLeft: 3,
-                  }}
-                >
-                  {t('home.donate_now', 'Donate Now')}
-                </Text>
-              </TouchableOpacity>
-
-              {/* Zakat Calculator */}
-              <TouchableOpacity
-                onPress={() => setIsZakatModalOpen(true)}
-                style={{
-                  flex: 0.93,
-                  minWidth: 0,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: C.midGreen,
-                  borderWidth: 1,
-                  borderColor: 'rgba(200,168,75,0.3)',
-                  paddingVertical: 10,
-                  paddingHorizontal: 4,
-                  borderRadius: 12,
-                  overflow: 'hidden',
-                }}
-              >
-                <Calculator size={12} color={C.gold} style={{ flexShrink: 0 }} />
-                <Text
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.7}
-                  ellipsizeMode="tail"
-                  style={{
-                    flexShrink: 1,
-                    color: C.white,
-                    fontWeight: '800',
-                    fontSize: 10.5,
-                    marginLeft: 3,
-                  }}
-                >
-                  {t('home.zakat_calc', 'Zakat Calculator')}
-                </Text>
-              </TouchableOpacity>
+          {/* Header Branding Container */}
+          <View style={{ alignItems: 'center', paddingTop: 2, paddingHorizontal: 16 }}>
+            {/* 1. Emblem Badge */}
+            <View
+              style={{
+                width: 62,
+                height: 62,
+                borderRadius: 15,
+                backgroundColor: '#07321e',
+                borderWidth: 1.5,
+                borderColor: '#d4af37',
+                alignItems: 'center',
+                justifyContent: 'center',
+                shadowColor: '#000',
+                shadowOpacity: 0.25,
+                shadowRadius: 5,
+                elevation: 4,
+                marginBottom: 2,
+                overflow: 'hidden',
+              }}
+            >
+              <Image
+                source={mfctEmblem}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="cover"
+              />
             </View>
 
-            {/* Live Stats – 3 Cards */}
-            <View style={{ flexDirection: 'row', gap: 6, width: '100%' }}>
-              {/* Members */}
-              <View
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  backgroundColor: theme.cardBg,
-                  borderRadius: 12,
-                  paddingHorizontal: 8,
-                  paddingVertical: 10,
-                  borderWidth: 1,
-                  borderColor: isDark ? theme.cardBorder : 'rgba(200,168,75,0.3)',
-                  shadowColor: '#000',
-                  shadowOpacity: isDark ? 0.25 : 0.15,
-                  shadowRadius: 6,
-                  elevation: 3,
-                }}
-              >
-                {loading ? (
-                  <View style={{ width: 40, height: 22, backgroundColor: theme.progressTrack, borderRadius: 4, marginBottom: 4 }} />
-                ) : (
-                  <Text style={{ fontSize: 17, fontWeight: '900', color: theme.accentGreen, lineHeight: 22 }} numberOfLines={1} adjustsFontSizeToFit>
-                    {totalMembers > 0 ? totalMembers.toLocaleString('en-IN') : '0'}+
-                  </Text>
-                )}
-                <Text style={{ fontSize: 9, fontWeight: '600', color: theme.textSecondary, lineHeight: 12 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-                  {t('home.verified_members', 'Verified Members')}
-                </Text>
-              </View>
+            {/* 2. Bold Acronym MFCT */}
+            <Text
+              style={{
+                fontSize: 27,
+                fontWeight: '900',
+                color: '#073820',
+                letterSpacing: 2,
+                lineHeight: 30,
+                fontFamily: 'serif',
+                textAlign: 'center',
+              }}
+            >
+              MFCT
+            </Text>
 
-              {/* Relief Disbursed */}
-              <View
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  backgroundColor: C.richGreen,
-                  borderRadius: 12,
-                  paddingHorizontal: 8,
-                  paddingVertical: 10,
-                  borderWidth: 1,
-                  borderColor: C.midGreen,
-                  shadowColor: '#000',
-                  shadowOpacity: 0.2,
-                  shadowRadius: 6,
-                  elevation: 3,
-                }}
-              >
-                {loading ? (
-                  <View style={{ width: 48, height: 22, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 4, marginBottom: 4 }} />
-                ) : (
-                  <Text style={{ fontSize: 13, fontWeight: '900', color: C.white, lineHeight: 22 }} numberOfLines={1} adjustsFontSizeToFit>
-                    ₹{totalRaised > 0 ? totalRaised.toLocaleString('en-IN') : '0'}+
-                  </Text>
-                )}
-                <Text style={{ fontSize: 9, fontWeight: '600', color: C.gold, lineHeight: 12 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-                  {t('home.funds_disbursed', 'Relief Disbursed')}
-                </Text>
-              </View>
+            {/* 3. Subtitle Full Trust Name */}
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: '900',
+                color: '#073820',
+                letterSpacing: 0.9,
+                textAlign: 'center',
+                textTransform: 'uppercase',
+                marginTop: 1,
+              }}
+            >
+              MOHAMMAD FAEEM CHARITABLE TRUST
+            </Text>
 
-              {/* Audit Receipts */}
-              <View
+            {/* 4. Tagline flanked by horizontal lines */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
+              <View style={{ width: 22, height: 1.5, backgroundColor: '#073820', opacity: 0.8 }} />
+              <Text
                 style={{
-                  flex: 1,
-                  minWidth: 0,
-                  backgroundColor: theme.cardBg,
-                  borderRadius: 12,
-                  paddingHorizontal: 8,
-                  paddingVertical: 10,
-                  borderWidth: 1,
-                  borderColor: isDark ? theme.cardBorder : 'rgba(200,168,75,0.3)',
-                  shadowColor: '#000',
-                  shadowOpacity: isDark ? 0.25 : 0.15,
-                  shadowRadius: 6,
-                  elevation: 3,
+                  fontSize: 11.5,
+                  fontWeight: '800',
+                  color: '#073820',
+                  marginHorizontal: 7,
+                  letterSpacing: 0.4,
                 }}
               >
-                <Text style={{ fontSize: 17, fontWeight: '900', color: theme.accentGreen, lineHeight: 22 }} numberOfLines={1} adjustsFontSizeToFit>
-                  100%
-                </Text>
-                <Text style={{ fontSize: 9, fontWeight: '600', color: theme.textSecondary, lineHeight: 12 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-                  {t('home.audit_receipts', 'Audit Receipts')}
-                </Text>
-              </View>
+                याद उनकी, सेवा हमारी
+              </Text>
+              <View style={{ width: 22, height: 1.5, backgroundColor: '#073820', opacity: 0.8 }} />
             </View>
           </View>
         </ImageBackground>
+
+        {/* 6. White Frosted Card Container for 8 Action Tiles (Starts BELOW the mosque image) */}
+        <View
+          style={{
+            backgroundColor: isDark ? '#1e293b' : '#ffffff',
+            borderRadius: 24,
+            paddingVertical: 14,
+            paddingHorizontal: 8,
+            marginHorizontal: 14,
+            marginTop: 0,
+            borderWidth: 1,
+            borderColor: isDark ? '#334155' : 'rgba(26,66,44,0.08)',
+            shadowColor: '#000',
+            shadowOpacity: 0.1,
+            shadowRadius: 12,
+            elevation: 6,
+            zIndex: 5,
+          }}
+        >
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+            {/* Tile 1: About Us */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => setIsAboutModalOpen(true)}
+              style={{ width: '24%', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 2 }}
+            >
+              <View
+                style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: 16,
+                  backgroundColor: '#09482b',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#09482b',
+                  shadowOpacity: 0.35,
+                  shadowRadius: 6,
+                  elevation: 4,
+                  borderWidth: 1,
+                  borderColor: 'rgba(200,168,75,0.3)',
+                }}
+              >
+                <User size={24} color="#ffffff" />
+              </View>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                style={{ fontSize: 10, fontWeight: '800', color: isDark ? '#f8fafc' : '#111827', textAlign: 'center', marginTop: 6 }}
+              >
+                About Us
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                style={{ fontSize: 8.5, fontWeight: '600', color: isDark ? '#94a3b8' : '#4b5563', textAlign: 'center', marginTop: 1 }}
+              >
+                हमारे बारे में
+              </Text>
+            </TouchableOpacity>
+
+            {/* Tile 2: Membership */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => router.push('/(auth)/sign-up')}
+              style={{ width: '24%', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 2 }}
+            >
+              <View
+                style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: 16,
+                  backgroundColor: '#09482b',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#09482b',
+                  shadowOpacity: 0.35,
+                  shadowRadius: 6,
+                  elevation: 4,
+                  borderWidth: 1,
+                  borderColor: 'rgba(200,168,75,0.3)',
+                }}
+              >
+                <Users size={24} color="#ffffff" />
+              </View>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                style={{ fontSize: 10, fontWeight: '800', color: isDark ? '#f8fafc' : '#111827', textAlign: 'center', marginTop: 6 }}
+              >
+                Membership
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                style={{ fontSize: 8.5, fontWeight: '600', color: isDark ? '#94a3b8' : '#4b5563', textAlign: 'center', marginTop: 1 }}
+              >
+                सदस्यता
+              </Text>
+            </TouchableOpacity>
+
+            {/* Tile 3: Our Schemes */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => setIsSchemesModalOpen(true)}
+              style={{ width: '24%', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 2 }}
+            >
+              <View
+                style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: 16,
+                  backgroundColor: '#09482b',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#09482b',
+                  shadowOpacity: 0.35,
+                  shadowRadius: 6,
+                  elevation: 4,
+                  borderWidth: 1,
+                  borderColor: 'rgba(200,168,75,0.3)',
+                }}
+              >
+                <Briefcase size={23} color="#ffffff" />
+              </View>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                style={{ fontSize: 10, fontWeight: '800', color: isDark ? '#f8fafc' : '#111827', textAlign: 'center', marginTop: 6 }}
+              >
+                Our Schemes
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                style={{ fontSize: 8.5, fontWeight: '600', color: isDark ? '#94a3b8' : '#4b5563', textAlign: 'center', marginTop: 1 }}
+              >
+                हमारी योजनाएँ
+              </Text>
+            </TouchableOpacity>
+
+            {/* Tile 4: Donate */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => router.push('/(stacks)/donation')}
+              style={{ width: '24%', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 2 }}
+            >
+              <View
+                style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: 16,
+                  backgroundColor: '#09482b',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#09482b',
+                  shadowOpacity: 0.35,
+                  shadowRadius: 6,
+                  elevation: 4,
+                  borderWidth: 1,
+                  borderColor: 'rgba(200,168,75,0.3)',
+                }}
+              >
+                <Heart size={24} color="#ffffff" fill="#ffffff" />
+              </View>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                style={{ fontSize: 10, fontWeight: '800', color: isDark ? '#f8fafc' : '#111827', textAlign: 'center', marginTop: 6 }}
+              >
+                Donate
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                style={{ fontSize: 8.5, fontWeight: '600', color: isDark ? '#94a3b8' : '#4b5563', textAlign: 'center', marginTop: 1 }}
+              >
+                सहयोग करें
+              </Text>
+            </TouchableOpacity>
+
+            {/* Tile 5: News & Updates */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => setIsNewsModalOpen(true)}
+              style={{ width: '24%', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 2, marginTop: 4 }}
+            >
+              <View
+                style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: 16,
+                  backgroundColor: '#09482b',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#09482b',
+                  shadowOpacity: 0.35,
+                  shadowRadius: 6,
+                  elevation: 4,
+                  borderWidth: 1,
+                  borderColor: 'rgba(200,168,75,0.3)',
+                }}
+              >
+                <Newspaper size={23} color="#ffffff" />
+              </View>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                style={{ fontSize: 10, fontWeight: '800', color: isDark ? '#f8fafc' : '#111827', textAlign: 'center', marginTop: 6 }}
+              >
+                News & Updates
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                style={{ fontSize: 8.5, fontWeight: '600', color: isDark ? '#94a3b8' : '#4b5563', textAlign: 'center', marginTop: 1 }}
+              >
+                समाचार
+              </Text>
+            </TouchableOpacity>
+
+            {/* Tile 6: Gallery */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => router.push('/(tabs)/gallery')}
+              style={{ width: '24%', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 2, marginTop: 4 }}
+            >
+              <View
+                style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: 16,
+                  backgroundColor: '#09482b',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#09482b',
+                  shadowOpacity: 0.35,
+                  shadowRadius: 6,
+                  elevation: 4,
+                  borderWidth: 1,
+                  borderColor: 'rgba(200,168,75,0.3)',
+                }}
+              >
+                <ImageIcon size={23} color="#ffffff" />
+              </View>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                style={{ fontSize: 10, fontWeight: '800', color: isDark ? '#f8fafc' : '#111827', textAlign: 'center', marginTop: 6 }}
+              >
+                Gallery
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                style={{ fontSize: 8.5, fontWeight: '600', color: isDark ? '#94a3b8' : '#4b5563', textAlign: 'center', marginTop: 1 }}
+              >
+                गैलरी
+              </Text>
+            </TouchableOpacity>
+
+            {/* Tile 7: Contact Us */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => setIsContactModalOpen(true)}
+              style={{ width: '24%', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 2, marginTop: 4 }}
+            >
+              <View
+                style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: 16,
+                  backgroundColor: '#09482b',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#09482b',
+                  shadowOpacity: 0.35,
+                  shadowRadius: 6,
+                  elevation: 4,
+                  borderWidth: 1,
+                  borderColor: 'rgba(200,168,75,0.3)',
+                }}
+              >
+                <Phone size={23} color="#ffffff" />
+              </View>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                style={{ fontSize: 10, fontWeight: '800', color: isDark ? '#f8fafc' : '#111827', textAlign: 'center', marginTop: 6 }}
+              >
+                Contact Us
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                style={{ fontSize: 8.5, fontWeight: '600', color: isDark ? '#94a3b8' : '#4b5563', textAlign: 'center', marginTop: 1 }}
+              >
+                संपर्क करें
+              </Text>
+            </TouchableOpacity>
+
+            {/* Tile 8: More */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => setIsMoreModalOpen(true)}
+              style={{ width: '24%', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 2, marginTop: 4 }}
+            >
+              <View
+                style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: 16,
+                  backgroundColor: '#09482b',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#09482b',
+                  shadowOpacity: 0.35,
+                  shadowRadius: 6,
+                  elevation: 4,
+                  borderWidth: 1,
+                  borderColor: 'rgba(200,168,75,0.3)',
+                }}
+              >
+                <MoreHorizontal size={24} color="#ffffff" />
+              </View>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                style={{ fontSize: 10, fontWeight: '800', color: isDark ? '#f8fafc' : '#111827', textAlign: 'center', marginTop: 6 }}
+              >
+                More
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                style={{ fontSize: 8.5, fontWeight: '600', color: isDark ? '#94a3b8' : '#4b5563', textAlign: 'center', marginTop: 1 }}
+              >
+                और भी
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* 7. Bottom Elegant Green-Gold Ribbon Wave Banner */}
+        <View style={{ width: '100%', flex: 1, minHeight: 150, marginTop: -18, zIndex: 1, overflow: 'hidden', backgroundColor: '#06311e' }}>
+          <ImageBackground
+            source={greenGoldWave}
+            style={{
+              width: '100%',
+              height: '100%',
+              minHeight: 150,
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              paddingTop: 18,
+            }}
+            resizeMode="cover"
+          >
+            <Text
+              style={{
+                color: '#ffffff',
+                fontSize: 20,
+                marginTop: 32,
+                fontWeight: '800',
+                letterSpacing: 0.6,
+                textAlign: 'center',
+                textShadowColor: 'rgba(0,0,0,0.5)',
+                textShadowOffset: { width: 0, height: 1.5 },
+                textShadowRadius: 4,
+              }}
+            >
+              “याद उनकी, सेवा हमारी”
+            </Text>
+          </ImageBackground>
+        </View>
+
+        {/* 8. Live Verified Audit Stats Strip (Preserved) */}
+        {/* <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 }}>
+          <View style={{ flexDirection: 'row', gap: 8, width: '100%' }}>
+            <View
+              style={{
+                flex: 1,
+                minWidth: 0,
+                backgroundColor: theme.cardBg,
+                borderRadius: 14,
+                paddingHorizontal: 8,
+                paddingVertical: 10,
+                borderWidth: 1,
+                borderColor: isDark ? theme.cardBorder : 'rgba(200,168,75,0.3)',
+                shadowColor: '#000',
+                shadowOpacity: isDark ? 0.25 : 0.08,
+                shadowRadius: 6,
+                elevation: 3,
+                alignItems: 'center',
+              }}
+            >
+              {loading ? (
+                <ShimmerBlock width={40} height={18} borderRadius={4} style={{ marginBottom: 4 }} />
+              ) : (
+                <Text style={{ fontSize: 16, fontWeight: '900', color: theme.accentGreen, lineHeight: 20 }} numberOfLines={1} adjustsFontSizeToFit>
+                  {totalMembers > 0 ? totalMembers.toLocaleString('en-IN') : '0'}+
+                </Text>
+              )}
+              <Text style={{ fontSize: 9, fontWeight: '700', color: theme.textSecondary, lineHeight: 12, textAlign: 'center' }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                {t('home.verified_members', 'Verified Members')}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                flex: 1,
+                minWidth: 0,
+                backgroundColor: C.richGreen,
+                borderRadius: 14,
+                paddingHorizontal: 8,
+                paddingVertical: 10,
+                borderWidth: 1,
+                borderColor: C.midGreen,
+                shadowColor: '#000',
+                shadowOpacity: 0.2,
+                shadowRadius: 6,
+                elevation: 3,
+                alignItems: 'center',
+              }}
+            >
+              {loading ? (
+                <ShimmerBlock width={48} height={18} borderRadius={4} style={{ marginBottom: 4 }} />
+              ) : (
+                <Text style={{ fontSize: 14, fontWeight: '900', color: C.white, lineHeight: 20 }} numberOfLines={1} adjustsFontSizeToFit>
+                  ₹{totalRaised > 0 ? totalRaised.toLocaleString('en-IN') : '0'}+
+                </Text>
+              )}
+              <Text style={{ fontSize: 9, fontWeight: '700', color: C.gold, lineHeight: 12, textAlign: 'center' }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                {t('home.funds_disbursed', 'Relief Disbursed')}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                flex: 1,
+                minWidth: 0,
+                backgroundColor: theme.cardBg,
+                borderRadius: 14,
+                paddingHorizontal: 8,
+                paddingVertical: 10,
+                borderWidth: 1,
+                borderColor: isDark ? theme.cardBorder : 'rgba(200,168,75,0.3)',
+                shadowColor: '#000',
+                shadowOpacity: isDark ? 0.25 : 0.08,
+                shadowRadius: 6,
+                elevation: 3,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '900', color: theme.accentGreen, lineHeight: 20 }} numberOfLines={1} adjustsFontSizeToFit>
+                100%
+              </Text>
+              <Text style={{ fontSize: 9, fontWeight: '700', color: theme.textSecondary, lineHeight: 12, textAlign: 'center' }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                {t('home.audit_receipts', 'Audit Receipts')}
+              </Text>
+            </View>
+          </View>
+        </View> */}
       </View>
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 2. UPI DONATION WIDGET                                             */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 }}>
+      {/* <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 }}>
         <View
           style={{
             backgroundColor: C.darkGreen,
@@ -814,10 +1298,8 @@ export default function HomeScreen() {
             elevation: 6,
           }}
         >
-          {/* Header */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {/* Live dot */}
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.gold, marginRight: 8 }} />
               <Text style={{ color: C.gold, fontWeight: '800', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase' }}>
                 {t('home.scan_donate', 'UPI Direct Donate')}
@@ -841,7 +1323,6 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* QR + UPI ID */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             <View style={{ backgroundColor: C.white, padding: 8, borderRadius: 12 }}>
               {accountDetails?.qr_code_url ? (
@@ -860,7 +1341,6 @@ export default function HomeScreen() {
               <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9 }}>
                 {accountDetails?.bank_name ? `Bank: ${accountDetails.bank_name}` : t('home.escrow_note', '100% Direct Hospital & Aid Escrow')}
               </Text>
-              {/* App labels */}
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
                 {['GPay', 'PhonePe', 'Paytm', 'BHIM'].map((app) => (
                   <View key={app} style={{ backgroundColor: C.goldBg, borderWidth: 1, borderColor: C.goldBorder, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
@@ -871,18 +1351,17 @@ export default function HomeScreen() {
             </View>
           </View>
         </View>
-      </View>
+      </View> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 3. OUR MISSION – 4 PILLARS                                        */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View style={{ paddingHorizontal: 16, paddingVertical: 28 }}>
+      {/* <View style={{ paddingHorizontal: 16, paddingVertical: 28 }}>
         <SectionHeader
           tag={t('home.mission_tag', 'OUR MISSION')}
           title={t('home.mission_title', 'Our Mission')}
           desc={t('home.mission_desc', 'Our goal is to deliver aid, support, and selfless service to every section of society.')}
         />
-        {/* Row 1 */}
         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
           <MissionCard
             icon={<Heart size={22} color={C.white} fill={C.white} />}
@@ -897,7 +1376,6 @@ export default function HomeScreen() {
             line2={t('home.mission_stand_l2', 'Dedicated to All')}
           />
         </View>
-        {/* Row 2 */}
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <MissionCard
             icon={<Award size={22} color={C.white} />}
@@ -912,12 +1390,12 @@ export default function HomeScreen() {
             line2={t('home.mission_build_l2', 'and Social Upliftment')}
           />
         </View>
-      </View>
+      </View> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 4. ABOUT MFCT BANNER                                               */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
+      {/* <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
         <View
           style={{
             backgroundColor: C.darkGreen,
@@ -931,13 +1409,11 @@ export default function HomeScreen() {
             elevation: 8,
           }}
         >
-          {/* About Image from local asset */}
           <Image
             source={aboutMfctImage}
             style={{ width: '100%', height: 180 }}
             resizeMode="cover"
           />
-          {/* Content */}
           <View style={{ padding: 20 }}>
             <Text style={{ color: C.gold, fontSize: 10, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>
               {t('home.about_tag', 'ABOUT MFCT')}
@@ -945,7 +1421,6 @@ export default function HomeScreen() {
             <Text style={{ color: C.white, fontSize: 18, fontWeight: '900', marginBottom: 10, lineHeight: 24 }}>
               {t('home.about_title', 'Mohammad Faeem Charitable Trust')}
             </Text>
-            {/* Gold divider */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
               <View style={{ width: 32, height: 2, backgroundColor: C.gold }} />
               <Heart size={10} color={C.gold} fill={C.gold} style={{ marginHorizontal: 6 }} />
@@ -955,7 +1430,6 @@ export default function HomeScreen() {
               {t('home.about_desc', 'MFCT was established to strengthen brotherhood, unity, and humanity across society. Through education, health, emergency bereavement aid, daughter marriage support, medical assistance, disaster relief, and welfare programs, we are dedicated to reaching every section of society.')}
             </Text>
 
-            {/* Impact Stats Grid */}
             <View
               style={{
                 backgroundColor: 'rgba(0,0,0,0.28)',
@@ -984,7 +1458,6 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {/* Read More Button */}
             <TouchableOpacity
               onPress={() => router.push('/(tabs)/campaigns')}
               style={{
@@ -1007,12 +1480,12 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </View> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 5. OUR PROGRAMS / DONATION CATEGORIES                             */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+      {/* <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <SectionHeader
           tag={t('home.programs_tag', 'OUR PROGRAMS')}
           title={t('home.programs_title', 'Our Key Programs')}
@@ -1040,7 +1513,6 @@ export default function HomeScreen() {
                   marginBottom: 4,
                 }}
               >
-                {/* Image & Icon Header */}
                 <View style={{ height: 80, width: '100%', position: 'relative', overflow: 'hidden' }}>
                   <Image source={cat.image} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                   <View
@@ -1101,7 +1573,6 @@ export default function HomeScreen() {
                   </View>
                 </View>
 
-                {/* Card Text Content */}
                 <View style={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12 }}>
                   <Text style={{ fontWeight: '800', fontSize: 12, color: theme.textHeading, marginBottom: 2 }}>
                     {cat.label}
@@ -1114,12 +1585,12 @@ export default function HomeScreen() {
             );
           })}
         </View>
-      </View>
+      </View> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 6. YOUR COMMUNITY CAMPAIGNS (LOGGED IN)                           */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      {isAuthenticated && activeUser && myCommunityCampaigns.length > 0 && (
+      {/* {isAuthenticated && activeUser && myCommunityCampaigns.length > 0 && (
         <View
           style={{
             paddingVertical: 20,
@@ -1194,12 +1665,12 @@ export default function HomeScreen() {
             })}
           </ScrollView>
         </View>
-      )}
+      )} */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 7. ZAKAT CALCULATOR HIGHLIGHT BANNER                              */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
+      {/* <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
         <View
           style={{
             backgroundColor: C.richGreen,
@@ -1213,7 +1684,6 @@ export default function HomeScreen() {
             elevation: 5,
           }}
         >
-          {/* Badge */}
           <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: C.gold, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginBottom: 10 }}>
             <Sparkles size={12} color={C.deepGreen} />
             <Text style={{ color: C.deepGreen, fontWeight: '800', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', marginLeft: 5 }}>
@@ -1248,12 +1718,12 @@ export default function HomeScreen() {
             <ArrowRight size={14} color={C.deepGreen} style={{ marginLeft: 6 }} />
           </TouchableOpacity>
         </View>
-      </View>
+      </View> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 8. FEATURED CAMPAIGNS WITH CATEGORY FILTER                        */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+      {/* <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <View style={{ marginBottom: 14 }}>
           <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase', color: C.goldDark, marginBottom: 3 }}>
             {t('home.how_tag', 'On-site Verified Causes')}
@@ -1266,7 +1736,6 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        {/* Filter Pills */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 8 }}>
           {['All', 'Urgent', 'Zakat', 'Medical', 'Education', 'Food', 'Marriage', 'Janazah'].map((cat) => {
             const isCatActive = selectedCategory === cat;
@@ -1299,14 +1768,15 @@ export default function HomeScreen() {
           })}
         </ScrollView>
 
-        {/* Campaigns List */}
         {loading ? (
-          <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-            <ActivityIndicator color={C.gold} size="large" />
+          <View style={{ gap: 14 }}>
+            <CampaignCardSkeleton />
+            <CampaignCardSkeleton />
+            <CampaignCardSkeleton />
           </View>
         ) : filteredCampaigns.length > 0 ? (
           <View style={{ gap: 14 }}>
-            {filteredCampaigns.slice(0, 6).map((camp) => {
+            {filteredCampaigns.slice(0, 3).map((camp) => {
               const displayTitle = translateCampaignTitle(camp.title, lang);
               const displayCat = translateCategory(camp.category, lang);
               const displayCity = translateCity(camp.city, lang);
@@ -1332,7 +1802,6 @@ export default function HomeScreen() {
                     onPress={() => router.push({ pathname: '/(stacks)/campaign-details', params: { id: camp.id } })}
                   >
                     <Image source={{ uri: camp.mainImage }} style={{ width: '100%', height: 168 }} resizeMode="cover" />
-                    {/* Badges */}
                     <View style={{ position: 'absolute', top: 10, left: 10, flexDirection: 'row', gap: 6 }}>
                       {camp.isUrgent && (
                         <View style={{ backgroundColor: '#dc2626', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, flexDirection: 'row', alignItems: 'center' }}>
@@ -1354,7 +1823,6 @@ export default function HomeScreen() {
                   </TouchableOpacity>
 
                   <View style={{ padding: 16 }}>
-                    {/* Category + days */}
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                       <Text style={{ fontSize: 10, fontWeight: '700', color: isDark ? C.gold : C.richGreen, textTransform: 'uppercase' }}>
                         {displayCat} • {displayCity}
@@ -1385,7 +1853,6 @@ export default function HomeScreen() {
                       numberOfLines={2}
                     />
 
-                    {/* Progress bar */}
                     <View style={{ backgroundColor: theme.progressTrack, borderRadius: 999, height: 6, marginBottom: 8 }}>
                       <View
                         style={{
@@ -1411,7 +1878,6 @@ export default function HomeScreen() {
                       </Text>
                     </View>
 
-                    {/* Action Buttons */}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: isDark ? theme.cardBorder : '#f1f5f9' }}>
                       <TouchableOpacity
                         onPress={() => router.push({ pathname: '/(stacks)/donation', params: { campaignId: camp.id, initialCategory: camp.category } })}
@@ -1419,12 +1885,6 @@ export default function HomeScreen() {
                       >
                         <Heart color={C.deepGreen} size={14} fill={C.deepGreen} />
                         <Text style={{ color: C.deepGreen, fontWeight: '800', fontSize: 12, marginLeft: 6 }}>{t('home.donate_now', 'Donate Now')}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => handleShareCampaign(camp)}
-                        style={{ padding: 11, borderRadius: 12, backgroundColor: theme.innerCardBg, borderWidth: 1, borderColor: theme.cardBorder, alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <Share2 color={theme.textSecondary} size={16} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1447,12 +1907,12 @@ export default function HomeScreen() {
             </Text>
           </View>
         )}
-      </View>
+      </View> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 9. MEMBERSHIP BANNER                                               */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
+      {/* <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
         <View
           style={{
             borderRadius: 20,
@@ -1470,9 +1930,7 @@ export default function HomeScreen() {
             style={{ overflow: 'hidden' }}
             resizeMode="cover"
           >
-            {/* Overlay */}
             <View style={{ backgroundColor: 'rgba(9,31,21,0.93)', padding: 22 }}>
-              {/* Badge */}
               <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: C.gold, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginBottom: 12 }}>
                 <Sparkles size={11} color={C.deepGreen} />
                 <Text style={{ color: C.deepGreen, fontWeight: '900', fontSize: 9, letterSpacing: 1.2, textTransform: 'uppercase', marginLeft: 5 }}>
@@ -1488,7 +1946,6 @@ export default function HomeScreen() {
                 {t('home.member_desc', 'Your ₹100 annual membership fee creates a verified member ID and builds our solidarity emergency fund — helping families in crisis right in your neighbourhood.')}
               </Text>
 
-              {/* Benefits */}
               <View style={{ gap: 8, marginBottom: 20 }}>
                 {[
                   t('home.benefit_1', 'Verified Member ID Card'),
@@ -1526,12 +1983,12 @@ export default function HomeScreen() {
             </View>
           </ImageBackground>
         </View>
-      </View>
+      </View> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 10. HOW IT WORKS (4 STEPS)                                         */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View
+      {/* <View
         style={{
           marginHorizontal: 16,
           marginBottom: 20,
@@ -1593,13 +2050,12 @@ export default function HomeScreen() {
             </View>
           ))}
         </View>
-      </View>
+      </View> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 11. IMPACT COUNTERS                                                */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 20, gap: 12 }}>
-        {/* Life Impact */}
+      {/* <View style={{ paddingHorizontal: 16, paddingBottom: 20, gap: 12 }}>
         <View
           style={{
             backgroundColor: C.richGreen,
@@ -1629,7 +2085,6 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        {/* Members */}
         <View
           style={{
             backgroundColor: theme.cardBg,
@@ -1661,7 +2116,6 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        {/* Communities */}
         <View
           style={{
             backgroundColor: theme.cardBg,
@@ -1699,12 +2153,12 @@ export default function HomeScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </View> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 12. FAQ ACCORDION                                                  */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View
+      {/* <View
         style={{
           marginHorizontal: 16,
           marginBottom: 20,
@@ -1820,12 +2274,12 @@ export default function HomeScreen() {
             );
           })}
         </View>
-      </View>
+      </View> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 13. RECENT DONATIONS LIVE FEED                                     */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
+      {/* <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
         <View
           style={{
             backgroundColor: theme.cardBg,
@@ -1918,12 +2372,12 @@ export default function HomeScreen() {
             </Text>
           )}
         </View>
-      </View>
+      </View> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 13. TESTIMONIALS                                                    */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View
+      {/* <View
         style={{
           paddingHorizontal: 16,
           paddingVertical: 32,
@@ -1966,24 +2420,24 @@ export default function HomeScreen() {
             <ArrowRight color={C.deepGreen} size={14} />
           </TouchableOpacity>
         )}
-      </View>
+      </View> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 13.5 ABOUT US & FOUNDERS' MESSAGE                                  */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <AboutUs />
+      {/* <AboutUs /> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 14. 24/7 HELPLINE & SUPPORT (Clean, Readable Design)               */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 36, paddingTop: 28, backgroundColor: theme.screenBg, borderTopWidth: 1, borderTopColor: theme.cardBorder }}>
+      {/* <View style={{ paddingHorizontal: 16, paddingBottom: 36, paddingTop: 28, backgroundColor: theme.screenBg, borderTopWidth: 1, borderTopColor: theme.cardBorder }}>
         <SectionHeader
           tag={t('home.contact_tag', '24/7 Helpline & Support')}
           title={t('home.contact_title', 'Emergency & Support Helpline')}
           desc={t('home.contact_desc', 'Our team and grassroots volunteers are available 24/7 for immediate assistance.')}
         />
 
-        {/* Emergency Helpline Cards */}
+        
         <View
           style={{
             backgroundColor: C.richGreen,
@@ -2007,7 +2461,6 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* Helpline 1 */}
           <TouchableOpacity
             activeOpacity={0.8}
             onPress={() => Linking.openURL('tel:+918218017226')}
@@ -2047,7 +2500,6 @@ export default function HomeScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Helpline 2 */}
           <TouchableOpacity
             activeOpacity={0.8}
             onPress={() => Linking.openURL('tel:+919756919430')}
@@ -2087,7 +2539,6 @@ export default function HomeScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* WhatsApp / Email Quick Row */}
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
             <TouchableOpacity
               activeOpacity={0.8}
@@ -2130,7 +2581,6 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Registered Trust Information Footer */}
         <View style={{ marginTop: 16, alignItems: 'center', paddingHorizontal: 12 }}>
           <Text style={{ fontSize: 11, fontWeight: '800', color: theme.textHeading, textAlign: 'center' }}>
             {t('home.footer_trust_name')}
@@ -2142,7 +2592,7 @@ export default function HomeScreen() {
             {t('home.footer_address')}
           </Text>
         </View>
-      </View>
+      </View> */}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* 16. ZAKAT CALCULATOR MODAL (Logic Unchanged)                       */}
@@ -2228,6 +2678,820 @@ export default function HomeScreen() {
               >
                 <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>
                   {t('home.zakat_close', 'Close')}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 17. ABOUT US MODAL (Tile 1)                                        */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={isAboutModalOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsAboutModalOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(9,31,21,0.85)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: theme.cardBg, borderTopLeftRadius: 28, borderTopRightRadius: 28, height: '92%', maxHeight: '92%', overflow: 'hidden' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.cardBorder, paddingHorizontal: 20, paddingVertical: 14, backgroundColor: theme.cardBg }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <User color={C.gold} size={22} />
+                <Text style={{ fontWeight: '900', fontSize: 16, color: theme.textHeading, marginLeft: 8 }}>
+                  About Us / हमारे बारे में
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsAboutModalOpen(false)}
+                style={{ padding: 6, borderRadius: 999, backgroundColor: isDark ? '#1a4230' : '#f1f5f9' }}
+              >
+                <X color={isDark ? '#94a3b8' : '#64748b'} size={18} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+              <AboutUs
+                visible={isAboutModalOpen}
+                onRequestClose={() => setIsAboutModalOpen(false)}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 18. OUR SCHEMES MODAL (Tile 3)                                     */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={isSchemesModalOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsSchemesModalOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(9,31,21,0.85)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: theme.cardBg, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '92%', padding: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.cardBorder, paddingBottom: 14, marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Briefcase color={C.gold} size={22} />
+                <Text style={{ fontWeight: '900', fontSize: 16, color: theme.textHeading, marginLeft: 8 }}>
+                  Our Schemes / हमारी योजनाएँ
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsSchemesModalOpen(false)}
+                style={{ padding: 6, borderRadius: 999, backgroundColor: isDark ? '#1a4230' : '#f1f5f9' }}
+              >
+                <X color={isDark ? '#94a3b8' : '#64748b'} size={18} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 14 }}>
+                Choose any welfare scheme below to view active cases or make a direct contribution.
+              </Text>
+
+              <View style={{ gap: 12, marginBottom: 16 }}>
+                {[
+                  {
+                    title: 'Emergency Bereavement & Janazah Aid',
+                    titleHi: 'जनाज़ा व कफ़न-दफ़न सहायता',
+                    desc: 'Dignified funeral expenses and instant financial assistance for underprivileged families in times of sudden loss.',
+                    cat: 'Janazah',
+                  },
+                  {
+                    title: 'Medical Aid & Hospital Relief',
+                    titleHi: 'चिकित्सा एवं अस्पताल सहायता',
+                    desc: 'Direct payment to hospitals and pharmacies for life-saving surgeries, dialysis, cancer treatment, and medications.',
+                    cat: 'Medical',
+                  },
+                  {
+                    title: 'Daughter Marriage Support (Shagun Aid)',
+                    titleHi: 'कन्या विवाह शगुन सहायता',
+                    desc: 'Essential household items, ration, and marriage gift support to ensure respectful weddings for poor daughters.',
+                    cat: 'Marriage',
+                  },
+                  {
+                    title: 'Education & Orphan Support',
+                    titleHi: 'शिक्षा व अनाथ छात्रवृत्ति',
+                    desc: 'School fees, uniform, and books for orphan and underprivileged students to ensure uninterrupted learning.',
+                    cat: 'Education',
+                  },
+                  {
+                    title: 'Monthly Ration & Food Kits',
+                    titleHi: 'मासिक राशन किट सहायता',
+                    desc: 'Nutritious grocery kits (flour, rice, oil, pulses, spices) delivered to widow-led and destitute households.',
+                    cat: 'Food',
+                  },
+                  {
+                    title: '100% Shariah-Compliant Zakat Fund',
+                    titleHi: 'शरिया सम्मत ज़कात वितरण',
+                    desc: 'Dedicated Zakat collection given strictly to verified mustahiqeen as per authentic Shariah guidelines.',
+                    cat: 'Zakat',
+                  },
+                ].map((scheme, i) => (
+                  <View
+                    key={i}
+                    style={{
+                      backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+                      borderRadius: 16,
+                      padding: 14,
+                      borderWidth: 1,
+                      borderColor: theme.cardBorder,
+                    }}
+                  >
+                    <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.textHeading }}>
+                      {scheme.title}
+                    </Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: C.gold, marginTop: 1 }}>
+                      {scheme.titleHi}
+                    </Text>
+                    <Text style={{ fontSize: 11.5, color: theme.textSecondary, marginTop: 5, lineHeight: 17 }}>
+                      {scheme.desc}
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setIsSchemesModalOpen(false);
+                          router.push({ pathname: '/(stacks)/donation', params: { initialCategory: scheme.cat } });
+                        }}
+                        style={{
+                          flex: 1,
+                          backgroundColor: C.gold,
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ color: C.deepGreen, fontWeight: '800', fontSize: 11 }}>
+                          Donate to Scheme
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setIsSchemesModalOpen(false);
+                          setSelectedCategory(scheme.cat);
+                          router.push('/(tabs)/campaigns');
+                        }}
+                        style={{
+                          flex: 1,
+                          backgroundColor: isDark ? '#1e293b' : '#ffffff',
+                          borderWidth: 1,
+                          borderColor: theme.cardBorder,
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ color: theme.textHeading, fontWeight: '700', fontSize: 11 }}>
+                          View Cases
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setIsSchemesModalOpen(false)}
+                style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                  Close
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 19. NEWS & UPDATES MODAL (Tile 5)                                  */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={isNewsModalOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsNewsModalOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(9,31,21,0.85)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: theme.cardBg, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '92%', padding: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.cardBorder, paddingBottom: 14, marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Newspaper color={C.gold} size={22} />
+                <Text style={{ fontWeight: '900', fontSize: 16, color: theme.textHeading, marginLeft: 8 }}>
+                  News & Updates / समाचार
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsNewsModalOpen(false)}
+                style={{ padding: 6, borderRadius: 999, backgroundColor: isDark ? '#1a4230' : '#f1f5f9' }}
+              >
+                <X color={isDark ? '#94a3b8' : '#64748b'} size={18} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {announcements.length === 0 ? (
+                <View style={{ paddingVertical: 36, alignItems: 'center', justifyContent: 'center' }}>
+                  <Newspaper size={36} color={C.gold} style={{ opacity: 0.6, marginBottom: 12 }} />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: theme.textHeading, textAlign: 'center' }}>
+                    No Active Announcements / कोई घोषणा नहीं
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.textSecondary, textAlign: 'center', marginTop: 4, paddingHorizontal: 16 }}>
+                    New trust announcements, verified field updates, and relief notices will appear here in real time.
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ gap: 12, marginBottom: 16 }}>
+                  {announcements.map((news, i) => (
+                    <View
+                      key={news.id || i}
+                      style={{
+                        backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+                        borderRadius: 16,
+                        padding: 14,
+                        borderWidth: 1,
+                        borderColor: theme.cardBorder,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <View style={{ backgroundColor: C.richGreen, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
+                          <Text style={{ color: C.white, fontSize: 9, fontWeight: '900' }}>
+                            {news.communityName || (news.city ? `${news.city.toUpperCase()} UNIT` : 'MFCT TRUST')}
+                          </Text>
+                        </View>
+                        <Text style={{ fontSize: 10, color: theme.textSecondary }}>
+                          {news.sentAt ? new Date(news.sentAt).toLocaleDateString() : 'Recent'}
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: C.gold, marginBottom: 3 }}>
+                        By {news.sentBy || 'Admin'}
+                      </Text>
+                      <Text style={{ fontSize: 12.5, color: theme.textPrimary, lineHeight: 18 }}>
+                        {news.message}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <TouchableOpacity
+                onPress={() => setIsNewsModalOpen(false)}
+                style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                  Close
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 20. CONTACT US MODAL (Tile 7)                                      */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={isContactModalOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsContactModalOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(9,31,21,0.85)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: theme.cardBg, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '92%', padding: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.cardBorder, paddingBottom: 14, marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Phone color={C.gold} size={22} />
+                <Text style={{ fontWeight: '900', fontSize: 16, color: theme.textHeading, marginLeft: 8 }}>
+                  Contact Us / संपर्क करें
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsContactModalOpen(false)}
+                style={{ padding: 6, borderRadius: 999, backgroundColor: isDark ? '#1a4230' : '#f1f5f9' }}
+              >
+                <X color={isDark ? '#94a3b8' : '#64748b'} size={18} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 14 }}>
+                Our team is available round the clock to answer your queries, coordinate case verification, or register urgent aid.
+              </Text>
+
+              <View style={{ gap: 10, marginBottom: 16 }}>
+                {/* Helpline 1 */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => Linking.openURL('tel:+918218017226')}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    padding: 14,
+                    borderRadius: 14,
+                    backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+                    borderWidth: 1,
+                    borderColor: theme.cardBorder,
+                  }}
+                >
+                  <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.goldBg, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                    <Phone color={C.gold} size={18} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 9.5, color: theme.textSecondary, fontWeight: '700', textTransform: 'uppercase' }}>
+                      24/7 Emergency Support Desk 1
+                    </Text>
+                    <Text style={{ fontWeight: '900', color: theme.textHeading, fontSize: 15, marginTop: 1 }}>
+                      +91 82180 17226
+                    </Text>
+                  </View>
+                  <View style={{ backgroundColor: C.gold, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                    <Text style={{ color: C.deepGreen, fontSize: 10, fontWeight: '900' }}>CALL</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Helpline 2 */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => Linking.openURL('tel:+919756919430')}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    padding: 14,
+                    borderRadius: 14,
+                    backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+                    borderWidth: 1,
+                    borderColor: theme.cardBorder,
+                  }}
+                >
+                  <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.goldBg, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                    <Phone color={C.gold} size={18} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 9.5, color: theme.textSecondary, fontWeight: '700', textTransform: 'uppercase' }}>
+                      24/7 Support Desk 2
+                    </Text>
+                    <Text style={{ fontWeight: '900', color: theme.textHeading, fontSize: 15, marginTop: 1 }}>
+                      +91 97569 19430
+                    </Text>
+                  </View>
+                  <View style={{ backgroundColor: C.gold, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                    <Text style={{ color: C.deepGreen, fontSize: 10, fontWeight: '900' }}>CALL</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* WhatsApp Support */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => Linking.openURL('https://wa.me/918218017226?text=Hello%20MFCT%20Team,%20I%20need%20assistance')}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    padding: 14,
+                    borderRadius: 14,
+                    backgroundColor: '#25D366',
+                  }}
+                >
+                  <MessageSquare color="#ffffff" size={20} style={{ marginRight: 12 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#ffffff', fontWeight: '900', fontSize: 13 }}>
+                      Connect via WhatsApp Support
+                    </Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 10 }}>
+                      Instant response & verification guidance
+                    </Text>
+                  </View>
+                  <ArrowRight color="#ffffff" size={16} />
+                </TouchableOpacity>
+
+                {/* Email Support */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => Linking.openURL('mailto:info@mfcttrust.com')}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    padding: 14,
+                    borderRadius: 14,
+                    backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+                    borderWidth: 1,
+                    borderColor: theme.cardBorder,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, color: theme.textSecondary, fontWeight: '700' }}>Official Email Desk</Text>
+                    <Text style={{ fontWeight: '800', color: theme.textHeading, fontSize: 13, marginTop: 2 }}>info@mfcttrust.com</Text>
+                  </View>
+                  <ArrowRight color={C.gold} size={16} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Direct Inquiry Form */}
+              <View
+                style={{
+                  marginTop: 10,
+                  marginBottom: 16,
+                  padding: 16,
+                  borderRadius: 18,
+                  backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+                  borderWidth: 1,
+                  borderColor: theme.cardBorder,
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '800', color: theme.textHeading, marginBottom: 2 }}>
+                  Direct Message / संदेश भेजें
+                </Text>
+                <Text style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 12 }}>
+                  Submit an inquiry, complaint, or aid request directly to our administrators.
+                </Text>
+
+                <TextInput
+                  placeholder="Full Name / आपका नाम *"
+                  placeholderTextColor={theme.textSecondary}
+                  value={contactName}
+                  onChangeText={setContactName}
+                  style={{
+                    backgroundColor: theme.inputBg,
+                    borderWidth: 1,
+                    borderColor: theme.inputBorder,
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    fontSize: 13,
+                    color: theme.textPrimary,
+                    marginBottom: 10,
+                  }}
+                />
+
+                <TextInput
+                  placeholder="Phone Number / फ़ोन नंबर *"
+                  placeholderTextColor={theme.textSecondary}
+                  value={contactPhone}
+                  onChangeText={setContactPhone}
+                  keyboardType="phone-pad"
+                  style={{
+                    backgroundColor: theme.inputBg,
+                    borderWidth: 1,
+                    borderColor: theme.inputBorder,
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    fontSize: 13,
+                    color: theme.textPrimary,
+                    marginBottom: 10,
+                  }}
+                />
+
+                <TextInput
+                  placeholder="Email Address (Optional) / ईमेल"
+                  placeholderTextColor={theme.textSecondary}
+                  value={contactEmail}
+                  onChangeText={setContactEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  style={{
+                    backgroundColor: theme.inputBg,
+                    borderWidth: 1,
+                    borderColor: theme.inputBorder,
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    fontSize: 13,
+                    color: theme.textPrimary,
+                    marginBottom: 10,
+                  }}
+                />
+
+                <TextInput
+                  placeholder="Your Message or Assistance Needed / आपका संदेश *"
+                  placeholderTextColor={theme.textSecondary}
+                  value={contactMessage}
+                  onChangeText={setContactMessage}
+                  multiline
+                  numberOfLines={3}
+                  style={{
+                    backgroundColor: theme.inputBg,
+                    borderWidth: 1,
+                    borderColor: theme.inputBorder,
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    fontSize: 13,
+                    color: theme.textPrimary,
+                    marginBottom: 12,
+                    textAlignVertical: 'top',
+                    minHeight: 70,
+                  }}
+                />
+
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  disabled={submittingContact}
+                  onPress={handleSendContactMessage}
+                  style={{
+                    backgroundColor: C.richGreen,
+                    borderRadius: 10,
+                    paddingVertical: 12,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                  }}
+                >
+                  {submittingContact ? (
+                    <ActivityIndicator size="small" color={C.white} />
+                  ) : (
+                    <>
+                      <Text style={{ color: C.white, fontWeight: '800', fontSize: 13, marginRight: 6 }}>
+                        Send Message / संदेश भेजें
+                      </Text>
+                      <ArrowRight size={15} color={C.gold} />
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setIsContactModalOpen(false)}
+                style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                  Close
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 21. MORE OPTIONS BOTTOM SHEET MODAL (Tile 8)                       */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={isMoreModalOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsMoreModalOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(9,31,21,0.85)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: theme.cardBg, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '92%', padding: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.cardBorder, paddingBottom: 14, marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <MoreHorizontal color={C.gold} size={22} />
+                <Text style={{ fontWeight: '900', fontSize: 16, color: theme.textHeading, marginLeft: 8 }}>
+                  More Services / और भी
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsMoreModalOpen(false)}
+                style={{ padding: 6, borderRadius: 999, backgroundColor: isDark ? '#1a4230' : '#f1f5f9' }}
+              >
+                <X color={isDark ? '#94a3b8' : '#64748b'} size={18} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={{ gap: 8, marginBottom: 16 }}>
+                {[
+                  {
+                    title: 'Niyamawali (Trust Rules & By-Laws)',
+                    titleHi: 'नियमावली एवं ट्रस्ट विधान',
+                    icon: <FileText size={18} color={C.gold} />,
+                    onPress: () => { setIsMoreModalOpen(false); router.push('/(tabs)/niyamawali'); },
+                  },
+                  {
+                    title: 'Zakat Policy & Compliance',
+                    titleHi: 'ज़कात नीति एवं शरिया प्रमाणन',
+                    icon: <Scale size={18} color={C.gold} />,
+                    onPress: () => { setIsMoreModalOpen(false); router.push('/(tabs)/zakat-compliance'); },
+                  },
+                  {
+                    title: 'Zakat Calculator (2.5%)',
+                    titleHi: 'मुफ़्त ज़कात कैलकुलेटर',
+                    icon: <Calculator size={18} color={C.gold} />,
+                    onPress: () => { setIsMoreModalOpen(false); setIsZakatModalOpen(true); },
+                  },
+                  {
+                    title: 'Mohalla & District Communities',
+                    titleHi: 'मोहल्ला एवं ज़िला समितियाँ',
+                    icon: <Users size={18} color={C.gold} />,
+                    onPress: () => { setIsMoreModalOpen(false); router.push('/(tabs)/community'); },
+                  },
+                  {
+                    title: 'Impact Stories & Testimonials',
+                    titleHi: 'सच्ची कहानियाँ एवं प्रभाव',
+                    icon: <BookOpen size={18} color={C.gold} />,
+                    onPress: () => { setIsMoreModalOpen(false); router.push('/(tabs)/impact-stories'); },
+                  },
+                  {
+                    title: 'Privacy Policy & Data Security',
+                    titleHi: 'गोपनीयता नीति एवं डेटा सुरक्षा',
+                    icon: <ShieldCheck size={18} color={C.gold} />,
+                    onPress: () => { setIsMoreModalOpen(false); setIsPrivacyModalOpen(true); },
+                  },
+                  {
+                    title: 'Terms of Service & Rules',
+                    titleHi: 'सेवा की शर्तें एवं नियम',
+                    icon: <FileText size={18} color={C.gold} />,
+                    onPress: () => { setIsMoreModalOpen(false); setIsTermsModalOpen(true); },
+                  },
+
+                ].map((item, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    activeOpacity={0.8}
+                    onPress={item.onPress}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      padding: 14,
+                      borderRadius: 14,
+                      backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+                      borderWidth: 1,
+                      borderColor: theme.cardBorder,
+                    }}
+                  >
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.goldBg, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                      {item.icon}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: theme.textHeading }}>
+                        {item.title}
+                      </Text>
+                      <Text style={{ fontSize: 10.5, fontWeight: '600', color: C.gold, marginTop: 1 }}>
+                        {item.titleHi}
+                      </Text>
+                    </View>
+                    <ArrowRight color={theme.textSecondary} size={15} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setIsMoreModalOpen(false)}
+                style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                  Close
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 22. PRIVACY POLICY MODAL                                           */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={isPrivacyModalOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsPrivacyModalOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(9,31,21,0.85)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: theme.cardBg, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '92%', padding: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.cardBorder, paddingBottom: 14, marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <ShieldCheck color={C.gold} size={22} />
+                <Text style={{ fontWeight: '900', fontSize: 16, color: theme.textHeading, marginLeft: 8 }}>
+                  Privacy Policy / गोपनीयता नीति
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsPrivacyModalOpen(false)}
+                style={{ padding: 6, borderRadius: 999, backgroundColor: isDark ? '#1a4230' : '#f1f5f9' }}
+              >
+                <X color={isDark ? '#94a3b8' : '#64748b'} size={18} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={{ gap: 14, marginBottom: 20 }}>
+                <View style={{ backgroundColor: isDark ? '#0f172a' : '#f8fafc', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: theme.cardBorder }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: C.gold, marginBottom: 4 }}>
+                    1. Introduction / परिचय
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.textPrimary, lineHeight: 18 }}>
+                    Welcome to the MFCT Community Foundation. We respect your privacy and are committed to protecting your personal data in accordance with Indian regulations.
+                  </Text>
+                </View>
+
+                <View style={{ backgroundColor: isDark ? '#0f172a' : '#f8fafc', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: theme.cardBorder }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: C.gold, marginBottom: 4 }}>
+                    2. Information We Collect / एकत्र की जाने वाली जानकारी
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.textPrimary, lineHeight: 18 }}>
+                    We collect donor and member details including Name, Phone, Email, and PAN details as required under Indian income tax regulations for 80G tax receipt issuance.
+                  </Text>
+                </View>
+
+                <View style={{ backgroundColor: isDark ? '#0f172a' : '#f8fafc', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: theme.cardBorder }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: C.gold, marginBottom: 4 }}>
+                    3. How We Use Information / डेटा का उपयोग
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.textPrimary, lineHeight: 18 }}>
+                    • Processing donations and issuing 80G tax exemption certificates.{'\n'}
+                    • Verifying community membership and emergency assistance eligibility.{'\n'}
+                    • Publishing audited transparent expenditure reports.
+                  </Text>
+                </View>
+
+                <View style={{ backgroundColor: isDark ? '#0f172a' : '#f8fafc', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: theme.cardBorder }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: C.gold, marginBottom: 4 }}>
+                    4. Data Security / सुरक्षा
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.textPrimary, lineHeight: 18 }}>
+                    We employ encrypted database protocols. We never sell or rent your personal information to any third party.
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setIsPrivacyModalOpen(false)}
+                style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                  Close
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* 23. TERMS OF SERVICE MODAL                                         */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={isTermsModalOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsTermsModalOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(9,31,21,0.85)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: theme.cardBg, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '92%', padding: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.cardBorder, paddingBottom: 14, marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <FileText color={C.gold} size={22} />
+                <Text style={{ fontWeight: '900', fontSize: 16, color: theme.textHeading, marginLeft: 8 }}>
+                  Terms of Service / सेवा की शर्तें
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsTermsModalOpen(false)}
+                style={{ padding: 6, borderRadius: 999, backgroundColor: isDark ? '#1a4230' : '#f1f5f9' }}
+              >
+                <X color={isDark ? '#94a3b8' : '#64748b'} size={18} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={{ gap: 14, marginBottom: 20 }}>
+                <View style={{ backgroundColor: isDark ? '#0f172a' : '#f8fafc', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: theme.cardBorder }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: C.gold, marginBottom: 4 }}>
+                    1. Acceptance of Terms / शर्तों की स्वीकृति
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.textPrimary, lineHeight: 18 }}>
+                    By accessing or using the MFCT Community Mobile App, you agree to be bound by these Terms of Service and Trust By-Laws.
+                  </Text>
+                </View>
+
+                <View style={{ backgroundColor: isDark ? '#0f172a' : '#f8fafc', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: theme.cardBorder }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: C.gold, marginBottom: 4 }}>
+                    2. Donations & 80G Tax Exemption / दान एवं कर छूट
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.textPrimary, lineHeight: 18 }}>
+                    All donations made via UPI or Bank Transfer are non-refundable once verified and credited. 80G receipts are generated digitally upon UTR confirmation.
+                  </Text>
+                </View>
+
+                <View style={{ backgroundColor: isDark ? '#0f172a' : '#f8fafc', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: theme.cardBorder }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: C.gold, marginBottom: 4 }}>
+                    3. Shariah Wakalah Agreement / ज़कात वकालत अनुबंध
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.textPrimary, lineHeight: 18 }}>
+                    For all Zakat donations, the donor formally appoints MFCT as their Wakeel (agent) to identify verified Mustahiq (eligible) recipients according to Quranic Shariah criteria.
+                  </Text>
+                </View>
+
+                <View style={{ backgroundColor: isDark ? '#0f172a' : '#f8fafc', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: theme.cardBorder }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: C.gold, marginBottom: 4 }}>
+                    4. Member Code of Conduct / आचार संहिता
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.textPrimary, lineHeight: 18 }}>
+                    Members and committee volunteers must maintain absolute transparency, respect beneficiary dignity, and adhere to the official Niyamawali.
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setIsTermsModalOpen(false)}
+                style={{ paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                  Close
                 </Text>
               </TouchableOpacity>
             </ScrollView>
