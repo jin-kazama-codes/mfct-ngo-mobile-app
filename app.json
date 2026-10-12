@@ -17,7 +17,8 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.mfct.trust",
-      "versionCode": 2
+      "versionCode": 2,
+      "largeHeap": true
     },
     "web": {
       "bundler": "metro",
@@ -34,7 +35,15 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-sharing"
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to let you upload documents and profile images.",
+          "cameraPermission": "The app accesses your camera to let you take photos of documents and profile images."
+        }
+      ],
+      "expo-sharing",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

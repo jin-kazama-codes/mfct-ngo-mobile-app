@@ -5,13 +5,42 @@ export type UserRole =
   | 'community_admin'
   | 'executive_admin'
   | 'member'
-  | 'premium_donor';
+  | 'team_member'
+  | 'district_president'
+  | 'district_coordinator'
+  | 'district_gen_secretary'
+  | 'district_secretary'
+  | 'district_finance_coord';
+
+export type DistrictRole =
+  | 'district_president'
+  | 'district_coordinator'
+  | 'district_gen_secretary'
+  | 'district_secretary'
+  | 'district_finance_coord'
+  | 'community_admin';
+
+export type DistrictRoleKey = DistrictRole;
+
+export interface DistrictPostDefinition {
+  slotNumber: string;
+  key: DistrictRoleKey;
+  titleEn: string;
+  titleHi: string;
+  titleUr: string;
+  dutyEn: string;
+  dutyHi: string;
+  dutyUr: string;
+  color: string;
+}
 
 export type DonationCategory =
   | 'General'
   | 'Sadakah'
+  | 'Sadaqah'
   | 'Zakat'
   | 'Fitrah'
+  | 'Fitra'
   | 'Medical'
   | 'Education'
   | 'Marriage'
@@ -32,15 +61,20 @@ export interface User {
   email?: string;
   phone: string;
   city: string;
+  district?: string;
   state: string;
   address?: string;
   role: UserRole;
+  districtRole?: DistrictRole | string;
+  district_role?: DistrictRole | string;
   avatar: string;
   communityId: string;
   communityName: string;
   membershipId: string;
-  isVerified: boolean;
-  isPremium?: boolean;
+  status: 'pending' | 'approved' | 'reject' | 'rejected';
+  rejectionReason?: string;
+  rejection_reason?: string;
+  isVerified?: boolean;
   joinDate: string;
   passwordHash?: string;
   password?: string;
@@ -63,6 +97,7 @@ export interface User {
 export interface Community {
   id: string;
   name: string;
+  district?: string;
   city: string;
   state: string;
   adminName: string;
@@ -97,6 +132,8 @@ export interface Campaign {
   raisedINR: number;
   donorsCount: number;
   daysLeft: number;
+  endDate?: string;
+  end_date?: string;
   isVerified: boolean;
   isZakatEligible: boolean;
   isSadqaEligible?: boolean;
@@ -131,6 +168,23 @@ export interface Donation {
   status: 'verified' | 'pending_verification' | 'rejected';
   date: string;
   receiptNumber: string;
+  district?: string;
+  wakalahInformation?: WakalahInformation[];
+}
+
+export interface WakalahInformation {
+  donorName: string;
+  guardianName: string;
+  address: string;
+  mobile: string;
+  amountINR: number;
+  amountInWords: string;
+  isAccepted: boolean;
+  undertakingTitle?: string;
+  declarationText?: string;
+  authorizationText?: string;
+  trustName?: string;
+  date?: string;
 }
 
 export interface PendingVerificationItem {
@@ -173,17 +227,6 @@ export interface Testimonial {
   status?: 'pending' | 'approved' | 'rejected';
 }
 
-export interface CommunityStory {
-  id: string;
-  title: string;
-  category: DonationCategory;
-  location: string;
-  date: string;
-  image: string;
-  summary: string;
-  impactMetric: string;
-}
-
 export interface ContactMessage {
   id: string;
   name: string;
@@ -200,7 +243,42 @@ export interface AccountDetails {
   ifsc_code: string;
   upi_id: string;
   account_holder_name?: string;
+  branch_name?: string;
   qr_code_url?: string;
   created_at?: string;
   updated_at?: string;
 }
+
+export interface MemberNominee {
+  id: string;
+  user_id: string;
+  nominee_name: string;
+  relation: string;
+  phone: string;
+  email?: string;
+  date_of_birth?: string;
+  age?: number;
+  aadhaar_number?: string;
+  id_proof_url?: string;
+  address?: string;
+  share_percentage?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MemberBankDetails {
+  id: string;
+  user_id: string;
+  account_holder_name: string;
+  bank_name: string;
+  account_number: string;
+  ifsc_code: string;
+  branch_name?: string;
+  account_type?: 'Savings' | 'Current';
+  upi_id?: string;
+  passbook_or_cheque_url?: string;
+  is_primary?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+

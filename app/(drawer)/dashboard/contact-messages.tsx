@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   Linking,
-  StyleSheet,
 } from 'react-native';
 import { MessageSquare, Calendar, Mail, Phone, User, Clock, RefreshCw } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +15,7 @@ import { getLanguageCode } from '../../../src/lib/translateEntity';
 import { getContactMessages } from '../../../src/services/contactService';
 import { ContactMessage } from '../../../src/types';
 import DynamicText from '../../../src/components/DynamicText';
+import { ContactMessagesSkeleton } from '../../../src/components/SkeletonLoader';
 
 export default function ContactMessagesScreen() {
   const { t, i18n } = useTranslation();
@@ -48,61 +48,49 @@ export default function ContactMessagesScreen() {
     loadMessages();
   };
 
-  const colors = {
-    bg: isDark ? '#020617' : '#f8fafc',
-    cardBg: isDark ? '#0f172a' : '#ffffff',
-    cardBorder: isDark ? '#1e293b' : '#e2e8f0',
-    textMain: isDark ? '#f8fafc' : '#0f172a',
-    textSub: isDark ? '#94a3b8' : '#64748b',
-    primary: '#10b981',
-    primaryLight: isDark ? 'rgba(16,185,129,0.15)' : '#ecfdf5',
-    pillBg: isDark ? '#1e293b' : '#f1f5f9',
-  };
-
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg }]}>
-      {/* Header Banner */}
-      <View style={[styles.headerBanner, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
-        <View style={[styles.headerIconWrap, { backgroundColor: colors.primaryLight }]}>
-          <MessageSquare color={colors.primary} size={24} />
+    <View className="flex-1 bg-slate-50 dark:bg-[#020617]">
+
+      {/* ── Header Banner ── */}
+      <View className="flex-row items-center gap-3 px-4 py-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+        <View className="w-11 h-11 rounded-xl items-center justify-center bg-emerald-50 dark:bg-emerald-500/15">
+          <MessageSquare color="#10b981" size={24} />
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.headerTitle, { color: colors.textMain }]}>
+        <View className="flex-1">
+          <Text className="text-[17px] font-extrabold text-slate-900 dark:text-white">
             {t('admin.tabContactMessages', 'Contact Messages')}
           </Text>
-          <Text style={[styles.headerSubtitle, { color: colors.textSub }]}>
+          <Text className="text-xs mt-0.5 text-slate-500 dark:text-slate-400">
             {messages.length} {t('admin.messages_total', 'total inquiries received')}
           </Text>
         </View>
         <TouchableOpacity
           onPress={onRefresh}
-          style={[styles.refreshBtn, { backgroundColor: colors.pillBg }]}
+          className="w-9 h-9 rounded-xl items-center justify-center bg-slate-100 dark:bg-slate-800"
         >
-          <RefreshCw color={colors.textSub} size={16} />
+          <RefreshCw color={isDark ? '#94a3b8' : '#64748b'} size={16} />
         </TouchableOpacity>
       </View>
 
       {loading ? (
-        <View style={styles.centerBox}>
-          <ActivityIndicator color={colors.primary} size="large" />
-        </View>
+        <ContactMessagesSkeleton isDark={isDark} />
       ) : messages.length === 0 ? (
-        <View style={styles.centerBox}>
-          <View style={[styles.emptyIconWrap, { backgroundColor: colors.primaryLight }]}>
-            <MessageSquare color={colors.primary} size={36} />
+        <View className="flex-1 items-center justify-center p-8">
+          <View className="w-18 h-18 rounded-full items-center justify-center mb-4 bg-emerald-50 dark:bg-emerald-500/15">
+            <MessageSquare color="#10b981" size={36} />
           </View>
-          <Text style={[styles.emptyTitle, { color: colors.textMain }]}>
+          <Text className="text-lg font-extrabold mb-1.5 text-slate-900 dark:text-white">
             {t('admin.no_messages', 'No Messages Found')}
           </Text>
-          <Text style={[styles.emptyDesc, { color: colors.textSub }]}>
+          <Text className="text-[13px] text-center leading-[18px] text-slate-500 dark:text-slate-400">
             {t('admin.no_pending_kyc', 'Messages submitted through the contact form will appear here.')}
           </Text>
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={{ padding: 16, gap: 14 }}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#10b981']} />}
         >
           {messages.map((msg) => {
             const dateStr = msg.created_at ? new Date(msg.created_at).toLocaleDateString() : '';
@@ -113,58 +101,58 @@ export default function ContactMessagesScreen() {
             return (
               <View
                 key={msg.id}
-                style={[styles.msgCard, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[18px] p-3.5 shadow-sm"
               >
                 {/* Header Row: User Name & Timestamp */}
-                <View style={styles.cardHeaderRow}>
-                  <View style={styles.userInfoRow}>
-                    <View style={[styles.userAvatarWrap, { backgroundColor: colors.primaryLight }]}>
-                      <User color={colors.primary} size={18} />
+                <View className="mb-2.5">
+                  <View className="flex-row items-center gap-2.5">
+                    <View className="w-9.5 h-9.5 rounded-full items-center justify-center bg-emerald-50 dark:bg-emerald-500/15">
+                      <User color="#10b981" size={18} />
                     </View>
-                    <View style={{ flex: 1 }}>
+                    <View className="flex-1">
                       <DynamicText
                         text={msg.name}
                         lang={lang}
-                        style={[styles.userNameText, { color: colors.textMain }]}
+                        style={{ fontSize: 15, fontWeight: '700', color: isDark ? '#f8fafc' : '#0f172a' }}
                       />
-                      <View style={styles.timestampRow}>
-                        <Calendar color={colors.textSub} size={11} />
-                        <Text style={[styles.timestampText, { color: colors.textSub }]}>{dateStr}</Text>
-                        <Clock color={colors.textSub} size={11} style={{ marginLeft: 6 }} />
-                        <Text style={[styles.timestampText, { color: colors.textSub }]}>{timeStr}</Text>
+                      <View className="flex-row items-center mt-0.5 gap-0.5">
+                        <Calendar color={isDark ? '#94a3b8' : '#64748b'} size={11} />
+                        <Text className="text-[11px] text-slate-500 dark:text-slate-400">{dateStr}</Text>
+                        <Clock color={isDark ? '#94a3b8' : '#64748b'} size={11} style={{ marginLeft: 6 }} />
+                        <Text className="text-[11px] text-slate-500 dark:text-slate-400">{timeStr}</Text>
                       </View>
                     </View>
                   </View>
                 </View>
 
-                {/* Message Body with real-time dynamic translation */}
-                <View style={[styles.messageBox, { backgroundColor: colors.pillBg }]}>
+                {/* Message Body */}
+                <View className="rounded-xl p-3 mb-2.5 bg-slate-100 dark:bg-slate-800">
                   <DynamicText
                     text={msg.message}
                     lang={lang}
-                    style={[styles.messageText, { color: colors.textMain }]}
+                    style={{ fontSize: 13, lineHeight: 19, color: isDark ? '#f8fafc' : '#0f172a' }}
                   />
                 </View>
 
                 {/* Actions: Phone & Email */}
-                <View style={styles.actionsRow}>
+                <View className="flex-row items-center flex-wrap gap-2">
                   {msg.phone ? (
                     <TouchableOpacity
                       onPress={() => Linking.openURL(`tel:${msg.phone}`)}
-                      style={[styles.actionChip, { backgroundColor: colors.primaryLight }]}
+                      className="flex-row items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/15"
                     >
-                      <Phone color={colors.primary} size={13} />
-                      <Text style={[styles.actionChipText, { color: colors.primary }]}>{msg.phone}</Text>
+                      <Phone color="#10b981" size={13} />
+                      <Text className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{msg.phone}</Text>
                     </TouchableOpacity>
                   ) : null}
 
                   {msg.email ? (
                     <TouchableOpacity
                       onPress={() => Linking.openURL(`mailto:${msg.email}`)}
-                      style={[styles.actionChip, { backgroundColor: colors.pillBg }]}
+                      className="flex-row items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800"
                     >
-                      <Mail color={colors.textSub} size={13} />
-                      <Text style={[styles.actionChipText, { color: colors.textSub }]} numberOfLines={1}>
+                      <Mail color={isDark ? '#94a3b8' : '#64748b'} size={13} />
+                      <Text className="text-xs font-semibold text-slate-500 dark:text-slate-400" numberOfLines={1}>
                         {msg.email}
                       </Text>
                     </TouchableOpacity>
@@ -178,132 +166,3 @@ export default function ContactMessagesScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  headerBanner: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    gap: 12,
-  },
-  headerIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  refreshBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centerBox: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 30,
-  },
-  emptyIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 6,
-  },
-  emptyDesc: {
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  listContent: {
-    padding: 16,
-    gap: 14,
-  },
-  msgCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  cardHeaderRow: {
-    marginBottom: 10,
-  },
-  userInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  userAvatarWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userNameText: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  timestampRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 3,
-    gap: 3,
-  },
-  timestampText: {
-    fontSize: 11,
-  },
-  messageBox: {
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-  },
-  messageText: {
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  actionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  actionChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-});

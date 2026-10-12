@@ -1,8 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, ScrollView, TextInput, TouchableOpacity,
-  ActivityIndicator, Alert, Image, Dimensions, StyleSheet,
-  Modal, Platform
+  View,
+  Text,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Dimensions,
+  Modal,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -10,17 +18,30 @@ import {
   createGalleryPhoto,
   updateGalleryPhoto,
   deleteGalleryPhoto,
-  GalleryPhoto
+  GalleryPhoto,
 } from '../../../src/services/galleryService';
+import { uploadImageToSupabase } from '../../../src/services/storageService';
 import {
-  Image as ImageIcon, PlusCircle, Trash2, CheckCircle2,
-  Filter, Eye, Edit3, Camera, Upload, X, MapPin,
-  Sparkles, AlertCircle, ArrowLeft, RefreshCw
+  Image as ImageIcon,
+  PlusCircle,
+  Trash2,
+  CheckCircle2,
+  Check,
+  Filter,
+  Eye,
+  Edit3,
+  Camera,
+  X,
+  MapPin,
+  Sparkles,
+  AlertCircle,
+  ArrowLeft,
 } from 'lucide-react-native';
 import { GalleryGridSkeleton } from '../../../src/components/SkeletonLoader';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
-import { getLanguageCode, translateCategory, translateCity } from '../../../src/lib/translateEntity';
+import { useAppState } from '../../../src/context/AppStateProvider';
+import { getLanguageCode, translateCategory } from '../../../src/lib/translateEntity';
 import { DynamicText } from '../../../src/components/DynamicText';
 
 const { width } = Dimensions.get('window');
@@ -38,6 +59,17 @@ export default function GalleryAdminScreen() {
   const lang = getLanguageCode(i18n.language);
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const { activeUser, currentRole } = useAppState();
+
+  // Mirror impact-stories.tsx: admins get 'approved', others get 'pending'
+  const rawRole = (activeUser?.role || currentRole || 'member').toLowerCase().trim().replace(' ', '_');
+  const isAdmin = ['super_admin', 'executive_admin', 'community_admin', 'admin'].some(r => rawRole.includes(r));
+
+  const tr = (hi: string, ur: string, en: string) => {
+    if (lang === 'hi') return hi;
+    if (lang === 'ur') return ur;
+    return en;
+  };
 
   const [activeSubTab, setActiveSubTab] = useState<'list' | 'create'>('list');
   const [photos, setPhotos] = useState<GalleryPhoto[]>([]);
@@ -54,6 +86,9 @@ export default function GalleryAdminScreen() {
   // Delete modal state
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Approve state
+  const [approvingId, setApprovingId] = useState<string | null>(null);
 
   // Media Picker Modal State
   const [showMediaPicker, setShowMediaPicker] = useState(false);
@@ -149,7 +184,7 @@ export default function GalleryAdminScreen() {
     setImageUri('');
     setImageFileName('');
     setTitle('');
-    setCity('');
+    setCity((activeUser?.district || activeUser?.city || '').trim());
     setCategory('Community');
     setEditingPhotoId(null);
     setShowUrlFallback(false);
@@ -180,14 +215,16 @@ export default function GalleryAdminScreen() {
 
     setSubmitting(true);
     try {
-      const finalCity = city.trim() || 'Bareilly';
+      const userDistrictVal = (activeUser?.district || activeUser?.city || '').trim();
+      const finalCity = editingPhotoId ? (city.trim() || userDistrictVal) : userDistrictVal;
+      const finalImage = await uploadImageToSupabase(imageUri.trim(), 'gallery');
 
       if (editingPhotoId) {
         // UPDATE existing photo
         const updated = await updateGalleryPhoto(editingPhotoId, {
           title: title.trim(),
           city: finalCity,
-          image: imageUri.trim(),
+          image: finalImage || imageUri.trim(),
           category,
         });
 
@@ -197,10 +234,12 @@ export default function GalleryAdminScreen() {
         // CREATE new photo
         const newPhoto = await createGalleryPhoto({
           title: title.trim(),
-          city: finalCity,
-          image: imageUri.trim(),
+          city: userDistrictVal,
+          image: finalImage || imageUri.trim(),
           category,
-          status: 'approved',
+          createdBy: activeUser?.id,
+          communityId: activeUser?.communityId,
+          status: isAdmin ? ('approved' as const) : ('pending' as const),
         });
 
         setPhotos(prev => [newPhoto, ...prev]);
@@ -218,7 +257,24 @@ export default function GalleryAdminScreen() {
     }
   };
 
-  // Handle Delete Confirmation (Matching impact-stories)
+  // Handle Approve Photo
+  const handleApprovePhoto = async (id: string) => {
+    setApprovingId(id);
+    try {
+      await updateGalleryPhoto(id, { status: 'approved' });
+      setPhotos(prev => prev.map(p => p.id === id ? { ...p, status: 'approved' } : p));
+      if (selectedViewPhoto?.id === id) {
+        setSelectedViewPhoto(prev => prev ? { ...prev, status: 'approved' } : null);
+      }
+      showToast(tr('तस्वीर स्वीकृत कर दी गई!', 'تصویر منظور کر لی گئی!', 'Photo approved successfully!'), 'success');
+    } catch (err: any) {
+      showToast(err?.message || tr('स्वीकृति विफल रही', 'منظوری ناکام رہی', 'Failed to approve photo.'), 'error');
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  // Handle Delete Confirmation
   const handleConfirmDelete = async () => {
     if (!deleteConfirmId) return;
     setDeletingId(deleteConfirmId);
@@ -237,59 +293,40 @@ export default function GalleryAdminScreen() {
     }
   };
 
-  // Dynamic Theme Colors
-  const theme = {
-    bg: isDark ? '#090d16' : '#f8fafc',
-    cardBg: isDark ? '#1e293b' : '#ffffff',
-    cardBorder: isDark ? '#334155' : '#e2e8f0',
-    textMain: isDark ? '#f8fafc' : '#0f172a',
-    textSub: isDark ? '#94a3b8' : '#64748b',
-    inputBg: isDark ? '#131d2e' : '#ffffff',
-    inputBorder: isDark ? '#334155' : '#cbd5e1',
-    tabHeaderBg: isDark ? '#0f172a' : '#ffffff',
-    tabBorder: isDark ? '#1e293b' : '#e2e8f0',
-    modalBg: isDark ? 'rgba(0,0,0,0.85)' : 'rgba(0,0,0,0.7)',
-    chipIdle: isDark ? '#1e293b' : '#f1f5f9',
-    chipIdleText: isDark ? '#cbd5e1' : '#475569',
-    primary: '#10b981',
-    primaryDark: '#059669',
-  };
-
   return (
-    <View style={[s.screen, { backgroundColor: theme.bg }]}>
+    <View className="flex-1 bg-slate-50 dark:bg-slate-900">
       {/* Toast Banner */}
       {toast && (
         <View
-          style={[
-            s.toastContainer,
-            toast.type === 'success'
-              ? s.toastSuccess
-              : toast.type === 'error'
-              ? s.toastError
-              : s.toastInfo,
-          ]}
+          className={`absolute top-2.5 left-4 right-4 z-50 flex-row items-center py-3 px-4 rounded-xl gap-2.5 shadow-md ${toast.type === 'success'
+            ? 'bg-emerald-600'
+            : toast.type === 'error'
+              ? 'bg-rose-600'
+              : 'bg-sky-600'
+            }`}
         >
           {toast.type === 'success' && <CheckCircle2 color="#fff" size={18} />}
           {toast.type === 'error' && <AlertCircle color="#fff" size={18} />}
           {toast.type === 'info' && <Sparkles color="#fff" size={18} />}
-          <Text style={s.toastText}>{toast.message}</Text>
+          <Text className="text-white text-[13px] font-bold flex-1">{toast.message}</Text>
         </View>
       )}
 
       {/* Sub-Tab Header */}
-      <View style={[s.tabHeader, { backgroundColor: theme.tabHeaderBg, borderBottomColor: theme.tabBorder }]}>
+      <View className="flex-row border-b border-slate-200 dark:border-slate-800 p-2.5 gap-2 bg-white dark:bg-slate-900">
         <TouchableOpacity
           onPress={() => {
             if (activeSubTab !== 'list') setActiveSubTab('list');
           }}
-          style={[s.tabBtn, activeSubTab === 'list' ? s.tabBtnActive : { backgroundColor: theme.chipIdle }]}
+          className={`flex-1 py-2.5 rounded-xl flex-row items-center justify-center gap-1.5 ${activeSubTab === 'list'
+            ? 'bg-emerald-500 shadow-xs'
+            : 'bg-slate-100 dark:bg-slate-800'
+            }`}
         >
-          <ImageIcon color={activeSubTab === 'list' ? '#fff' : theme.textSub} size={16} />
+          <ImageIcon color={activeSubTab === 'list' ? '#fff' : (isDark ? '#94a3b8' : '#64748b')} size={16} />
           <Text
-            style={[
-              s.tabBtnText,
-              activeSubTab === 'list' ? s.tabBtnTextActive : { color: theme.textSub },
-            ]}
+            className={`text-[13px] font-bold ${activeSubTab === 'list' ? 'text-white' : 'text-slate-500 dark:text-slate-400'
+              }`}
           >
             {t('gallery.tab_list', 'Gallery')} ({photos.length})
           </Text>
@@ -302,18 +339,19 @@ export default function GalleryAdminScreen() {
               setActiveSubTab('create');
             }
           }}
-          style={[s.tabBtn, activeSubTab === 'create' ? s.tabBtnActive : { backgroundColor: theme.chipIdle }]}
+          className={`flex-1 py-2.5 rounded-xl flex-row items-center justify-center gap-1.5 ${activeSubTab === 'create'
+            ? 'bg-emerald-500 shadow-xs'
+            : 'bg-slate-100 dark:bg-slate-800'
+            }`}
         >
           {editingPhotoId ? (
-            <Edit3 color={activeSubTab === 'create' ? '#fff' : theme.textSub} size={16} />
+            <Edit3 color={activeSubTab === 'create' ? '#fff' : (isDark ? '#94a3b8' : '#64748b')} size={16} />
           ) : (
-            <PlusCircle color={activeSubTab === 'create' ? '#fff' : theme.textSub} size={16} />
+            <PlusCircle color={activeSubTab === 'create' ? '#fff' : (isDark ? '#94a3b8' : '#64748b')} size={16} />
           )}
           <Text
-            style={[
-              s.tabBtnText,
-              activeSubTab === 'create' ? s.tabBtnTextActive : { color: theme.textSub },
-            ]}
+            className={`text-[13px] font-bold ${activeSubTab === 'create' ? 'text-white' : 'text-slate-500 dark:text-slate-400'
+              }`}
           >
             {editingPhotoId ? 'Edit Photo' : t('gallery.tab_create', '+ Add Photo')}
           </Text>
@@ -324,8 +362,8 @@ export default function GalleryAdminScreen() {
       {activeSubTab === 'list' && (
         <>
           {/* Category Filter */}
-          <View style={[s.filterBar, { backgroundColor: theme.tabHeaderBg, borderBottomColor: theme.tabBorder }]}>
-            <Filter color={theme.textSub} size={14} />
+          <View className="flex-row items-center py-2.5 px-3 border-b border-slate-200 dark:border-slate-800 gap-2 bg-white dark:bg-slate-900">
+            <Filter color={isDark ? '#94a3b8' : '#64748b'} size={14} />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
               {CATEGORIES.map(cat => {
                 const isSelected = filterCat === cat;
@@ -333,18 +371,14 @@ export default function GalleryAdminScreen() {
                   <TouchableOpacity
                     key={cat}
                     onPress={() => setFilterCat(cat)}
-                    style={[
-                      s.filterChip,
-                      isSelected
-                        ? s.filterChipActive
-                        : { backgroundColor: theme.chipIdle, borderColor: theme.cardBorder },
-                    ]}
+                    className={`py-1.5 px-3 rounded-full border ${isSelected
+                      ? 'bg-emerald-500 border-emerald-500 shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                      }`}
                   >
                     <Text
-                      style={[
-                        s.filterChipText,
-                        isSelected ? s.filterChipTextActive : { color: theme.chipIdleText },
-                      ]}
+                      className={`text-xs font-semibold ${isSelected ? 'text-white font-bold' : 'text-slate-600 dark:text-slate-400'
+                        }`}
                     >
                       {translateCategory(cat, lang)}
                     </Text>
@@ -355,133 +389,187 @@ export default function GalleryAdminScreen() {
           </View>
 
           {loading ? (
-            <ScrollView contentContainerStyle={{ padding: 12 }}>
+            <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 120 }}>
               <GalleryGridSkeleton isDark={isDark} />
             </ScrollView>
           ) : (
-            <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 40 }}>
-              {filteredPhotos.length === 0 ? (
-                <View style={s.empty}>
-                  <ImageIcon color={theme.textSub} size={48} />
-                  <Text style={[s.emptyText, { color: theme.textSub }]}>{t('gallery.empty', 'No photos in this category')}</Text>
-                  <TouchableOpacity
-                    style={[s.emptyAddBtn, { backgroundColor: theme.primary }]}
-                    onPress={() => {
-                      resetForm();
-                      setActiveSubTab('create');
-                    }}
-                  >
-                    <PlusCircle color="#fff" size={16} />
-                    <Text style={s.emptyAddBtnText}>{t('gallery.tab_create', '+ Add Photo')}</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={s.grid}>
-                  {filteredPhotos.map(photo => (
-                    <View
-                      key={photo.id}
-                      style={[
-                        s.tileCard,
-                        {
-                          width: TILE,
-                          backgroundColor: theme.cardBg,
-                          borderColor: theme.cardBorder,
-                        },
-                      ]}
-                    >
-                      {/* Photo Thumbnail */}
-                      <TouchableOpacity
-                        activeOpacity={0.9}
-                        onPress={() => setSelectedViewPhoto(photo)}
-                        style={s.tileImgWrap}
+            <View className="flex-1">
+              <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+                {filteredPhotos.length === 0 ? (
+                  <View className="items-center justify-center py-16 px-5">
+                    <ImageIcon color={isDark ? '#64748b' : '#94a3b8'} size={48} />
+                    <Text className="mt-3 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                      {t('gallery.empty', 'No photos in this category')}
+                    </Text>
+                  </View>
+                ) : (
+                  <View className="flex-row flex-wrap justify-between">
+                    {filteredPhotos.map(photo => (
+                      <View
+                        key={photo.id}
+                        style={{ width: TILE }}
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl mb-3.5 overflow-hidden shadow-xs"
                       >
-                        <Image source={{ uri: photo.image }} style={s.tileImg} resizeMode="cover" />
+                        {/* Photo Thumbnail */}
+                        <TouchableOpacity
+                          activeOpacity={0.9}
+                          onPress={() => setSelectedViewPhoto(photo)}
+                          className="relative w-full bg-slate-100 dark:bg-slate-800"
+                          style={{ height: 130 }}
+                        >
+                          <Image
+                            source={{ uri: photo.image }}
+                            style={{ width: '100%', height: 130 }}
+                            resizeMode="cover"
+                          />
 
-                        {/* Category Badge */}
-                        <View style={s.tileBadge}>
-                          <Text style={s.tileBadgeText}>{translateCategory(photo.category, lang)}</Text>
-                        </View>
-                      </TouchableOpacity>
+                          {/* Category Badge */}
+                          <View className="absolute top-2 left-2 bg-black/65 px-2 py-0.5 rounded-md">
+                            <Text className="text-white text-[10px] font-bold">
+                              {translateCategory(photo.category, lang)}
+                            </Text>
+                          </View>
 
-                      {/* Photo Info */}
-                      <View style={s.tileDetails}>
-                        <DynamicText
-                          text={photo.title}
-                          style={[s.tileTitle, { color: theme.textMain }]}
-                          numberOfLines={1}
-                        />
-                        <View style={s.tileLocationRow}>
-                          <MapPin color={theme.primary} size={11} />
+                          {/* Status Badge */}
+                          {photo.status === 'pending' && (
+                            <View className="absolute top-2 right-2 bg-amber-500/90 px-1.5 py-0.5 rounded-md">
+                              <Text className="text-white text-[9px] font-bold">Pending</Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+
+                        {/* Photo Info */}
+                        <View className="p-2.5">
                           <DynamicText
-                            text={photo.city || 'Bareilly'}
-                            style={[s.tileCity, { color: theme.textSub }]}
+                            text={photo.title}
+                            style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#f8fafc' : '#0f172a' }}
                             numberOfLines={1}
                           />
+                          <View className="flex-row items-center gap-1 mt-1">
+                            <MapPin color="#10b981" size={11} />
+                            <DynamicText
+                              text={photo.city || ''}
+                              style={{ fontSize: 11, color: isDark ? '#94a3b8' : '#64748b' }}
+                              numberOfLines={1}
+                            />
+                          </View>
+                        </View>
+
+                        {/* Action Buttons: Approve (admin), View, Edit, Delete */}
+                        <View className="flex-row items-center border-t border-slate-200 dark:border-slate-800 p-1.5 gap-1 bg-slate-50/70 dark:bg-slate-800/40">
+                          {/* Approve Button — admin only, pending photos only */}
+                          {photo.status === 'pending' && isAdmin && (
+                            <TouchableOpacity
+                              onPress={() => handleApprovePhoto(photo.id)}
+                              disabled={approvingId === photo.id}
+                              className="flex-1 flex-row items-center justify-center gap-1 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700/60"
+                              accessibilityLabel="Approve photo"
+                              activeOpacity={0.7}
+                            >
+                              {approvingId === photo.id ? (
+                                <ActivityIndicator size={10} color="#059669" />
+                              ) : (
+                                <Check color="#059669" size={11} />
+                              )}
+                              <Text numberOfLines={1} className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                                {tr('मंज़ूर', 'منظور', 'Approve')}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                          {/* View Button */}
+                          <TouchableOpacity
+                            onPress={() => setSelectedViewPhoto(photo)}
+                            className="flex-1 flex-row items-center justify-center gap-1 py-1.5 rounded-lg bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800/50"
+                            accessibilityLabel="View photo"
+                            activeOpacity={0.7}
+                          >
+                            <Eye color="#0284c7" size={11} />
+                            <Text
+                              numberOfLines={1}
+                              className="text-[10px] font-bold text-sky-600 dark:text-sky-400"
+                            >
+                              {tr('देखें', 'دیکھیں', 'View')}
+                            </Text>
+                          </TouchableOpacity>
+
+                          {/* Edit Button */}
+                          <TouchableOpacity
+                            onPress={() => handleStartEdit(photo)}
+                            className="flex-1 flex-row items-center justify-center gap-1 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/50"
+                            accessibilityLabel="Edit photo"
+                            activeOpacity={0.7}
+                          >
+                            <Edit3 color="#10b981" size={11} />
+                            <Text
+                              numberOfLines={1}
+                              className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400"
+                            >
+                              {tr('एडिट', 'ترمیم', 'Edit')}
+                            </Text>
+                          </TouchableOpacity>
+
+                          {/* Delete Button */}
+                          <TouchableOpacity
+                            onPress={() => setDeleteConfirmId(photo.id)}
+                            className="flex-1 flex-row items-center justify-center gap-1 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800/50"
+                            accessibilityLabel="Delete photo"
+                            activeOpacity={0.7}
+                          >
+                            <Trash2 color="#ef4444" size={11} />
+                            <Text
+                              numberOfLines={1}
+                              className="text-[10px] font-bold text-red-600 dark:text-red-400"
+                            >
+                              {tr('हटाएं', 'حذف', 'Del')}
+                            </Text>
+                          </TouchableOpacity>
                         </View>
                       </View>
+                    ))}
+                  </View>
+                )}
+              </ScrollView>
 
-                      {/* Action Buttons: View, Edit, Delete */}
-                      <View style={[s.tileActions, { borderTopColor: theme.cardBorder }]}>
-                        {/* View Button */}
-                        <TouchableOpacity
-                          onPress={() => setSelectedViewPhoto(photo)}
-                          style={[s.actionBtn, { backgroundColor: isDark ? '#1e3a5f' : '#e0f2fe' }]}
-                          accessibilityLabel="View photo"
-                        >
-                          <Eye color="#0284c7" size={14} />
-                          <Text style={[s.actionBtnText, { color: '#0284c7' }]}>{t('btn.viewDetails', 'View')}</Text>
-                        </TouchableOpacity>
-
-                        {/* Edit Button */}
-                        <TouchableOpacity
-                          onPress={() => handleStartEdit(photo)}
-                          style={[s.actionBtn, { backgroundColor: isDark ? '#064e3b' : '#ecfdf5' }]}
-                          accessibilityLabel="Edit photo"
-                        >
-                          <Edit3 color="#10b981" size={14} />
-                          <Text style={[s.actionBtnText, { color: '#10b981' }]}>{t('admin.auditTrail', 'Edit')}</Text>
-                        </TouchableOpacity>
-
-                        {/* Delete Button */}
-                        <TouchableOpacity
-                          onPress={() => setDeleteConfirmId(photo.id)}
-                          style={[s.actionBtn, { backgroundColor: isDark ? '#4c1d24' : '#fee2e2' }]}
-                          accessibilityLabel="Delete photo"
-                        >
-                          <Trash2 color="#ef4444" size={14} />
-                          <Text style={[s.actionBtnText, { color: '#ef4444' }]}>{t('btn.reject', 'Delete')}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </ScrollView>
+              {/* Floating Action Button (+ Add Photo) */}
+              {/* <TouchableOpacity
+                onPress={() => {
+                  resetForm();
+                  setActiveSubTab('create');
+                }}
+                className="absolute bottom-6 right-5 flex-row items-center gap-2 px-4 py-3 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/40 z-30"
+                activeOpacity={0.85}
+              >
+                <PlusCircle color="#fff" size={18} />
+                <Text className="text-white font-extrabold text-xs">
+                  {t('gallery.tab_create', '+ Add Photo')}
+                </Text>
+              </TouchableOpacity> */}
+            </View>
           )}
         </>
       )}
 
       {/* ── CREATE / EDIT TAB ── */}
       {activeSubTab === 'create' && (
-        <ScrollView contentContainerStyle={s.formPad} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 60 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {/* Header */}
-          <View style={s.formHeaderRow}>
+          <View className="flex-row items-center gap-3 mb-4">
             {editingPhotoId && (
               <TouchableOpacity
                 onPress={() => {
                   resetForm();
                   setActiveSubTab('list');
                 }}
-                style={[s.backIconBtn, { backgroundColor: theme.chipIdle }]}
+                className="w-9 h-9 rounded-full items-center justify-center bg-slate-100 dark:bg-slate-800"
               >
-                <ArrowLeft color={theme.textMain} size={18} />
+                <ArrowLeft color={isDark ? '#f8fafc' : '#0f172a'} size={18} />
               </TouchableOpacity>
             )}
-            <View style={{ flex: 1 }}>
-              <Text style={[s.formTitle, { color: theme.textMain }]}>
+            <View className="flex-1">
+              <Text className="text-lg font-extrabold text-slate-900 dark:text-white">
                 {editingPhotoId ? 'Edit Gallery Photo' : t('gallery.form_title', 'Add Gallery Photo')}
               </Text>
-              <Text style={[s.formSubTitle, { color: theme.textSub }]}>
+              <Text className="text-xs mt-0.5 text-slate-500 dark:text-slate-400">
                 {editingPhotoId
                   ? 'Update details for this photo.'
                   : 'Upload an image from your mobile device and fill in details.'}
@@ -490,25 +578,25 @@ export default function GalleryAdminScreen() {
           </View>
 
           {/* ──────────────── 1. IMAGE UPLOAD (FIRST FIELD) ──────────────── */}
-          <View style={[s.formCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[s.label, { color: theme.textSub }]}>1. Photo / Image *</Text>
+          <View className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 mb-3.5 shadow-xs">
+            <Text className="text-xs font-bold mb-2.5 text-slate-500 dark:text-slate-400">1. Photo / Image *</Text>
 
             {imageUri ? (
-              <View style={[s.previewCard, isDark && { backgroundColor: '#064e3b25', borderColor: '#059669' }]}>
-                <Image source={{ uri: imageUri }} style={s.docPreview} resizeMode="cover" />
-                <View style={s.previewMeta}>
-                  <Text style={[s.previewFileName, { color: theme.textMain }]} numberOfLines={1}>
+              <View className="flex-row items-center p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 gap-3">
+                <Image source={{ uri: imageUri }} className="w-14 h-14 rounded-lg bg-slate-200 dark:bg-slate-700" resizeMode="cover" />
+                <View className="flex-1">
+                  <Text className="text-xs font-bold text-slate-900 dark:text-white" numberOfLines={1}>
                     {imageFileName || 'gallery_photo.jpg'}
                   </Text>
-                  <View style={s.badgeAttached}>
+                  <View className="flex-row items-center gap-1 mt-1">
                     <CheckCircle2 color="#059669" size={12} />
-                    <Text style={s.badgeAttachedText}>Photo attached</Text>
+                    <Text className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">Photo attached</Text>
                   </View>
                 </View>
-                <View style={s.previewActions}>
+                <View className="flex-row gap-2">
                   <TouchableOpacity
                     onPress={() => setShowMediaPicker(true)}
-                    style={[s.changeBtn, isDark && { backgroundColor: '#1e293b', borderColor: '#334155' }]}
+                    className="w-8 h-8 rounded-lg items-center justify-center border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                     accessibilityLabel="Change photo"
                   >
                     <Camera color="#059669" size={16} />
@@ -518,7 +606,7 @@ export default function GalleryAdminScreen() {
                       setImageUri('');
                       setImageFileName('');
                     }}
-                    style={[s.deleteBtn, isDark && { backgroundColor: '#450a0a', borderColor: '#7f1d1d' }]}
+                    className="w-8 h-8 rounded-lg items-center justify-center border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/40"
                     accessibilityLabel="Remove photo"
                   >
                     <Trash2 color="#ef4444" size={16} />
@@ -528,33 +616,33 @@ export default function GalleryAdminScreen() {
             ) : (
               <TouchableOpacity
                 onPress={() => setShowMediaPicker(true)}
-                style={[s.uploadBox, { borderColor: isDark ? '#334155' : '#cbd5e1', backgroundColor: theme.inputBg }]}
+                className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-5 items-center justify-center bg-slate-50 dark:bg-slate-800/50"
                 activeOpacity={0.7}
               >
-                <View style={s.uploadIconCircle}>
+                <View className="w-11 h-11 rounded-full items-center justify-center mb-2 bg-emerald-50 dark:bg-emerald-950/50">
                   <Camera color="#059669" size={20} />
                 </View>
-                <Text style={[s.uploadTitle, { color: theme.textMain }]}>Upload Gallery Photo</Text>
-                <Text style={[s.uploadSubtitle, { color: theme.textSub }]}>Take photo or choose from gallery</Text>
+                <Text className="text-[13px] font-bold text-slate-900 dark:text-white">Upload Gallery Photo</Text>
+                <Text className="text-xs mt-0.5 text-slate-500 dark:text-slate-400">Take photo or choose from gallery</Text>
               </TouchableOpacity>
             )}
 
             {/* Optional URL Toggle */}
             <TouchableOpacity
               onPress={() => setShowUrlFallback(!showUrlFallback)}
-              style={s.urlToggleBtn}
+              className="mt-2.5 py-1"
             >
-              <Text style={[s.urlToggleText, { color: theme.primary }]}>
+              <Text className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                 {showUrlFallback ? '▲ Hide Direct URL input' : '▼ Or enter direct Image URL'}
               </Text>
             </TouchableOpacity>
 
             {showUrlFallback && (
-              <View style={{ marginTop: 8 }}>
+              <View className="mt-2">
                 <TextInput
-                  style={[s.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textMain }]}
+                  className="h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
                   placeholder="https://images.unsplash.com/..."
-                  placeholderTextColor={theme.textSub}
+                  placeholderTextColor={isDark ? '#94a3b8' : '#64748b'}
                   value={imageUri}
                   onChangeText={txt => {
                     setImageUri(txt);
@@ -566,58 +654,56 @@ export default function GalleryAdminScreen() {
           </View>
 
           {/* ──────────────── 2. TITLE (SECOND FIELD) ──────────────── */}
-          <View style={[s.formCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[s.label, { color: theme.textSub }]}>2. Photo Title *</Text>
+          <View className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 mb-3.5 shadow-xs">
+            <Text className="text-xs font-bold mb-2 text-slate-500 dark:text-slate-400">2. Photo Title *</Text>
             <TextInput
-              style={[s.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textMain }]}
+              className="h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
               placeholder="e.g. Free Ration Distribution Drive"
-              placeholderTextColor={theme.textSub}
+              placeholderTextColor={isDark ? '#94a3b8' : '#64748b'}
               value={title}
               onChangeText={setTitle}
             />
           </View>
 
-          {/* ──────────────── 3. CITY (THIRD FIELD) ──────────────── */}
-          <View style={[s.formCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[s.label, { color: theme.textSub }]}>3. City / Location *</Text>
-            <View style={s.inputWithIcon}>
-              <MapPin color={theme.primary} size={18} style={s.inputLeftIcon} />
-              <TextInput
-                style={[
-                  s.input,
-                  s.inputPadded,
-                  { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.textMain },
-                ]}
-                placeholder="e.g. Bareilly, UP"
-                placeholderTextColor={theme.textSub}
-                value={city}
-                onChangeText={setCity}
-              />
+          {/* ──────────────── 3. CITY (EDIT ONLY) ──────────────── */}
+          {editingPhotoId && (
+            <View className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 mb-3.5 shadow-xs">
+              <Text className="text-xs font-bold mb-2 text-slate-500 dark:text-slate-400">3. City / Location *</Text>
+              <View className="relative justify-center">
+                <View className="absolute left-3 z-10">
+                  <MapPin color="#10b981" size={18} />
+                </View>
+                <TextInput
+                  className="h-11 pl-10 pr-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
+                  placeholder="e.g. Bareilly, UP"
+                  placeholderTextColor={isDark ? '#94a3b8' : '#64748b'}
+                  value={city}
+                  onChangeText={setCity}
+                />
+              </View>
             </View>
-          </View>
+          )}
 
-          {/* ──────────────── 4. CATEGORY (FOURTH FIELD) ──────────────── */}
-          <View style={[s.formCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <Text style={[s.label, { color: theme.textSub }]}>4. Category *</Text>
-            <View style={s.chipGroup}>
+          {/* ──────────────── CATEGORY ──────────────── */}
+          <View className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 mb-3.5 shadow-xs">
+            <Text className="text-xs font-bold mb-2 text-slate-500 dark:text-slate-400">
+              {editingPhotoId ? '4. Category *' : '3. Category *'}
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
               {CATEGORIES.filter(c => c !== 'All').map(cat => {
                 const isSelected = category === cat;
                 return (
                   <TouchableOpacity
                     key={cat}
                     onPress={() => setCategory(cat)}
-                    style={[
-                      s.chip,
-                      isSelected
-                        ? s.chipActive
-                        : { backgroundColor: theme.chipIdle, borderColor: theme.cardBorder },
-                    ]}
+                    className={`py-2 px-3.5 rounded-xl border ${isSelected
+                      ? 'bg-emerald-500 border-emerald-500 shadow-xs'
+                      : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                      }`}
                   >
                     <Text
-                      style={[
-                        s.chipText,
-                        isSelected ? s.chipTextActive : { color: theme.chipIdleText },
-                      ]}
+                      className={`text-xs font-semibold ${isSelected ? 'text-white font-bold' : 'text-slate-600 dark:text-slate-400'
+                        }`}
                     >
                       {cat}
                     </Text>
@@ -628,26 +714,23 @@ export default function GalleryAdminScreen() {
           </View>
 
           {/* Action Buttons */}
-          <View style={s.submitRow}>
+          <View className="flex-row gap-3 mt-1 pb-10">
             {editingPhotoId && (
               <TouchableOpacity
-                style={[s.cancelBtn, { borderColor: theme.cardBorder, backgroundColor: theme.chipIdle }]}
+                className="flex-1 py-3.5 rounded-xl items-center justify-center border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
                 onPress={() => {
                   resetForm();
                   setActiveSubTab('list');
                 }}
                 disabled={submitting}
               >
-                <Text style={[s.cancelBtnText, { color: theme.textSub }]}>Cancel</Text>
+                <Text className="text-sm font-bold text-slate-500 dark:text-slate-400">Cancel</Text>
               </TouchableOpacity>
             )}
 
             <TouchableOpacity
-              style={[
-                s.submitBtn,
-                editingPhotoId ? { flex: 2 } : { flex: 1 },
-                submitting && s.submitBtnDisabled,
-              ]}
+              className={`py-3.5 rounded-xl flex-row items-center justify-center gap-2 bg-emerald-500 ${editingPhotoId ? 'flex-[2]' : 'flex-1'
+                } ${submitting ? 'opacity-60' : ''}`}
               onPress={handleSubmit}
               disabled={submitting}
             >
@@ -656,7 +739,7 @@ export default function GalleryAdminScreen() {
               ) : (
                 <>
                   <CheckCircle2 color="#fff" size={18} />
-                  <Text style={s.submitBtnText}>
+                  <Text className="text-white text-sm font-bold">
                     {editingPhotoId ? 'Update Photo' : t('gallery.submit', 'Add Photo to Gallery')}
                   </Text>
                 </>
@@ -673,24 +756,24 @@ export default function GalleryAdminScreen() {
         animationType="fade"
         onRequestClose={() => setSelectedViewPhoto(null)}
       >
-        <View style={[s.modalBackdrop, { backgroundColor: theme.modalBg }]}>
-          <View style={[s.modalCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+        <View className="flex-1 justify-center items-center p-4 bg-black/75">
+          <View className="w-full max-w-[420px] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
             {/* Modal Header */}
-            <View style={[s.modalHeader, { borderBottomColor: theme.cardBorder }]}>
-              <View style={{ flex: 1 }}>
+            <View className="flex-row items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
+              <View className="flex-1 pr-3">
                 <DynamicText
                   text={selectedViewPhoto?.title || ''}
-                  style={[s.modalTitle, { color: theme.textMain }]}
+                  style={{ fontSize: 16, fontWeight: '800', color: isDark ? '#f8fafc' : '#0f172a' }}
                   numberOfLines={1}
                 />
-                <View style={s.modalMetaRow}>
-                  <MapPin color={theme.primary} size={13} />
+                <View className="flex-row items-center gap-1.5 mt-1">
+                  <MapPin color="#10b981" size={13} />
                   <DynamicText
-                    text={selectedViewPhoto?.city || 'Bareilly'}
-                    style={[s.modalMetaText, { color: theme.textSub }]}
+                    text={selectedViewPhoto?.city || ''}
+                    style={{ fontSize: 12, color: isDark ? '#94a3b8' : '#64748b' }}
                   />
-                  <View style={s.modalDot} />
-                  <Text style={[s.modalBadgeText, { color: theme.primary }]}>
+                  <View className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600 mx-1" />
+                  <Text className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
                     {translateCategory(selectedViewPhoto?.category || '', lang)}
                   </Text>
                 </View>
@@ -698,27 +781,49 @@ export default function GalleryAdminScreen() {
 
               <TouchableOpacity
                 onPress={() => setSelectedViewPhoto(null)}
-                style={[s.modalCloseBtn, { backgroundColor: theme.chipIdle }]}
+                className="w-8 h-8 rounded-full items-center justify-center bg-slate-100 dark:bg-slate-700"
               >
-                <X color={theme.textMain} size={18} />
+                <X color={isDark ? '#f8fafc' : '#0f172a'} size={18} />
               </TouchableOpacity>
             </View>
 
             {/* Modal Image */}
             {selectedViewPhoto && (
-              <View style={s.modalImageWrap}>
+              <View className="w-full h-72 bg-slate-900 items-center justify-center">
                 <Image
                   source={{ uri: selectedViewPhoto.image }}
-                  style={s.modalImage}
+                  style={{ width: '100%', height: '100%' }}
                   resizeMode="contain"
                 />
               </View>
             )}
 
             {/* Modal Actions */}
-            <View style={[s.modalActions, { borderTopColor: theme.cardBorder }]}>
+            <View className="flex-row p-3 gap-2.5 border-t border-slate-200 dark:border-slate-700">
+              {/* Approve button — admin only, pending only */}
+              {selectedViewPhoto?.status === 'pending' && isAdmin && (
+                <TouchableOpacity
+                  className="flex-1 flex-row items-center justify-center gap-1.5 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/50"
+                  onPress={() => {
+                    if (selectedViewPhoto) handleApprovePhoto(selectedViewPhoto.id);
+                  }}
+                  disabled={approvingId === selectedViewPhoto?.id}
+                >
+                  {approvingId === selectedViewPhoto?.id ? (
+                    <ActivityIndicator size="small" color="#059669" />
+                  ) : (
+                    <>
+                      <Check color="#059669" size={15} />
+                      <Text className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                        {tr('मंज़ूर करें', 'منظور کریں', 'Approve')}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity
-                style={[s.modalActionBtn, { backgroundColor: isDark ? '#064e3b' : '#ecfdf5' }]}
+                className="flex-1 flex-row items-center justify-center gap-1.5 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50"
                 onPress={() => {
                   if (selectedViewPhoto) {
                     handleStartEdit(selectedViewPhoto);
@@ -726,11 +831,11 @@ export default function GalleryAdminScreen() {
                 }}
               >
                 <Edit3 color="#10b981" size={16} />
-                <Text style={[s.modalActionBtnText, { color: '#10b981' }]}>Edit Photo</Text>
+                <Text className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Edit Photo</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[s.modalActionBtn, { backgroundColor: isDark ? '#4c1d24' : '#fee2e2' }]}
+                className="flex-1 flex-row items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-50 dark:bg-red-950/50"
                 onPress={() => {
                   if (selectedViewPhoto) {
                     const idToDelete = selectedViewPhoto.id;
@@ -740,52 +845,54 @@ export default function GalleryAdminScreen() {
                 }}
               >
                 <Trash2 color="#ef4444" size={16} />
-                <Text style={[s.modalActionBtnText, { color: '#ef4444' }]}>Delete</Text>
+                <Text className="text-xs font-bold text-red-600 dark:text-red-400">Delete</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* ── PROFESSIONAL DELETE CONFIRMATION MODAL (MATCHING IMPACT-STORIES) ── */}
+      {/* ── PROFESSIONAL DELETE CONFIRMATION MODAL ── */}
       <Modal
         visible={!!deleteConfirmId}
         transparent
         animationType="fade"
         onRequestClose={() => setDeleteConfirmId(null)}
       >
-        <View style={[s.deleteModalBackdrop, { backgroundColor: theme.modalBg }]}>
-          <View style={[s.deleteModalCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <View style={s.deleteIconCircle}>
+        <View className="flex-1 justify-center items-center p-5 bg-black/75">
+          <View className="w-full max-w-[340px] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 items-center">
+            <View className="w-14 h-14 rounded-full items-center justify-center mb-3.5 bg-red-50 dark:bg-red-950/50">
               <Trash2 color="#ef4444" size={28} />
             </View>
 
-            <Text style={[s.deleteModalTitle, { color: theme.textMain }]}>Delete Gallery Photo?</Text>
-            <Text style={[s.deleteModalSub, { color: theme.textSub }]}>
+            <Text className="text-base font-extrabold text-slate-900 dark:text-white mb-1.5">
+              Delete Gallery Photo?
+            </Text>
+            <Text className="text-xs text-center leading-4 text-slate-500 dark:text-slate-400 mb-4">
               Are you sure you want to delete this photo from the gallery? This action cannot be undone.
             </Text>
 
-            <View style={[s.deleteModalActions, { borderTopColor: theme.cardBorder }]}>
+            <View className="flex-row gap-2.5 w-full border-t border-slate-200 dark:border-slate-700 pt-3.5">
               <TouchableOpacity
-                style={[s.deleteModalCancelBtn, { backgroundColor: theme.chipIdle }]}
+                className="flex-1 py-2.5 rounded-xl items-center justify-center bg-slate-100 dark:bg-slate-700"
                 onPress={() => setDeleteConfirmId(null)}
                 disabled={deletingId !== null}
               >
-                <Text style={[s.deleteModalCancelBtnText, { color: theme.textSub }]}>Cancel</Text>
+                <Text className="text-xs font-bold text-slate-600 dark:text-slate-400">Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={s.deleteModalConfirmBtn}
+                className="flex-1 py-2.5 rounded-xl items-center justify-center bg-red-500"
                 onPress={handleConfirmDelete}
                 disabled={deletingId !== null}
               >
                 {deletingId !== null ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <>
+                  <View className="flex-row items-center gap-1">
                     <Trash2 color="#fff" size={15} />
-                    <Text style={s.deleteModalConfirmBtnText}>Yes, Delete</Text>
-                  </>
+                    <Text className="text-white text-xs font-bold">Yes, Delete</Text>
+                  </View>
                 )}
               </TouchableOpacity>
             </View>
@@ -793,7 +900,7 @@ export default function GalleryAdminScreen() {
         </View>
       </Modal>
 
-      {/* ── MEDIA PICKER SHEET MODAL (MATCHING SIGN-UP) ── */}
+      {/* ── MEDIA PICKER SHEET MODAL ── */}
       {showMediaPicker && (
         <Modal
           visible={showMediaPicker}
@@ -802,52 +909,55 @@ export default function GalleryAdminScreen() {
           onRequestClose={() => setShowMediaPicker(false)}
         >
           <TouchableOpacity
-            style={s.sheetModalBackdrop}
+            className="flex-1 justify-end bg-black/60"
             activeOpacity={1}
             onPress={() => setShowMediaPicker(false)}
           >
-            <View style={[s.modalSheet, { backgroundColor: theme.cardBg }]}>
-              <View style={s.sheetHeader}>
-                <Text style={[s.sheetTitle, { color: theme.textMain }]}>Upload Gallery Photo</Text>
+            <View
+              className="bg-white dark:bg-slate-800 rounded-t-3xl p-5"
+              style={{ paddingBottom: Platform.OS === 'ios' ? 36 : 24 }}
+            >
+              <View className="flex-row items-center justify-between mb-4">
+                <Text className="text-base font-extrabold text-slate-900 dark:text-white">Upload Gallery Photo</Text>
                 <TouchableOpacity
                   onPress={() => setShowMediaPicker(false)}
-                  style={[s.closeBtn, { backgroundColor: theme.chipIdle }]}
+                  className="w-8 h-8 rounded-full items-center justify-center bg-slate-100 dark:bg-slate-700"
                 >
-                  <X color={theme.textSub} size={18} />
+                  <X color={isDark ? '#94a3b8' : '#64748b'} size={18} />
                 </TouchableOpacity>
               </View>
 
-              <View style={s.pickerOptionsRow}>
+              <View className="flex-row gap-3 mb-4">
                 <TouchableOpacity
-                  style={[s.pickerOptionCard, { backgroundColor: theme.inputBg, borderColor: theme.cardBorder }]}
+                  className="flex-1 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 items-center justify-center bg-slate-50 dark:bg-slate-900"
                   onPress={() => handlePickMedia('camera')}
                   activeOpacity={0.7}
                 >
-                  <View style={[s.optionIconCircle, { backgroundColor: isDark ? '#064e3b' : '#ecfdf5' }]}>
+                  <View className="w-12 h-12 rounded-full items-center justify-center mb-2 bg-emerald-50 dark:bg-emerald-950/50">
                     <Camera color="#059669" size={24} />
                   </View>
-                  <Text style={[s.optionTitle, { color: theme.textMain }]}>Use Camera</Text>
-                  <Text style={[s.optionSub, { color: theme.textSub }]}>Take a new photo</Text>
+                  <Text className="text-[13px] font-bold text-slate-900 dark:text-white">Use Camera</Text>
+                  <Text className="text-[11px] mt-0.5 text-center text-slate-500 dark:text-slate-400">Take a new photo</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[s.pickerOptionCard, { backgroundColor: theme.inputBg, borderColor: theme.cardBorder }]}
+                  className="flex-1 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 items-center justify-center bg-slate-50 dark:bg-slate-900"
                   onPress={() => handlePickMedia('gallery')}
                   activeOpacity={0.7}
                 >
-                  <View style={[s.optionIconCircle, { backgroundColor: isDark ? '#1e3a8a' : '#eff6ff' }]}>
+                  <View className="w-12 h-12 rounded-full items-center justify-center mb-2 bg-blue-50 dark:bg-blue-950/50">
                     <ImageIcon color="#2563eb" size={24} />
                   </View>
-                  <Text style={[s.optionTitle, { color: theme.textMain }]}>From Gallery</Text>
-                  <Text style={[s.optionSub, { color: theme.textSub }]}>Select image / file</Text>
+                  <Text className="text-[13px] font-bold text-slate-900 dark:text-white">From Gallery</Text>
+                  <Text className="text-[11px] mt-0.5 text-center text-slate-500 dark:text-slate-400">Select image / file</Text>
                 </TouchableOpacity>
               </View>
 
               <TouchableOpacity
                 onPress={() => setShowMediaPicker(false)}
-                style={[s.sheetCancelBtn, { backgroundColor: theme.chipIdle }]}
+                className="py-3.5 rounded-2xl items-center justify-center bg-slate-100 dark:bg-slate-700"
               >
-                <Text style={[s.sheetCancelBtnText, { color: theme.textSub }]}>Cancel</Text>
+                <Text className="text-sm font-bold text-slate-500 dark:text-slate-400">Cancel</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -856,513 +966,3 @@ export default function GalleryAdminScreen() {
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  screen: { flex: 1 },
-
-  // Toast
-  toastContainer: {
-    position: 'absolute',
-    top: 10,
-    left: 16,
-    right: 16,
-    zIndex: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    gap: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 8,
-  },
-  toastSuccess: { backgroundColor: '#059669' },
-  toastError: { backgroundColor: '#dc2626' },
-  toastInfo: { backgroundColor: '#0284c7' },
-  toastText: { color: '#fff', fontSize: 13, fontWeight: '700', flex: 1 },
-
-  // Sub Tab Header
-  tabHeader: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    padding: 10,
-    gap: 8,
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  tabBtnActive: { backgroundColor: '#10b981' },
-  tabBtnText: { fontSize: 13, fontWeight: '700' },
-  tabBtnTextActive: { color: '#fff' },
-
-  // Filter bar
-  filterBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  filterChipActive: { backgroundColor: '#10b981', borderColor: '#10b981' },
-  filterChipText: { fontSize: 12, fontWeight: '700' },
-  filterChipTextActive: { color: '#fff' },
-
-  // Grid
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  tileCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  tileImgWrap: {
-    width: '100%',
-    height: 120,
-    position: 'relative',
-    backgroundColor: '#0f172a',
-  },
-  tileImg: { width: '100%', height: '100%' },
-  tileBadge: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-    backgroundColor: 'rgba(16,185,129,0.92)',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  tileBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-  tileDetails: {
-    padding: 8,
-  },
-  tileTitle: { fontSize: 12, fontWeight: '700', marginBottom: 3 },
-  tileLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  tileCity: { fontSize: 11, fontWeight: '500' },
-
-  // Tile Action Buttons
-  tileActions: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    padding: 6,
-    gap: 4,
-    justifyContent: 'space-between',
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  actionBtnText: { fontSize: 10, fontWeight: '700' },
-
-  empty: { alignItems: 'center', paddingVertical: 60 },
-  emptyText: { marginTop: 12, fontSize: 14, fontWeight: '600' },
-  emptyAddBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-    marginTop: 16,
-  },
-  emptyAddBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-
-  // Form
-  formPad: { padding: 16, paddingBottom: 60 },
-  formHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-  },
-  backIconBtn: {
-    padding: 8,
-    borderRadius: 10,
-  },
-  formTitle: { fontSize: 18, fontWeight: '800' },
-  formSubTitle: { fontSize: 12, marginTop: 2 },
-  formCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 14,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 12,
-    fontSize: 14,
-  },
-  inputWithIcon: {
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  inputLeftIcon: {
-    position: 'absolute',
-    left: 12,
-    zIndex: 1,
-  },
-  inputPadded: {
-    paddingLeft: 38,
-  },
-
-  // Upload Box (Matching sign-up)
-  uploadBox: {
-    backgroundColor: '#f8fafc',
-    borderWidth: 1.5,
-    borderColor: '#cbd5e1',
-    borderStyle: 'dashed',
-    borderRadius: 16,
-    padding: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  uploadIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#ecfdf5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  uploadTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  uploadSubtitle: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 2,
-  },
-
-  // Preview Cards (Matching sign-up)
-  previewCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0fdf4',
-    borderWidth: 1,
-    borderColor: '#86efac',
-    borderRadius: 16,
-    padding: 12,
-    gap: 12,
-  },
-  docPreview: {
-    width: 50,
-    height: 50,
-    borderRadius: 10,
-    backgroundColor: '#e2e8f0',
-  },
-  previewMeta: {
-    flex: 1,
-    gap: 4,
-  },
-  previewFileName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  badgeAttached: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  badgeAttachedText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#059669',
-  },
-  previewActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  changeBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#a7f3d0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: '#fef2f2',
-    borderWidth: 1,
-    borderColor: '#fecaca',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Media Picker Modal Sheet (Matching sign-up)
-  sheetModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sheetTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pickerOptionsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
-  pickerOptionCard: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  optionIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  optionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  optionSub: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  sheetCancelBtn: {
-    paddingVertical: 14,
-    borderRadius: 14,
-    backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sheetCancelBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#64748b',
-  },
-
-  urlToggleBtn: {
-    marginTop: 10,
-    alignSelf: 'flex-start',
-  },
-  urlToggleText: { fontSize: 12, fontWeight: '700' },
-
-  // Category Chips
-  chipGroup: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  chipActive: { backgroundColor: '#10b981', borderColor: '#10b981' },
-  chipText: { fontSize: 12, fontWeight: '600' },
-  chipTextActive: { color: '#fff', fontWeight: '700' },
-
-  // Submit Row
-  submitRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 8,
-  },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelBtnText: { fontWeight: '700', fontSize: 14 },
-  submitBtn: {
-    backgroundColor: '#10b981',
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  submitBtnDisabled: { backgroundColor: '#94a3b8' },
-  submitBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-
-  // View Modal
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  modalCard: {
-    width: '100%',
-    maxHeight: '90%',
-    borderRadius: 20,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderBottomWidth: 1,
-  },
-  modalTitle: { fontSize: 16, fontWeight: '800' },
-  modalMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  modalMetaText: { fontSize: 12, fontWeight: '600' },
-  modalDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#94a3b8', marginHorizontal: 4 },
-  modalBadgeText: { fontSize: 12, fontWeight: '800' },
-  modalCloseBtn: { padding: 8, borderRadius: 10, marginLeft: 8 },
-  modalImageWrap: {
-    width: '100%',
-    height: 280,
-    backgroundColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalImage: { width: '100%', height: '100%' },
-  modalActions: {
-    flexDirection: 'row',
-    padding: 12,
-    borderTopWidth: 1,
-    gap: 10,
-  },
-  modalActionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  modalActionBtnText: { fontSize: 13, fontWeight: '700' },
-
-  // Delete Modal Styles (Matching impact-stories)
-  deleteModalBackdrop: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  deleteModalCard: {
-    width: '100%',
-    maxWidth: 380,
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 20,
-    alignItems: 'center',
-  },
-  deleteIconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(239,68,68,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  deleteModalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 6 },
-  deleteModalSub: { fontSize: 13, textAlign: 'center', lineHeight: 18, marginBottom: 16 },
-  deleteModalActions: {
-    flexDirection: 'row',
-    width: '100%',
-    paddingTop: 14,
-    borderTopWidth: 1,
-    gap: 10,
-  },
-  deleteModalCancelBtn: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteModalCancelBtnText: { fontSize: 13, fontWeight: '700' },
-  deleteModalConfirmBtn: {
-    flex: 1,
-    backgroundColor: '#ef4444',
-    paddingVertical: 11,
-    borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  deleteModalConfirmBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-});

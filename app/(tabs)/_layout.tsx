@@ -1,6 +1,6 @@
 import { Tabs, router } from 'expo-router';
 import { View, TouchableOpacity, Text, Image } from 'react-native';
-import { LayoutDashboard, Megaphone, Users, Image as ImageIcon, BookOpen, Globe, Moon, Sun, User, FileText } from 'lucide-react-native';
+import { LayoutDashboard, Megaphone, Users, Image as ImageIcon, BookOpen, Globe, Moon, Sun, User, FileText, Scale } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
 import { useAppState } from '../../src/context/AppStateProvider';
@@ -21,7 +21,7 @@ const brand = {
 export default function TabLayout() {
   const { t, i18n } = useTranslation();
   const { colorScheme, toggleColorScheme } = useColorScheme();
-  const { isAuthenticated } = useAppState();
+  const { isAuthenticated, activeUser, isInitialized } = useAppState();
 
   const isDark = colorScheme === 'dark';
   const tabBgColor = brand.darkGreen;
@@ -61,6 +61,10 @@ export default function TabLayout() {
           height: 60,
           paddingBottom: 8,
           paddingTop: 6,
+        },
+        tabBarLabelStyle: {
+          fontSize: 8.5,
+          fontWeight: '700',
         },
         headerStyle: {
           backgroundColor: tabBgColor,
@@ -116,7 +120,6 @@ export default function TabLayout() {
             </View>
           </TouchableOpacity>
         ),
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '700', marginTop: -2 },
         headerRight: () => (
           <View style={{ flexDirection: 'row', gap: 12, marginRight: 16, alignItems: 'center' }}>
             {/* Language toggle - HI / EN (public: no Urdu) */}
@@ -157,17 +160,63 @@ export default function TabLayout() {
               }
             </TouchableOpacity>
 
-            {/* Auth icon: Dashboard when logged in, Login when not */}
-            {isAuthenticated ? (
+            {/* Auth icon: Skeleton when loading, Dashboard when logged in, Login when not */}
+            {!isInitialized ? (
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 8,
+                  backgroundColor: 'rgba(200,168,75,0.18)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(200,168,75,0.4)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <View
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 3,
+                    backgroundColor: brand.gold,
+                    opacity: 0.4,
+                  }}
+                />
+              </View>
+            ) : isAuthenticated ? (
               <TouchableOpacity
-                onPress={() => router.push('/(drawer)/dashboard')}
+                onPress={() => {
+                  const status = (activeUser?.status || '').toLowerCase();
+                  if (status === 'pending' || status === 'reject' || status === 'rejected' || (!activeUser?.isVerified && status !== 'approved')) {
+                    router.push('/(auth)/under-review');
+                  } else {
+                    router.push('/(drawer)/dashboard');
+                  }
+                }}
                 style={{
                   padding: 6,
                   borderRadius: 8,
-                  backgroundColor: brand.gold,
+                  backgroundColor: (activeUser?.status === 'reject' || activeUser?.status === 'rejected') ? '#ef4444' : brand.gold,
+                  position: 'relative',
                 }}
               >
-                <LayoutDashboard color={brand.darkGreen} size={16} />
+                <LayoutDashboard color={(activeUser?.status === 'reject' || activeUser?.status === 'rejected') ? '#ffffff' : brand.darkGreen} size={16} />
+                {(activeUser?.status === 'reject' || activeUser?.status === 'rejected') && (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      top: -3,
+                      right: -3,
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: '#f87171',
+                      borderWidth: 1.5,
+                      borderColor: '#ffffff',
+                    }}
+                  />
+                )}
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -190,6 +239,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
+          headerShown: false,
           title: t('tabs.home'),
           tabBarIcon: ({ color }) => <LayoutDashboard color={color} size={18} />,
         }}
@@ -208,6 +258,14 @@ export default function TabLayout() {
         options={{
           title: t('tabs.niyamawali'),
           tabBarIcon: ({ color }) => <FileText color={color} size={18} />,
+        }}
+      />
+
+      <Tabs.Screen
+        name="zakat-compliance"
+        options={{
+          title: t('tabs.zakat_compliance', isHi ? 'ज़कात नीति' : 'Zakat'),
+          tabBarIcon: ({ color }) => <Scale color={color} size={18} />,
         }}
       />
 

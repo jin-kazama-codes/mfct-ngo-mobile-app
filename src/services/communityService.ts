@@ -103,3 +103,20 @@ export async function deleteCommunity(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function updateCommunityStats(
+  id: string,
+  patch: { totalMembers?: number; totalRaisedINR?: number; activeCampaigns?: number }
+): Promise<void> {
+  try {
+    const payload: Record<string, any> = {};
+    if (patch.totalMembers !== undefined) payload.total_members = patch.totalMembers;
+    if (patch.totalRaisedINR !== undefined) payload.total_raised_inr = patch.totalRaisedINR;
+    if (patch.activeCampaigns !== undefined) payload.active_campaigns = patch.activeCampaigns;
+
+    await supabase.from('communities').update(payload).eq('id', id);
+  } catch (err) {
+    console.error('updateCommunityStats error:', err);
+  }
+}
+
+

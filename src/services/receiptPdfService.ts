@@ -27,7 +27,7 @@ export function generateReceiptHtml(
   const isRtl = lang === 'ur';
 
   const campaignTitle = translateCampaignTitle(don.campaignTitle || 'General Relief Fund', lang);
-  const commName = translateCommunityName(don.communityName || 'Bareilly Central Care Society', lang);
+  const commName = translateCommunityName(don.communityName || 'MFCT Community', lang);
   const category = translateCategory(don.category || 'Emergency Aid', lang);
   const cleanId = (don.receiptNumber || don.id || 'DON').replace(/[^a-zA-Z0-9_-]/g, '');
   const receiptNo = don.receiptNumber || 'REC-' + cleanId.slice(0, 8).toUpperCase();

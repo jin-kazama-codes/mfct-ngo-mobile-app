@@ -1400,4 +1400,16 @@ const s = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
+  viewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  viewBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
 });

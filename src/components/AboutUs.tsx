@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
 import {
@@ -30,11 +30,18 @@ const C = {
     border: 'rgba(26,60,44,0.12)',
 };
 
-export const AboutUs: React.FC = () => {
+export interface AboutUsProps {
+    visible?: boolean;
+    onRequestClose?: () => void;
+    onClose?: () => void;
+}
+
+export const AboutUs: React.FC<AboutUsProps> = ({ visible, onRequestClose, onClose }) => {
     const { t } = useTranslation();
     const { colorScheme } = useColorScheme();
     const isDark = colorScheme === 'dark';
     const [amreenContainerWidth, setAmreenContainerWidth] = React.useState<number>(290);
+    const handleClose = onRequestClose || onClose;
 
     return (
         <View style={[styles.container, isDark && { backgroundColor: '#0b1320' }]}>
@@ -279,6 +286,26 @@ export const AboutUs: React.FC = () => {
                     </View>
                 </View>
             </View>
+
+            {handleClose && (
+                <TouchableOpacity
+                    onPress={handleClose}
+                    activeOpacity={0.8}
+                    style={{
+                        marginTop: 4,
+                        marginBottom: 16,
+                        paddingVertical: 14,
+                        borderRadius: 14,
+                        backgroundColor: C.gold,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}
+                >
+                    <Text style={{ color: C.deepGreen, fontWeight: '900', fontSize: 13 }}>
+                        {t('common.close', 'Close / बंद करें')}
+                    </Text>
+                </TouchableOpacity>
+            )}
         </View>
     );
 };

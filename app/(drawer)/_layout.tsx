@@ -1,25 +1,28 @@
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
 import { LayoutDashboard, User, Heart, Users, Building2 } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { Platform } from 'react-native';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppState } from '../../src/context/AppStateProvider';
 
 export default function DrawerGroupLayout() {
   const { colorScheme } = useColorScheme();
   const { t } = useTranslation();
+  const { activeUser } = useAppState();
   const isDark = colorScheme === 'dark';
-  const { currentRole, activeUser } = useAppState();
 
-  const rawRole = (activeUser?.role || currentRole || 'member') as string;
-  let userRole = rawRole.toLowerCase().trim().replace(/ /g, '_');
-  if (userRole.includes('executive')) userRole = 'executive_admin';
-  else if (userRole.includes('community')) userRole = 'community_admin';
-  else if (userRole.includes('super')) userRole = 'super_admin';
-  else if (userRole.includes('member')) userRole = 'member';
-
-  const isAdmin = userRole === 'super_admin' || userRole === 'executive_admin' || userRole === 'community_admin';
-  const isSuperOrExec = userRole === 'super_admin' || userRole === 'executive_admin';
+  useEffect(() => {
+    if (activeUser) {
+      const status = (activeUser.status || '').toLowerCase();
+      const isApproved =
+        status === 'approved' ||
+        (activeUser.isVerified && status !== 'pending' && status !== 'reject' && status !== 'rejected');
+      if (status === 'pending' || status === 'reject' || status === 'rejected' || !isApproved) {
+        router.replace('/(auth)/under-review');
+      }
+    }
+  }, [activeUser]);
 
   const tabBgColor = isDark ? '#0f172a' : '#ffffff';
   const borderCol = isDark ? '#1e293b' : '#e2e8f0';
@@ -50,30 +53,6 @@ export default function DrawerGroupLayout() {
         options={{
           title: t('nav.dashboard', 'Dashboard'),
           tabBarIcon: ({ color }) => <LayoutDashboard color={color} size={22} />,
-        }}
-      />
-      <Tabs.Screen
-        name="campaigns"
-        options={{
-          title: t('nav.campaigns', 'Campaigns'),
-          href: isAdmin ? undefined : null,
-          tabBarIcon: ({ color }) => <Heart color={color} size={22} />,
-        }}
-      />
-      <Tabs.Screen
-        name="manage-users"
-        options={{
-          title: t('nav.users', 'Users'),
-          href: isSuperOrExec ? undefined : null,
-          tabBarIcon: ({ color }) => <Users color={color} size={22} />,
-        }}
-      />
-      <Tabs.Screen
-        name="communities"
-        options={{
-          title: t('nav.communities', 'Communities'),
-          href: isSuperOrExec ? undefined : null,
-          tabBarIcon: ({ color }) => <Building2 color={color} size={22} />,
         }}
       />
       <Tabs.Screen

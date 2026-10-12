@@ -166,7 +166,7 @@ export default function ImpactStoriesScreen() {
                         {translateRole(item.role || 'Verified Beneficiary', lang)}{' • '}
                       </Text>
                       <DynamicText
-                        text={rawItem.city || 'Bareilly'}
+                        text={rawItem.city || ''}
                         className="text-[10px] text-slate-500 dark:text-slate-400"
                         numberOfLines={1}
                       />
