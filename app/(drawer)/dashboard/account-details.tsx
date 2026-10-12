@@ -41,6 +41,8 @@ import {
   X,
   Lock,
   Save,
+  User,
+  MapPin,
 } from 'lucide-react-native';
 
 export default function AccountDetailsScreen() {
@@ -69,6 +71,8 @@ export default function AccountDetailsScreen() {
 
   // Form State
   const [bankName, setBankName] = useState('');
+  const [accountHolderName, setAccountHolderName] = useState('');
+  const [branchName, setBranchName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [ifscCode, setIfscCode] = useState('');
   const [upiId, setUpiId] = useState('');
@@ -108,6 +112,8 @@ export default function AccountDetailsScreen() {
   const handleEdit = (details: AccountDetails) => {
     setCurrentEditId(details.id);
     setBankName(details.bank_name || '');
+    setAccountHolderName(details.account_holder_name || '');
+    setBranchName(details.branch_name || '');
     setAccountNumber(details.account_number || '');
     setIfscCode(details.ifsc_code || '');
     setUpiId(details.upi_id || '');
@@ -121,6 +127,8 @@ export default function AccountDetailsScreen() {
   const handleCancel = () => {
     setCurrentEditId(null);
     setBankName('');
+    setAccountHolderName('');
+    setBranchName('');
     setAccountNumber('');
     setIfscCode('');
     setUpiId('');
@@ -196,6 +204,8 @@ export default function AccountDetailsScreen() {
         await updateAccountDetails({
           id: currentEditId,
           bank_name: bankName.trim(),
+          account_holder_name: accountHolderName.trim() || undefined,
+          branch_name: branchName.trim() || undefined,
           account_number: accountNumber.trim(),
           ifsc_code: ifscCode.trim(),
           upi_id: upiId.trim(),
@@ -211,6 +221,8 @@ export default function AccountDetailsScreen() {
       } else {
         await createAccountDetails({
           bank_name: bankName.trim(),
+          account_holder_name: accountHolderName.trim() || undefined,
+          branch_name: branchName.trim() || undefined,
           account_number: accountNumber.trim(),
           ifsc_code: ifscCode.trim(),
           upi_id: upiId.trim(),
@@ -362,10 +374,27 @@ export default function AccountDetailsScreen() {
             </View>
 
             <View className="p-4 gap-4">
+              {/* Account Holder Name */}
+              <View className="gap-1.5">
+                <Text className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  {tr('खाताधारक का नाम', 'کھاتہ دار کا نام', 'Account Holder Name')}
+                </Text>
+                <View className="flex-row items-center bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3">
+                  <User color={isDark ? '#94a3b8' : '#64748b'} size={18} className="mr-2" />
+                  <TextInput
+                    className="flex-1 py-2.5 text-sm font-semibold text-slate-900 dark:text-white"
+                    placeholder={tr('उदा. मोहम्मद फहीम चैरिटेबल ट्रस्ट', 'مثال: محمد فہیم چیریٹیبل ٹرسٹ', 'e.g. Mohammad Faeem Charitable Trust')}
+                    placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
+                    value={accountHolderName}
+                    onChangeText={setAccountHolderName}
+                  />
+                </View>
+              </View>
+
               {/* 1. Bank Name */}
               <View className="gap-1.5">
                 <Text className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  {tr('बैंक का नाम *', 'بینک کا नाम *', 'Bank Name *')}
+                  {tr('बैंक का नाम *', 'بینک کا نام *', 'Bank Name *')}
                 </Text>
                 <View className="flex-row items-center bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3">
                   <Building color={isDark ? '#94a3b8' : '#64748b'} size={18} className="mr-2" />
@@ -375,6 +404,23 @@ export default function AccountDetailsScreen() {
                     placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
                     value={bankName}
                     onChangeText={setBankName}
+                  />
+                </View>
+              </View>
+
+              {/* Branch Name */}
+              <View className="gap-1.5">
+                <Text className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  {tr('शाखा का नाम', 'برانچ کا نام', 'Branch Name')}
+                </Text>
+                <View className="flex-row items-center bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3">
+                  <MapPin color={isDark ? '#94a3b8' : '#64748b'} size={18} className="mr-2" />
+                  <TextInput
+                    className="flex-1 py-2.5 text-sm font-semibold text-slate-900 dark:text-white"
+                    placeholder={tr('उदा. मुख्य शाखा, सीतामढ़ी', 'مثال: مین برانچ، سیتامڑھی', 'e.g. Main Branch, Sitamarhi')}
+                    placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
+                    value={branchName}
+                    onChangeText={setBranchName}
                   />
                 </View>
               </View>
@@ -614,6 +660,46 @@ export default function AccountDetailsScreen() {
 
                   {/* Card Body */}
                   <View className="p-4 gap-3">
+                    {/* Account Holder Name & Branch Name */}
+                    {item.account_holder_name && item.branch_name ? (
+                      <View className="flex-row gap-3">
+                        <View className="flex-1 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                          <Text className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex-row items-center">
+                            <User size={11} color={isDark ? '#94a3b8' : '#64748b'} /> {tr('खाताधारक', 'کھاتہ دار', 'Account Holder')}
+                          </Text>
+                          <Text className="text-sm font-bold text-slate-900 dark:text-white mt-1" numberOfLines={1}>
+                            {item.account_holder_name}
+                          </Text>
+                        </View>
+                        <View className="flex-1 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                          <Text className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex-row items-center">
+                            <MapPin size={11} color={isDark ? '#94a3b8' : '#64748b'} /> {tr('शाखा', 'برانچ', 'Branch')}
+                          </Text>
+                          <Text className="text-sm font-bold text-slate-900 dark:text-white mt-1" numberOfLines={1}>
+                            {item.branch_name}
+                          </Text>
+                        </View>
+                      </View>
+                    ) : item.account_holder_name ? (
+                      <View className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                        <Text className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex-row items-center">
+                          <User size={11} color={isDark ? '#94a3b8' : '#64748b'} /> {tr('खाताधारक का नाम', 'کھاتہ دار کا نام', 'Account Holder Name')}
+                        </Text>
+                        <Text className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                          {item.account_holder_name}
+                        </Text>
+                      </View>
+                    ) : item.branch_name ? (
+                      <View className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                        <Text className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex-row items-center">
+                          <MapPin size={11} color={isDark ? '#94a3b8' : '#64748b'} /> {tr('शाखा का नाम', 'برانچ کا نام', 'Branch Name')}
+                        </Text>
+                        <Text className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                          {item.branch_name}
+                        </Text>
+                      </View>
+                    ) : null}
+
                     <View className="flex-row gap-3">
                       <View className="flex-1 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-2xl border border-slate-100 dark:border-slate-700/50">
                         <Text className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex-row items-center">

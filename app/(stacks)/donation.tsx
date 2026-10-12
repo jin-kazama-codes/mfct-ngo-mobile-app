@@ -23,7 +23,7 @@ import { getCampaigns, getCampaignById } from '../../src/services/campaignServic
 import { getAccountDetails } from '../../src/services/adminService';
 import { createDonation, updateCampaignRaised } from '../../src/services/donationService';
 import { uploadImageToSupabase } from '../../src/services/storageService';
-import { Campaign, DonationCategory, AccountDetails, Donation } from '../../src/types';
+import { Campaign, DonationCategory, AccountDetails, Donation, UserRole } from '../../src/types';
 import {
   getLanguageCode,
   translateCategory,
@@ -439,7 +439,7 @@ export default function DonationScreen() {
         utrNumber: finalUtr,
         donorName: finalDonorName,
         donorId: activeUser?.id || 'anonymous',
-        donorRole: activeUser?.role || 'member',
+        donorRole: ((activeUser?.districtRole?.trim() || activeUser?.district_role?.trim() || activeUser?.role || 'member') as UserRole),
         // When outside community: do NOT link to any specific campaign
         campaignId: isOutside ? 'general' : (campaign?.id || 'general'),
         campaignTitle: isOutside ? `${selectedCategory} General Fund (MFCT)` : (campaign?.title || `${selectedCategory} General Fund`),
@@ -1171,13 +1171,20 @@ export default function DonationScreen() {
               <View className="flex-row bg-slate-200 dark:bg-slate-800/80 p-1 rounded-2xl border border-slate-300 dark:border-slate-700">
                 <TouchableOpacity
                   onPress={() => setPaymentMethod('UPI')}
-                  className={`flex-1 py-3 rounded-xl flex-row items-center justify-center gap-1.5 ${paymentMethod === 'UPI' ? 'bg-emerald-700 shadow-sm' : 'bg-transparent'
-                    }`}
+                  className="flex-1 py-3 rounded-xl flex-row items-center justify-center gap-1.5"
+                  style={{
+                    backgroundColor: paymentMethod === 'UPI' ? '#047857' : 'transparent',
+                    shadowColor: '#000',
+                    shadowOpacity: paymentMethod === 'UPI' ? 0.15 : 0,
+                    shadowRadius: paymentMethod === 'UPI' ? 2 : 0,
+                    shadowOffset: { width: 0, height: 1 },
+                    elevation: paymentMethod === 'UPI' ? 1 : 0,
+                  }}
                 >
                   <QrCode color={paymentMethod === 'UPI' ? '#ffffff' : '#64748b'} size={15} />
                   <Text
-                    className={`text-xs font-bold ${paymentMethod === 'UPI' ? 'text-white' : 'text-slate-600 dark:text-slate-400'
-                      }`}
+                    className="text-xs font-bold text-slate-600 dark:text-slate-400"
+                    style={{ color: paymentMethod === 'UPI' ? '#ffffff' : undefined }}
                   >
                     {t('donation.instant_upi', tr('तत्काल यूपीआई / क्यूआर स्कैन', 'فوری یو پی آئی / کیو آر اسکین', 'Instant UPI / QR Scan'))}
                   </Text>
@@ -1185,13 +1192,20 @@ export default function DonationScreen() {
 
                 <TouchableOpacity
                   onPress={() => setPaymentMethod('Bank Transfer')}
-                  className={`flex-1 py-3 rounded-xl flex-row items-center justify-center gap-1.5 ${paymentMethod === 'Bank Transfer' ? 'bg-emerald-700 shadow-sm' : 'bg-transparent'
-                    }`}
+                  className="flex-1 py-3 rounded-xl flex-row items-center justify-center gap-1.5"
+                  style={{
+                    backgroundColor: paymentMethod === 'Bank Transfer' ? '#047857' : 'transparent',
+                    shadowColor: '#000',
+                    shadowOpacity: paymentMethod === 'Bank Transfer' ? 0.15 : 0,
+                    shadowRadius: paymentMethod === 'Bank Transfer' ? 2 : 0,
+                    shadowOffset: { width: 0, height: 1 },
+                    elevation: paymentMethod === 'Bank Transfer' ? 1 : 0,
+                  }}
                 >
                   <Building2 color={paymentMethod === 'Bank Transfer' ? '#ffffff' : '#64748b'} size={15} />
                   <Text
-                    className={`text-xs font-bold ${paymentMethod === 'Bank Transfer' ? 'text-white' : 'text-slate-600 dark:text-slate-400'
-                      }`}
+                    className="text-xs font-bold text-slate-600 dark:text-slate-400"
+                    style={{ color: paymentMethod === 'Bank Transfer' ? '#ffffff' : undefined }}
                   >
                     {t('donation.direct_bank', tr('प्रत्यक्ष बैंक NEFT / RTGS', 'براہ راست بینک NEFT / RTGS', 'Direct Bank NEFT / RTGS'))}
                   </Text>
@@ -1200,7 +1214,7 @@ export default function DonationScreen() {
 
               {/* TAB 1: UPI Payment Card */}
               {paymentMethod === 'UPI' ? (
-                <View className="bg-slate-900 p-5 rounded-3xl border border-emerald-500/30 items-center shadow-lg space-y-3">
+                <View key="upi-payment" className="bg-slate-900 p-5 rounded-3xl border border-emerald-500/30 items-center shadow-lg space-y-3">
                   <Text className="text-amber-400 font-bold text-xs uppercase tracking-wider text-center">
                     {t('donation.upi_id_escrow', tr('सीधे एस्क्रो के लिए UPI ID', 'براہ راست اسکرو کے لیے یو پی آئی آئی ڈی', 'UPI ID for Direct Escrow'))}
                   </Text>
@@ -1249,7 +1263,7 @@ export default function DonationScreen() {
                 </View>
               ) : (
                 /* TAB 2: Direct Bank Transfer Card */
-                <View className="bg-slate-900 p-5 rounded-3xl border border-emerald-500/30 shadow-lg space-y-3">
+                <View key="bank-transfer-payment" className="bg-slate-900 p-5 rounded-3xl border border-emerald-500/30 shadow-lg space-y-3">
                   <View className="flex-row items-center justify-between border-b border-slate-800 pb-2.5">
                     <View className="flex-row items-center gap-2">
                       <Building2 color="#34d399" size={18} />
@@ -1329,6 +1343,18 @@ export default function DonationScreen() {
                       {accountDetails?.account_holder_name || 'Mohammad Faeem Charitable Trust (MFCT)'}
                     </Text>
                   </View>
+
+                  {/* Branch Name */}
+                  {accountDetails?.branch_name ? (
+                    <View className="flex-row justify-between items-center py-1 border-t border-slate-800/80">
+                      <Text className="text-slate-400 text-xs font-medium">
+                        {tr('शाखा का नाम:', 'برانچ کا نام:', 'Branch Name:')}
+                      </Text>
+                      <Text className="text-white font-semibold text-xs text-right max-w-[200px]" numberOfLines={1}>
+                        {accountDetails.branch_name}
+                      </Text>
+                    </View>
+                  ) : null}
 
                   <View className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 mt-1">
                     <Text className="text-[11px] text-slate-300 text-center font-medium">

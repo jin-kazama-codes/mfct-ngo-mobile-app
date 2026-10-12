@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, ScrollView,
-    ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet,
+    ActivityIndicator, KeyboardAvoidingView, Platform,
     Image, Modal, Alert
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useAppState } from '../../src/context/AppStateProvider';
-import { Community, User } from '../../src/types';
+import { AccountDetails, Community, User } from '../../src/types';
 import { getCommunities } from '../../src/services/communityService';
+import { getAccountDetails } from '../../src/services/adminService';
 import { createUser } from '../../src/services/userService';
 import { uploadImageToSupabase } from '../../src/services/storageService';
 import { hashPassword } from '../../src/lib/auth';
@@ -17,7 +18,7 @@ import { useColorScheme } from 'nativewind';
 import { useTranslation } from 'react-i18next';
 import {
     Sparkles, ArrowLeft, ArrowRight, UserCheck, Eye, EyeOff,
-    Upload, QrCode, ChevronDown, Check, Copy, Camera, Image as ImageIcon,
+    Upload, ChevronDown, Check, Copy, Camera, Image as ImageIcon,
     Trash2, FileText, CheckCircle2, AlertCircle, X, Globe, ShieldCheck, HeartHandshake,
     HandHeart, Building2, MapPin, Mail, Phone, Lock, User as UserIcon
 } from 'lucide-react-native';
@@ -52,6 +53,8 @@ export default function SignUpScreen() {
     const [helpType, setHelpType] = useState<'Zakat' | 'Sadaka' | 'Fitra' | 'Other' | ''>('');
     const [helpDetails, setHelpDetails] = useState('');
     const [communities, setCommunities] = useState<Community[]>([]);
+    const [accountDetails, setAccountDetails] = useState<AccountDetails | null>(null);
+    const [accountDetailsLoading, setAccountDetailsLoading] = useState(true);
     const [selectedCommunityId, setSelectedCommunityId] = useState('');
     const [showCommunityPicker, setShowCommunityPicker] = useState(false);
     const [showAllInPicker, setShowAllInPicker] = useState(false);
@@ -230,6 +233,12 @@ export default function SignUpScreen() {
             setCommunities(data);
             if (data.length > 0) setSelectedCommunityId(data[0].id);
         }).catch(console.error);
+
+        getAccountDetails().then((data) => {
+            setAccountDetails(data[0] || null);
+        }).catch(console.error).finally(() => {
+            setAccountDetailsLoading(false);
+        });
     }, []);
 
     // Filter communities strictly by city typed by user
@@ -268,6 +277,29 @@ export default function SignUpScreen() {
         filteredCommunities.find((c) => c.id === selectedCommunityId) ||
         communities.find((c) => c.id === selectedCommunityId) ||
         communities[0];
+
+    const bankDetails = [
+        {
+            label: tr('खाताधारक का नाम:', 'کھاتہ دار کا نام:', 'Account Holder:'),
+            value: accountDetails?.account_holder_name || '',
+        },
+        {
+            label: tr('बैंक का नाम:', 'بینک کا نام:', 'Bank Name:'),
+            value: accountDetails?.bank_name || '',
+        },
+        {
+            label: tr('शाखा का नाम:', 'برانچ کا نام:', 'Branch Name:'),
+            value: accountDetails?.branch_name || '',
+        },
+        {
+            label: tr('खाता संख्या:', 'اکاؤنٹ نمبر:', 'Account Number:'),
+            value: accountDetails?.account_number || '',
+        },
+        {
+            label: tr('IFSC कोड:', 'آئی ایف ایس سی کوڈ:', 'IFSC Code:'),
+            value: accountDetails?.ifsc_code || '',
+        },
+    ].filter((detail) => detail.value.trim().length > 0);
 
     const handleReligionChange = (newRel: 'Hindu' | 'Muslim' | 'Sikh' | 'Christian' | '') => {
         setReligion(newRel);
@@ -649,23 +681,17 @@ export default function SignUpScreen() {
         router.replace('/(auth)/under-review');
     };
 
-    const dynamicBg = isDark ? '#020617' : '#f8f6f1';
-    const dynamicCardBg = isDark ? '#0f172a' : '#ffffff';
-    const dynamicHeaderBg = isDark ? '#0f172a' : '#ffffff';
-    const dynamicBorder = isDark ? '#1e293b' : '#e2e8f0';
-    const dynamicText = isDark ? '#f8fafc' : '#0f172a';
     const dynamicSubText = isDark ? '#94a3b8' : '#64748b';
-    const dynamicInputBg = isDark ? '#1e293b' : '#ffffff';
     const placeholderColor = isDark ? '#64748b' : '#94a3b8';
 
     return (
         <KeyboardAvoidingView
-            style={[s.flex1, { backgroundColor: dynamicBg }]}
+            className="flex-1 bg-[#f8f6f1] dark:bg-[#020617]"
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
             {/* Header */}
-            <View style={[s.header, { backgroundColor: dynamicHeaderBg, borderBottomColor: dynamicBorder }]}>
-                <View style={s.headerTop}>
+            <View className="border-b border-slate-200 bg-white px-5 pb-[18px] pt-12 dark:border-slate-800 dark:bg-slate-900">
+                <View className="mb-3 flex-row items-center justify-between">
                     <TouchableOpacity
                         onPress={() => {
                             if (step > 1 && step < 3) {
@@ -674,21 +700,21 @@ export default function SignUpScreen() {
                                 router.back();
                             }
                         }}
-                        style={[s.backBtn, { backgroundColor: dynamicCardBg, borderColor: dynamicBorder }]}
+                        className="h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
                     >
                         <ArrowLeft color={dynamicSubText} size={20} />
                     </TouchableOpacity>
 
                     {/* Stepper badge indicator */}
                     {step < 3 && (
-                        <View style={s.stepBadgeContainer}>
-                            <View style={[s.stepBadgePill, step === 1 ? s.stepBadgePillActive : s.stepBadgePillDone]}>
-                                <Text style={[s.stepBadgePillText, step === 1 ? s.stepBadgePillTextActive : s.stepBadgePillTextDone]}>
+                        <View className="flex-row items-center gap-1.5">
+                            <View className={`rounded-xl px-2.5 py-1 ${step === 1 ? 'bg-[#0f3322]' : 'bg-green-100'}`}>
+                                <Text className={`text-[11px] font-bold ${step === 1 ? 'text-[#f0c868]' : 'text-green-800'}`}>
                                     1. {tr('व्यक्तिगत विवरण', 'ذاتی معلومات', 'Personal Info')}
                                 </Text>
                             </View>
-                            <View style={[s.stepBadgePill, step === 2 ? s.stepBadgePillActive : s.stepBadgePillIdle]}>
-                                <Text style={[s.stepBadgePillText, step === 2 ? s.stepBadgePillTextActive : s.stepBadgePillTextIdle]}>
+                            <View className={`rounded-xl px-2.5 py-1 ${step === 2 ? 'bg-[#0f3322]' : 'bg-slate-200'}`}>
+                                <Text className={`text-[11px] font-bold ${step === 2 ? 'text-[#f0c868]' : 'text-slate-500'}`}>
                                     2. {tr('₹100 शुल्क', 'فیس ادائیگی', '₹100 Fee')}
                                 </Text>
                             </View>
@@ -696,18 +722,18 @@ export default function SignUpScreen() {
                     )}
                 </View>
 
-                <View style={[s.heroBadge, { backgroundColor: isDark ? 'rgba(200,168,75,0.15)' : 'rgba(200,168,75,0.15)', borderColor: 'rgba(200,168,75,0.4)' }]}>
+                <View className="mb-2 flex-row self-start items-center gap-1.5 rounded-full border border-amber-600/40 bg-amber-500/[0.15] px-3 py-1">
                     <Sparkles color="#d97706" size={14} />
-                    <Text style={[s.heroBadgeText, { color: isDark ? '#fbbf24' : '#b45309' }]}>
+                    <Text className={`text-[11px] font-bold ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>
                         {tr('सदस्यता एकजुटता कार्यक्रम', 'ممبرشپ یکجہتی پروگرام', '₹100 Membership Solidarity Program')}
                     </Text>
                 </View>
-                <Text style={[s.heroTitle, { color: dynamicText }]}>
+                <Text className={`text-[22px] font-extrabold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                     {step === 1 && tr('सदस्यता पंजीकरण', 'ممبرشپ رجسٹریشن', 'Member Registration')}
                     {step === 2 && tr('सदस्यता शुल्क भुगतान', 'ممبرشپ فیس ادائیگی', 'Solidarity Fee Payment')}
                     {step === 3 && tr('पंजीकरण पूर्ण हुआ!', 'رجسٹریشن مکمل ہو گئی!', 'Registration Complete!')}
                 </Text>
-                <Text style={[s.heroSubtitle, { color: dynamicSubText }]}>
+                <Text className={`mt-1 text-xs leading-[18px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     {step === 1 && tr('कृपया अपना व्यक्तिगत, पते व धर्म का विवरण दर्ज करें।', 'براہ کرم ذاتی، رہائشی و مذہبی تفصیلات درج کریں۔', 'Enter your personal details to create your verified member profile.')}
                     {step === 2 && tr('₹100 की वार्षिक सदस्यता शुल्क का भुगतान पूरा करें।', 'سالانہ ممبرشپ کے लिए ₹100 ادا کریں۔', 'Complete the ₹100 annual solidarity fee via UPI or Direct Bank Transfer.')}
                     {step === 3 && tr('आपका अनुरोध सफलतापूर्वक दर्ज कर लिया गया है।', 'آپ کی ممبرشپ کامیابی سے درج کر لی گئی ہے۔', 'Your registration request has been submitted successfully.')}
@@ -716,30 +742,30 @@ export default function SignUpScreen() {
 
             {/* Toast Notification */}
             {toast && (
-                <View style={[s.toast, toast.type === 'error' ? s.toastError : s.toastSuccess]}>
-                    <Text style={[s.toastText, toast.type === 'error' ? s.toastTextError : s.toastTextSuccess]}>
+                <View className={`mx-4 mt-3 rounded-xl border p-3 ${toast.type === 'error' ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}`}>
+                    <Text className={`text-xs font-bold ${toast.type === 'error' ? 'text-red-700' : 'text-green-700'}`}>
                         {toast.type === 'error' ? '⚠️ ' : '✓ '}
                         {toast.message}
                     </Text>
                 </View>
             )}
 
-            <ScrollView contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
+            <ScrollView contentContainerClassName="flex-grow pb-10" keyboardShouldPersistTaps="handled">
 
                 {/* ════════════════════════════════════════════════════════════════
                     STEP 1: Personal Details & Islamic Welfare Declaration
                    ════════════════════════════════════════════════════════════════ */}
                 {step === 1 && (
-                    <View style={s.stepContainer}>
+                    <View className="gap-4 p-5">
                         {/* Full Name */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('पूरा नाम (आधार के अनुसार) *', 'مکمل نام (آدھار کے مطابق) *', 'Full Name (as per ID) *')}
                             </Text>
-                            <View style={[s.inputWithIcon, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
                                 <UserIcon color={placeholderColor} size={18} />
                                 <TextInput
-                                    style={[s.inputClean, { color: dynamicText }]}
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
                                     placeholder={tr('उदा. मोहम्मद तारिक', 'مثال: محمد طارق', 'e.g. Mohammad Tariq')}
                                     placeholderTextColor={placeholderColor}
                                     value={fullName}
@@ -749,14 +775,14 @@ export default function SignUpScreen() {
                         </View>
 
                         {/* Mobile Number */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('मोबाइल नंबर *', 'موبائل نمبر *', 'Mobile Number *')}
                             </Text>
-                            <View style={[s.inputWithIcon, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
                                 <Phone color={placeholderColor} size={18} />
                                 <TextInput
-                                    style={[s.inputClean, { color: dynamicText }]}
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
                                     placeholder="9876543210"
                                     placeholderTextColor={placeholderColor}
                                     keyboardType="phone-pad"
@@ -768,14 +794,14 @@ export default function SignUpScreen() {
                         </View>
 
                         {/* Email Address */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('ईमेल पता *', 'ای میل ایڈریس *', 'Email Address *')}
                             </Text>
-                            <View style={[s.inputWithIcon, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
                                 <Mail color={placeholderColor} size={18} />
                                 <TextInput
-                                    style={[s.inputClean, { color: dynamicText }]}
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
                                     placeholder="tariq@example.com"
                                     placeholderTextColor={placeholderColor}
                                     keyboardType="email-address"
@@ -787,14 +813,14 @@ export default function SignUpScreen() {
                         </View>
 
                         {/* Password */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('पासवर्ड बनाएं *', 'پاس ورڈ بنائیں *', 'Create Password *')}
                             </Text>
-                            <View style={[s.inputWithIcon, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
                                 <Lock color={placeholderColor} size={18} />
                                 <TextInput
-                                    style={[s.inputClean, s.flex1, { color: dynamicText }]}
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
                                     placeholder={tr('कम से कम 6 अक्षर', 'کم از کم 6 حروف', 'Min. 6 characters')}
                                     placeholderTextColor={placeholderColor}
                                     secureTextEntry={!showPassword}
@@ -802,7 +828,7 @@ export default function SignUpScreen() {
                                     onChangeText={setPassword}
                                 />
                                 <TouchableOpacity
-                                    style={s.eyeBtn}
+                                    className="px-1.5 py-3"
                                     onPress={() => setShowPassword(!showPassword)}
                                 >
                                     {showPassword
@@ -814,14 +840,14 @@ export default function SignUpScreen() {
                         </View>
 
                         {/* State */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('राज्य *', 'ریاست *', 'State *')}
                             </Text>
-                            <View style={[s.inputWithIcon, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
                                 <MapPin color={placeholderColor} size={18} />
                                 <TextInput
-                                    style={[s.inputClean, { color: dynamicText }]}
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
                                     placeholder={tr('उदा. उत्तर प्रदेश', 'مثال: اتر پردیش', 'e.g. Uttar Pradesh')}
                                     placeholderTextColor={placeholderColor}
                                     value={state}
@@ -831,14 +857,14 @@ export default function SignUpScreen() {
                         </View>
 
                         {/* City */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('शहर / कस्बा *', 'شہر / قصبہ *', 'City / Town *')}
                             </Text>
-                            <View style={[s.inputWithIcon, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
                                 <Building2 color={placeholderColor} size={18} />
                                 <TextInput
-                                    style={[s.inputClean, { color: dynamicText }]}
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
                                     placeholder={tr('उदा. बरेली', 'مثال: بریلی', 'e.g. Bareilly')}
                                     placeholderTextColor={placeholderColor}
                                     value={city}
@@ -848,12 +874,12 @@ export default function SignUpScreen() {
                         </View>
 
                         {/* Full Address */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('पूरा पता *', 'مکمل پتہ *', 'Full Address *')}
                             </Text>
                             <TextInput
-                                style={[s.input, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder, color: dynamicText, minHeight: 64, textAlignVertical: 'top' }]}
+                                className={`min-h-16 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-800 ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
                                 placeholder={tr('मकान संख्या, गली / मोहल्ला, लैंडमार्क, पिन कोड', 'مکان نمبر، گلی / محلہ، پن کوڈ', 'House No., Street / Area, Landmark, Pincode')}
                                 placeholderTextColor={placeholderColor}
                                 multiline
@@ -864,8 +890,8 @@ export default function SignUpScreen() {
                         </View>
 
                         {/* Local Community & Religion Selectors */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('स्थानीय समुदाय *', 'مقامی کمیونٹی *', 'Local Community *')}
                             </Text>
                             <TouchableOpacity
@@ -873,9 +899,9 @@ export default function SignUpScreen() {
                                     setShowAllInPicker(false);
                                     setShowCommunityPicker(true);
                                 }}
-                                style={[s.pickerTrigger, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}
+                                className="flex-row items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3.5 dark:border-slate-800 dark:bg-slate-800"
                             >
-                                <Text style={[s.pickerTriggerText, { color: activeCommunity ? dynamicText : placeholderColor }]} numberOfLines={1}>
+                                <Text className={`mr-2 flex-1 text-sm font-medium ${activeCommunity ? (isDark ? 'text-slate-50' : 'text-slate-900') : (isDark ? 'text-slate-500' : 'text-slate-400')}`} numberOfLines={1}>
                                     {activeCommunity ? `${activeCommunity.name} (${activeCommunity.city})` : tr('समुदाय चुनें', 'کمیونٹی منتخب کریں', 'Select Community')}
                                 </Text>
                                 <ChevronDown color={placeholderColor} size={18} />
@@ -883,9 +909,9 @@ export default function SignUpScreen() {
 
                             {city.trim() ? (
                                 hasCitySpecificCommunities ? (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 }}>
+                                    <View className="mt-1 flex-row items-center gap-1">
                                         <CheckCircle2 color="#10b981" size={13} />
-                                        <Text style={{ fontSize: 11, fontWeight: '600', color: '#10b981' }}>
+                                        <Text className="text-[11px] font-semibold text-emerald-500">
                                             {tr(
                                                 `"${city.trim()}" के लिए ${filteredCommunities.length} समुदाय उपलब्ध`,
                                                 `"${city.trim()}" کے لیے ${filteredCommunities.length} کمیونٹیز دستیاب`,
@@ -894,9 +920,9 @@ export default function SignUpScreen() {
                                         </Text>
                                     </View>
                                 ) : (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 }}>
+                                    <View className="mt-1 flex-row items-center gap-1">
                                         <AlertCircle color={isDark ? '#fbbf24' : '#d97706'} size={13} />
-                                        <Text style={{ fontSize: 11, fontWeight: '500', color: isDark ? '#fbbf24' : '#d97706' }}>
+                                        <Text className={`text-[11px] font-medium ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>
                                             {tr(
                                                 `"${city.trim()}" के लिए कोई विशिष्ट समुदाय नहीं, सभी दिखाए जा रहे हैं`,
                                                 `"${city.trim()}" کے لیے کوئی مخصوص کمیونٹی نہیں، تمام دکھائی جا رہی ہیں`,
@@ -909,15 +935,15 @@ export default function SignUpScreen() {
                         </View>
 
                         {/* Religion Field */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('धर्म *', 'مذہب *', 'Religion *')}
                             </Text>
                             <TouchableOpacity
                                 onPress={() => setShowReligionPicker(true)}
-                                style={[s.pickerTrigger, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}
+                                className="flex-row items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3.5 dark:border-slate-800 dark:bg-slate-800"
                             >
-                                <Text style={[s.pickerTriggerText, { color: religion ? dynamicText : placeholderColor }]}>
+                                <Text className={`mr-2 flex-1 text-sm font-medium ${religion ? (isDark ? 'text-slate-50' : 'text-slate-900') : (isDark ? 'text-slate-500' : 'text-slate-400')}`}>
                                     {religion === 'Hindu' && tr('हिन्दू (Hindu)', 'ہندو (Hindu)', 'Hindu')}
                                     {religion === 'Muslim' && tr('मुस्लिम (Muslim)', 'مسلم (Muslim)', 'Muslim')}
                                     {religion === 'Sikh' && tr('सिख (Sikh)', 'سکھ (Sikh)', 'Sikh')}
@@ -930,19 +956,19 @@ export default function SignUpScreen() {
 
                         {/* ── Islamic Welfare & Nisab Declaration (Only if Muslim) ── */}
                         {religion === 'Muslim' && (
-                            <View style={[s.nisabCard, { backgroundColor: isDark ? '#14281f' : '#fcf9f2', borderColor: isDark ? '#2d5a42' : '#e6d3a3' }]}>
-                                <View style={s.nisabHeader}>
+                            <View className="gap-3 rounded-[20px] border border-amber-200 bg-[#fcf9f2] p-4 dark:border-emerald-900 dark:bg-[#14281f]">
+                                <View className="flex-row items-center gap-2 border-b border-amber-600/25 pb-2.5">
                                     <Sparkles color="#d97706" size={16} />
-                                    <Text style={[s.nisabTitle, { color: isDark ? '#f0c868' : '#0f3322' }]}>
+                                    <Text className={`text-[13px] font-extrabold uppercase tracking-[0.5px] ${isDark ? 'text-[#f0c868]' : 'text-[#0f3322]'}`}>
                                         {tr('इस्लामी कल्याण एवं निसब घोषणा', 'اسلامی فلاحی و نصاب اقرار نامہ', 'Islamic Welfare & Nisab Declaration')}
                                     </Text>
                                 </View>
 
-                                <View style={s.nisabContent}>
-                                    <Text style={[s.nisabQuestion, { color: dynamicText }]}>
+                                <View className="gap-2.5">
+                                    <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                         {tr('क्या आप मालिक-ए-निसब (साहिब-ए-निसब) हैं? *', 'کیا آپ صاحبِ نصاب / مالکِ نصاب ہیں؟ *', 'Are you Malik-e-Nisab (Sahib-e-Nisab)? *')}
                                     </Text>
-                                    <Text style={[s.nisabHint, { color: dynamicSubText }]}>
+                                    <Text className={`text-[11px] leading-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                         {tr(
                                             'क्या आपके पास बुनियादी ज़रूरतों के अलावा 52.5 तोले चांदी (या इसके बराबर नकदी/माल) मौजूद है?',
                                             'کیا آپ کے پاس اپنی بنیادی ضروریات سے زائد ساڑھے باون تولہ چاندی (یا مساوی مال/رقم) موجود ہے؟',
@@ -950,37 +976,27 @@ export default function SignUpScreen() {
                                         )}
                                     </Text>
 
-                                    <View style={s.nisabOptionRow}>
+                                    <View className="mt-1 flex-row gap-2.5">
                                         <TouchableOpacity
                                             onPress={() => handleMalikENisabChange(true)}
-                                            style={[
-                                                s.nisabOptionBtn,
-                                                isMalikENisab === true
-                                                    ? [s.nisabOptionBtnActive, { backgroundColor: isDark ? '#1b4332' : '#fef3c7', borderColor: '#d97706' }]
-                                                    : [s.nisabOptionBtnIdle, { backgroundColor: dynamicCardBg, borderColor: dynamicBorder }]
-                                            ]}
+                                            className={`flex-1 flex-row items-center justify-center gap-2 rounded-xl border px-2 py-3 ${isMalikENisab === true ? 'border-amber-600 bg-amber-100 dark:bg-emerald-900' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'}`}
                                         >
-                                            <View style={[s.radioCircle, isMalikENisab === true && s.radioCircleActive]}>
-                                                {isMalikENisab === true && <View style={s.radioDot} />}
+                                            <View className={`h-4 w-4 items-center justify-center rounded-full border-[1.5px] ${isMalikENisab === true ? 'border-amber-600' : 'border-slate-400'}`}>
+                                                {isMalikENisab === true && <View className="h-2 w-2 rounded-full bg-amber-600" />}
                                             </View>
-                                            <Text style={[s.nisabOptionText, { color: dynamicText }]}>
+                                            <Text className={`text-xs font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                                 {tr('हाँ (मालिक-ए-निसब)', 'ہاں (صاحبِ نصاب)', 'Yes (Malik-e-Nisab)')}
                                             </Text>
                                         </TouchableOpacity>
 
                                         <TouchableOpacity
                                             onPress={() => handleMalikENisabChange(false)}
-                                            style={[
-                                                s.nisabOptionBtn,
-                                                isMalikENisab === false
-                                                    ? [s.nisabOptionBtnActive, { backgroundColor: isDark ? '#1b4332' : '#fef3c7', borderColor: '#d97706' }]
-                                                    : [s.nisabOptionBtnIdle, { backgroundColor: dynamicCardBg, borderColor: dynamicBorder }]
-                                            ]}
+                                            className={`flex-1 flex-row items-center justify-center gap-2 rounded-xl border px-2 py-3 ${isMalikENisab === false ? 'border-amber-600 bg-amber-100 dark:bg-emerald-900' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'}`}
                                         >
-                                            <View style={[s.radioCircle, isMalikENisab === false && s.radioCircleActive]}>
-                                                {isMalikENisab === false && <View style={s.radioDot} />}
+                                            <View className={`h-4 w-4 items-center justify-center rounded-full border-[1.5px] ${isMalikENisab === false ? 'border-amber-600' : 'border-slate-400'}`}>
+                                                {isMalikENisab === false && <View className="h-2 w-2 rounded-full bg-amber-600" />}
                                             </View>
-                                            <Text style={[s.nisabOptionText, { color: dynamicText }]}>
+                                            <Text className={`text-xs font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                                 {tr('नहीं (गैर-निसबदार)', 'نہیں (غیر نصاب)', 'No (Non-Nisab)')}
                                             </Text>
                                         </TouchableOpacity>
@@ -988,9 +1004,9 @@ export default function SignUpScreen() {
 
                                     {/* If Nisab Yes */}
                                     {isMalikENisab === true && (
-                                        <View style={[s.nisabSuccessBanner, { backgroundColor: isDark ? '#064e3b' : '#ecfdf5', borderColor: isDark ? '#059669' : '#a7f3d0' }]}>
+                                        <View className="mt-1 flex-row items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-600 dark:bg-emerald-950">
                                             <CheckCircle2 color="#059669" size={18} />
-                                            <Text style={[s.nisabSuccessText, { color: isDark ? '#6ee7b7' : '#065f46' }]}>
+                                            <Text className="flex-1 text-xs font-semibold leading-[18px] text-emerald-800 dark:text-emerald-300">
                                                 {tr(
                                                     'अल्हम्दुलिल्लाह! आप एक सक्षम दाता/सदस्य के रूप में आगे बढ़ सकते हैं।',
                                                     'الحمدللہ! آپ بطور صاحبِ استطاعت ممبر آگے بڑھ سکتے ہیں۔',
@@ -1002,12 +1018,12 @@ export default function SignUpScreen() {
 
                                     {/* If Nisab No -> Help Type Selection */}
                                     {isMalikENisab === false && (
-                                        <View style={s.helpSelectionContainer}>
-                                            <Text style={[s.helpSectionLabel, { color: dynamicText }]}>
+                                        <View className="mt-1.5 gap-2.5 border-t border-amber-600/20 pt-2.5">
+                                            <Text className={`text-xs font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                                 {tr('आपको किस प्रकार की सहायता / इमदाद की आवश्यकता है? *', 'آپ کو کس قسم کی مدد / امداد کی ضرورت ہے؟ *', 'What kind of help / assistance do you need? *')}
                                             </Text>
 
-                                            <View style={s.helpGrid}>
+                                            <View className="flex-row flex-wrap gap-2">
                                                 {[
                                                     { id: 'Zakat', hi: 'ज़कात', ur: 'زکوٰۃ', en: 'Zakat', desc: tr('अनिवार्य इस्लामी सहायता', 'واجب مالی امداد', 'Mandatory relief') },
                                                     { id: 'Sadaka', hi: 'सदका', ur: 'صدقہ', en: 'Sadaka', desc: tr('सामान्य/आपात राहत', 'نفلی/ہنگامی امداد', 'Voluntary relief') },
@@ -1019,22 +1035,17 @@ export default function SignUpScreen() {
                                                         <TouchableOpacity
                                                             key={item.id}
                                                             onPress={() => setHelpType(item.id as any)}
-                                                            style={[
-                                                                s.helpCard,
-                                                                isSelected
-                                                                    ? [s.helpCardActive, { backgroundColor: isDark ? '#2e4a3c' : '#fef3c7', borderColor: '#d97706' }]
-                                                                    : [s.helpCardIdle, { backgroundColor: dynamicCardBg, borderColor: dynamicBorder }]
-                                                            ]}
+                                                            className={`w-[48.5%] gap-1 rounded-xl border p-2.5 ${isSelected ? 'border-amber-600 bg-amber-100 dark:bg-emerald-900' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'}`}
                                                         >
-                                                            <View style={s.helpCardHeader}>
-                                                                <Text style={[s.helpCardTitle, { color: dynamicText }]}>
+                                                            <View className="flex-row items-center justify-between">
+                                                                <Text className={`text-xs font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                                                     {tr(item.hi, item.ur, item.en)}
                                                                 </Text>
-                                                                <View style={[s.radioCircleSmall, isSelected && s.radioCircleActive]}>
-                                                                    {isSelected && <View style={s.radioDotSmall} />}
+                                                                <View className={`h-3.5 w-3.5 items-center justify-center rounded-full border-[1.5px] ${isSelected ? 'border-amber-600' : 'border-slate-400'}`}>
+                                                                    {isSelected && <View className="h-1.5 w-1.5 rounded-full bg-amber-600" />}
                                                                 </View>
                                                             </View>
-                                                            <Text style={[s.helpCardDesc, { color: dynamicSubText }]}>
+                                                            <Text className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                                                 {item.desc}
                                                             </Text>
                                                         </TouchableOpacity>
@@ -1044,12 +1055,12 @@ export default function SignUpScreen() {
 
                                             {/* Details if 'Other' */}
                                             {helpType === 'Other' && (
-                                                <View style={s.helpDetailsBox}>
-                                                    <Text style={[s.label, { color: dynamicSubText }]}>
+                                                <View className="mt-1 gap-1.5">
+                                                    <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                                         {tr('सहायता का विवरण दर्ज करें *', 'درکار امداد کی تفصیل لکھیں *', 'Specify Details of Help Needed *')}
                                                     </Text>
                                                     <TextInput
-                                                        style={[s.input, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder, color: dynamicText }]}
+                                                        className={`rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-800 ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
                                                         placeholder={tr('उदा. चिकित्सा खर्च, राशन, बच्चों की फीस', 'مثلاً علاج کا خرچہ، راشن', 'e.g. Medical expenses, ration, children fees')}
                                                         placeholderTextColor={placeholderColor}
                                                         value={helpDetails}
@@ -1064,28 +1075,28 @@ export default function SignUpScreen() {
                         )}
 
                         {/* Profile Picture Upload */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('प्रोफ़ाइल फ़ोटो *', 'پروفائل تصویر *', 'Profile Photo *')}
                             </Text>
                             {avatarUri ? (
-                                <View style={[s.previewCard, { backgroundColor: isDark ? '#064e3b' : '#f0fdf4', borderColor: isDark ? '#059669' : '#86efac' }]}>
-                                    <Image source={{ uri: avatarUri }} style={s.avatarPreview} />
-                                    <View style={s.previewMeta}>
-                                        <Text style={[s.previewFileName, { color: dynamicText }]} numberOfLines={1}>
+                                <View className="flex-row items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-600 dark:bg-emerald-950">
+                                    <Image source={{ uri: avatarUri }} className="h-[50px] w-[50px] rounded-full bg-slate-300" />
+                                    <View className="flex-1 gap-1">
+                                        <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`} numberOfLines={1}>
                                             {avatarFileName || 'profile_photo.jpg'}
                                         </Text>
-                                        <View style={s.badgeAttached}>
+                                        <View className="flex-row items-center gap-1">
                                             <CheckCircle2 color="#059669" size={12} />
-                                            <Text style={s.badgeAttachedText}>
+                                            <Text className="text-[11px] font-semibold text-emerald-600">
                                                 {tr('फ़ोटो संलग्न है', 'تصویر منسلک ہے', 'Photo Attached')}
                                             </Text>
                                         </View>
                                     </View>
-                                    <View style={s.previewActions}>
+                                    <View className="flex-row items-center gap-2">
                                         <TouchableOpacity
                                             onPress={() => setPickerTarget('avatar')}
-                                            style={[s.changeBtn, { backgroundColor: dynamicCardBg, borderColor: '#a7f3d0' }]}
+                                            className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-emerald-200 bg-white dark:bg-slate-900"
                                         >
                                             <Camera color="#059669" size={16} />
                                         </TouchableOpacity>
@@ -1094,7 +1105,7 @@ export default function SignUpScreen() {
                                                 setAvatarUri('');
                                                 setAvatarFileName('');
                                             }}
-                                            style={s.deleteBtn}
+                                            className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-red-200 bg-red-50"
                                         >
                                             <Trash2 color="#ef4444" size={16} />
                                         </TouchableOpacity>
@@ -1103,16 +1114,16 @@ export default function SignUpScreen() {
                             ) : (
                                 <TouchableOpacity
                                     onPress={() => setPickerTarget('avatar')}
-                                    style={[s.uploadBox, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}
+                                    className="items-center justify-center rounded-2xl border-[1.5px] border-dashed border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-800"
                                     activeOpacity={0.7}
                                 >
-                                    <View style={[s.uploadIconCircle, { backgroundColor: isDark ? '#064e3b' : '#ecfdf5' }]}>
+                                    <View className="mb-1.5 h-[42px] w-[42px] items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950">
                                         <Camera color="#059669" size={20} />
                                     </View>
-                                    <Text style={[s.uploadTitle, { color: dynamicText }]}>
+                                    <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                         {tr('प्रोफ़ाइल फ़ोटो अपलोड करें *', 'پروفائل تصویر اپلوڈ کریں *', 'Upload Profile Photo *')}
                                     </Text>
-                                    <Text style={[s.uploadSubtitle, { color: dynamicSubText }]}>
+                                    <Text className={`mt-0.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                         {tr('फ़ोटो खींचें या गैलरी से चुनें', 'تصویر لیں یا گیلری سے منتخب کریں', 'Take photo or choose from gallery')}
                                     </Text>
                                 </TouchableOpacity>
@@ -1120,28 +1131,28 @@ export default function SignUpScreen() {
                         </View>
 
                         {/* Aadhaar Front Upload */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('आधार कार्ड - सामने (वैकल्पिक)', 'آدھار کارڈ - سامنے (اختیاری)', 'Aadhaar Front (Optional)')}
                             </Text>
                             {aadhaarFrontUri ? (
-                                <View style={[s.previewCard, { backgroundColor: isDark ? '#064e3b' : '#f0fdf4', borderColor: isDark ? '#059669' : '#86efac' }]}>
-                                    <Image source={{ uri: aadhaarFrontUri }} style={s.docPreview} />
-                                    <View style={s.previewMeta}>
-                                        <Text style={[s.previewFileName, { color: dynamicText }]} numberOfLines={1}>
+                                <View className="flex-row items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-600 dark:bg-emerald-950">
+                                    <Image source={{ uri: aadhaarFrontUri }} className="h-[50px] w-[50px] rounded-[10px] bg-slate-300" />
+                                    <View className="flex-1 gap-1">
+                                        <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`} numberOfLines={1}>
                                             {aadhaarFrontFileName || 'aadhaar_front.jpg'}
                                         </Text>
-                                        <View style={s.badgeAttached}>
+                                        <View className="flex-row items-center gap-1">
                                             <CheckCircle2 color="#059669" size={12} />
-                                            <Text style={s.badgeAttachedText}>
+                                            <Text className="text-[11px] font-semibold text-emerald-600">
                                                 {tr('आधार सामने का भाग संलग्न है', 'آدھار سامنے کا حصہ منسلک ہے', 'Aadhaar Front Attached')}
                                             </Text>
                                         </View>
                                     </View>
-                                    <View style={s.previewActions}>
+                                    <View className="flex-row items-center gap-2">
                                         <TouchableOpacity
                                             onPress={() => setPickerTarget('aadhaarFront')}
-                                            style={[s.changeBtn, { backgroundColor: dynamicCardBg, borderColor: '#a7f3d0' }]}
+                                            className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-emerald-200 bg-white dark:bg-slate-900"
                                         >
                                             <Upload color="#059669" size={16} />
                                         </TouchableOpacity>
@@ -1150,7 +1161,7 @@ export default function SignUpScreen() {
                                                 setAadhaarFrontUri('');
                                                 setAadhaarFrontFileName('');
                                             }}
-                                            style={s.deleteBtn}
+                                            className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-red-200 bg-red-50"
                                         >
                                             <Trash2 color="#ef4444" size={16} />
                                         </TouchableOpacity>
@@ -1159,16 +1170,16 @@ export default function SignUpScreen() {
                             ) : (
                                 <TouchableOpacity
                                     onPress={() => setPickerTarget('aadhaarFront')}
-                                    style={[s.uploadBox, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}
+                                    className="items-center justify-center rounded-2xl border-[1.5px] border-dashed border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-800"
                                     activeOpacity={0.7}
                                 >
-                                    <View style={[s.uploadIconCircle, { backgroundColor: isDark ? '#064e3b' : '#ecfdf5' }]}>
+                                    <View className="mb-1.5 h-[42px] w-[42px] items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950">
                                         <FileText color="#059669" size={20} />
                                     </View>
-                                    <Text style={[s.uploadTitle, { color: dynamicText }]}>
+                                    <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                         {tr('आधार सामने का भाग अपलोड करें', 'آدھار سامنے کا حصہ اپلوڈ کریں', 'Upload Aadhaar Front')}
                                     </Text>
-                                    <Text style={[s.uploadSubtitle, { color: dynamicSubText }]}>
+                                    <Text className={`mt-0.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                         {tr('आधार के सामने की साफ़ तस्वीर या स्कैन', 'آدھار کے سامنے کی صاف تصویر', 'Clear photo or scan of Aadhaar front')}
                                     </Text>
                                 </TouchableOpacity>
@@ -1176,28 +1187,28 @@ export default function SignUpScreen() {
                         </View>
 
                         {/* Aadhaar Back Upload */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('आधार कार्ड - पीछे (वैकल्पिक)', 'آدھار کارڈ - پیچھے (اختیاری)', 'Aadhaar Back (Optional)')}
                             </Text>
                             {aadhaarBackUri ? (
-                                <View style={[s.previewCard, { backgroundColor: isDark ? '#064e3b' : '#f0fdf4', borderColor: isDark ? '#059669' : '#86efac' }]}>
-                                    <Image source={{ uri: aadhaarBackUri }} style={s.docPreview} />
-                                    <View style={s.previewMeta}>
-                                        <Text style={[s.previewFileName, { color: dynamicText }]} numberOfLines={1}>
+                                <View className="flex-row items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-600 dark:bg-emerald-950">
+                                    <Image source={{ uri: aadhaarBackUri }} className="h-[50px] w-[50px] rounded-[10px] bg-slate-300" />
+                                    <View className="flex-1 gap-1">
+                                        <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`} numberOfLines={1}>
                                             {aadhaarBackFileName || 'aadhaar_back.jpg'}
                                         </Text>
-                                        <View style={s.badgeAttached}>
+                                        <View className="flex-row items-center gap-1">
                                             <CheckCircle2 color="#059669" size={12} />
-                                            <Text style={s.badgeAttachedText}>
+                                            <Text className="text-[11px] font-semibold text-emerald-600">
                                                 {tr('आधार पीछे का भाग संलग्न है', 'آدھار پیچھے کا حصہ منسلک ہے', 'Aadhaar Back Attached')}
                                             </Text>
                                         </View>
                                     </View>
-                                    <View style={s.previewActions}>
+                                    <View className="flex-row items-center gap-2">
                                         <TouchableOpacity
                                             onPress={() => setPickerTarget('aadhaarBack')}
-                                            style={[s.changeBtn, { backgroundColor: dynamicCardBg, borderColor: '#a7f3d0' }]}
+                                            className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-emerald-200 bg-white dark:bg-slate-900"
                                         >
                                             <Upload color="#059669" size={16} />
                                         </TouchableOpacity>
@@ -1206,7 +1217,7 @@ export default function SignUpScreen() {
                                                 setAadhaarBackUri('');
                                                 setAadhaarBackFileName('');
                                             }}
-                                            style={s.deleteBtn}
+                                            className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-red-200 bg-red-50"
                                         >
                                             <Trash2 color="#ef4444" size={16} />
                                         </TouchableOpacity>
@@ -1215,24 +1226,24 @@ export default function SignUpScreen() {
                             ) : (
                                 <TouchableOpacity
                                     onPress={() => setPickerTarget('aadhaarBack')}
-                                    style={[s.uploadBox, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}
+                                    className="items-center justify-center rounded-2xl border-[1.5px] border-dashed border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-800"
                                     activeOpacity={0.7}
                                 >
-                                    <View style={[s.uploadIconCircle, { backgroundColor: isDark ? '#064e3b' : '#ecfdf5' }]}>
+                                    <View className="mb-1.5 h-[42px] w-[42px] items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950">
                                         <FileText color="#059669" size={20} />
                                     </View>
-                                    <Text style={[s.uploadTitle, { color: dynamicText }]}>
+                                    <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                         {tr('आधार पीछे का भाग अपलोड करें', 'آدھار پیچھے کا حصہ اپلوڈ کریں', 'Upload Aadhaar Back')}
                                     </Text>
-                                    <Text style={[s.uploadSubtitle, { color: dynamicSubText }]}>
+                                    <Text className={`mt-0.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                         {tr('आधार के पीछे (पते वाले भाग) की साफ़ तस्वीर', 'آدھار کے پتے والے حصے کی تصویر', 'Clear photo of Aadhaar back (Address side)')}
                                     </Text>
                                 </TouchableOpacity>
                             )}
                         </View>
 
-                        <TouchableOpacity onPress={handleNextStep1} style={s.primaryBtn}>
-                            <Text style={s.primaryBtnText}>
+                        <TouchableOpacity onPress={handleNextStep1} className="mt-1.5 flex-row items-center justify-center gap-2 rounded-2xl bg-[#0f3322] py-4 shadow-md">
+                            <Text className="text-[15px] font-extrabold text-[#f0c868]">
                                 {tr('आगे बढ़ें: ₹100 सदस्यता शुल्क', 'آگے بڑھیں: ₹100 ممبرشپ فیس', 'Proceed to Pay ₹100 Fee')}
                             </Text>
                             <ArrowRight color="#f0c868" size={18} />
@@ -1240,11 +1251,11 @@ export default function SignUpScreen() {
 
                         <TouchableOpacity
                             onPress={() => router.push('/(auth)/sign-in')}
-                            style={s.linkBtn}
+                            className="mt-1 items-center"
                         >
-                            <Text style={[s.linkText, { color: dynamicSubText }]}>
+                            <Text className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('पहले से सदस्य हैं? ', 'پہلے سے ممبر ہیں؟ ', 'Already registered? ')}
-                                <Text style={s.linkTextBold}>
+                                <Text className="font-extrabold text-[#0f3322] underline">
                                     {tr('साइन इन करें', 'سائن ان کریں', 'Sign In')}
                                 </Text>
                             </Text>
@@ -1256,16 +1267,16 @@ export default function SignUpScreen() {
                     STEP 2: Payment and Verification
                    ════════════════════════════════════════════════════════════════ */}
                 {step === 2 && (
-                    <View style={s.stepContainer}>
+                    <View className="gap-4 p-5">
                         {/* Fee Banner */}
-                        <View style={[s.feeBanner, { backgroundColor: isDark ? '#14281f' : '#fef9e7', borderColor: isDark ? '#2d5a42' : '#e6d3a3' }]}>
-                            <View style={s.feeRow}>
-                                <Text style={[s.feeBannerTitle, { color: isDark ? '#f8fafc' : '#0f3322' }]}>
+                        <View className="gap-1 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-emerald-900 dark:bg-[#14281f]">
+                            <View className="flex-row items-center justify-between">
+                                <Text className={`text-[13px] font-extrabold uppercase ${isDark ? 'text-slate-50' : 'text-[#0f3322]'}`}>
                                     {tr('वार्षिक सदस्यता एकजुटता शुल्क', 'سالانہ ممبرشپ فیس', 'Annual Membership Solidarity Fee')}
                                 </Text>
-                                <Text style={s.feeAmount}>₹100</Text>
+                                <Text className="text-[22px] font-black text-[#0f3322]">₹100</Text>
                             </View>
-                            <Text style={[s.feeBannerDesc, { color: isDark ? '#cbd5e1' : '#475569' }]}>
+                            <Text className={`text-xs leading-[18px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                                 {tr(
                                     `यह ₹100 शुल्क आपकी सदस्यता को ${activeCommunity?.name} में सक्रिय करता है और आपातकालीन सहायता व मतदान का अधिकार देता है।`,
                                     `یہ فیس آپ کی ممبرشپ کو ${activeCommunity?.name} میں فعال کرتی ہے۔`,
@@ -1275,20 +1286,40 @@ export default function SignUpScreen() {
                         </View>
 
                         {/* Payment Tabs */}
-                        <View style={[s.tabRow, { backgroundColor: isDark ? '#1e293b' : '#e2e8f0' }]}>
+                        <View className="flex-row rounded-2xl bg-slate-200 p-1 dark:bg-slate-800">
                             <TouchableOpacity
                                 onPress={() => setPaymentMethod('UPI')}
-                                style={[s.tab, paymentMethod === 'UPI' ? [s.tabActive, { backgroundColor: dynamicCardBg }] : s.tabInactive]}
+                                className="flex-1 items-center rounded-xl py-2.5"
+                                style={{
+                                    backgroundColor: paymentMethod === 'UPI' ? (isDark ? '#0f172a' : '#ffffff') : 'transparent',
+                                    shadowColor: '#000000',
+                                    shadowOpacity: paymentMethod === 'UPI' ? 0.08 : 0,
+                                    shadowRadius: paymentMethod === 'UPI' ? 4 : 0,
+                                    elevation: paymentMethod === 'UPI' ? 2 : 0,
+                                }}
                             >
-                                <Text style={[s.tabText, paymentMethod === 'UPI' ? [s.tabTextActive, { color: '#0f3322' }] : [s.tabTextInactive, { color: dynamicSubText }]]}>
+                                <Text
+                                    className="text-xs font-bold"
+                                    style={{ color: paymentMethod === 'UPI' ? '#0f3322' : (isDark ? '#94a3b8' : '#64748b') }}
+                                >
                                     {tr('UPI / QR स्कैन', 'UPI / QR اسکین', 'Instant UPI / QR')}
                                 </Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={() => setPaymentMethod('Bank Transfer')}
-                                style={[s.tab, paymentMethod === 'Bank Transfer' ? [s.tabActive, { backgroundColor: dynamicCardBg }] : s.tabInactive]}
+                                className="flex-1 items-center rounded-xl py-2.5"
+                                style={{
+                                    backgroundColor: paymentMethod === 'Bank Transfer' ? (isDark ? '#0f172a' : '#ffffff') : 'transparent',
+                                    shadowColor: '#000000',
+                                    shadowOpacity: paymentMethod === 'Bank Transfer' ? 0.08 : 0,
+                                    shadowRadius: paymentMethod === 'Bank Transfer' ? 4 : 0,
+                                    elevation: paymentMethod === 'Bank Transfer' ? 2 : 0,
+                                }}
                             >
-                                <Text style={[s.tabText, paymentMethod === 'Bank Transfer' ? [s.tabTextActive, { color: '#0f3322' }] : [s.tabTextInactive, { color: dynamicSubText }]]}>
+                                <Text
+                                    className="text-xs font-bold"
+                                    style={{ color: paymentMethod === 'Bank Transfer' ? '#0f3322' : (isDark ? '#94a3b8' : '#64748b') }}
+                                >
                                     {tr('बैंक ट्रांसफर (NEFT)', 'بینک ٹرانسفر (NEFT)', 'Bank Transfer (NEFT)')}
                                 </Text>
                             </TouchableOpacity>
@@ -1296,21 +1327,39 @@ export default function SignUpScreen() {
 
                         {/* UPI Panel */}
                         {paymentMethod === 'UPI' && (
-                            <View style={s.darkPanel}>
-                                <View style={s.qrBox}>
-                                    <QrCode color="#0f172a" size={130} />
+                            <View className="items-center gap-3 rounded-[20px] border border-amber-500/30 bg-[#0f3322] p-5">
+                                <View className="h-[162px] w-[162px] items-center justify-center rounded-2xl bg-white p-4">
+                                    {accountDetailsLoading ? (
+                                        <ActivityIndicator color="#059669" />
+                                    ) : accountDetails?.qr_code_url ? (
+                                        <Image
+                                            source={{ uri: accountDetails.qr_code_url }}
+                                            className="h-[130px] w-[130px]"
+                                            resizeMode="contain"
+                                        />
+                                    ) : (
+                                        <Text className="text-center text-xs font-medium text-slate-600">
+                                            {tr('QR कोड उपलब्ध नहीं है', 'QR کوڈ دستیاب نہیں ہے', 'QR code is not available')}
+                                        </Text>
+                                    )}
                                 </View>
-                                <Text style={s.upiLabel}>
+                                <Text className="text-[11px] font-bold uppercase tracking-[0.8px] text-[#f0c868]">
                                     {tr('प्रत्यक्ष एस्क्रो के लिए UPI ID', 'براہ راست ادائیگی کے لیے UPI ID', 'UPI ID for Direct Escrow')}
                                 </Text>
-                                <TouchableOpacity
-                                    onPress={() => copyToClipboard('mfct@okicici', 'UPI ID')}
-                                    style={s.upiRow}
-                                >
-                                    <Text style={s.upiId}>mfct@okicici</Text>
-                                    <Copy color="#34d399" size={16} />
-                                </TouchableOpacity>
-                                <Text style={s.upiHint}>
+                                {accountDetails?.upi_id ? (
+                                    <TouchableOpacity
+                                        onPress={() => copyToClipboard(accountDetails.upi_id, 'UPI ID')}
+                                        className="flex-row items-center gap-2 rounded-[10px] border border-white/20 bg-white/10 px-3.5 py-2"
+                                    >
+                                        <Text className="font-mono text-[15px] font-extrabold text-[#f0c868]">{accountDetails.upi_id}</Text>
+                                        <Copy color="#34d399" size={16} />
+                                    </TouchableOpacity>
+                                ) : (
+                                    <Text className="text-xs font-medium text-slate-300">
+                                        {tr('UPI ID उपलब्ध नहीं है', 'UPI ID دستیاب نہیں ہے', 'UPI ID is not available')}
+                                    </Text>
+                                )}
+                                <Text className="text-center text-[11px] text-slate-400">
                                     {tr('Google Pay, PhonePe, Paytm या BHIM UPI द्वारा स्कैन करें', 'Google Pay, PhonePe, Paytm کے ذریعے اسکین کریں', 'Scan using Google Pay, PhonePe, Paytm, or BHIM UPI')}
                                 </Text>
                             </View>
@@ -1318,60 +1367,36 @@ export default function SignUpScreen() {
 
                         {/* Bank Panel */}
                         {paymentMethod === 'Bank Transfer' && (
-                            <View style={s.darkPanel}>
-                                <TouchableOpacity
-                                    onPress={() => copyToClipboard('Mohammad Faeem Charitable Trust', tr('खाता नाम', 'کھاتہ نام', 'Account Name'))}
-                                    style={s.bankRow}
-                                >
-                                    <Text style={s.bankLabel}>{tr('खाता नाम:', 'کھاتہ نام:', 'Account Name:')}</Text>
-                                    <View style={s.copyRow}>
-                                        <Text style={s.bankValueGreen}>Mohammad Faeem Charitable Trust</Text>
-                                        <Copy color="#6ee7b7" size={13} />
-                                    </View>
-                                </TouchableOpacity>
-                                <View style={s.bankDivider} />
-                                <TouchableOpacity
-                                    onPress={() => copyToClipboard('ICICI Bank Ltd', tr('बैंक नाम', 'بینک نام', 'Bank Name'))}
-                                    style={s.bankRow}
-                                >
-                                    <Text style={s.bankLabel}>{tr('बैंक का नाम:', 'بینک نام:', 'Bank Name:')}</Text>
-                                    <View style={s.copyRow}>
-                                        <Text style={s.bankValue}>ICICI Bank Ltd</Text>
-                                        <Copy color="#6ee7b7" size={13} />
-                                    </View>
-                                </TouchableOpacity>
-                                <View style={s.bankDivider} />
-                                <TouchableOpacity
-                                    onPress={() => copyToClipboard('000405018892', tr('खाता संख्या', 'اکاؤنٹ نمبر', 'Account Number'))}
-                                    style={s.bankRow}
-                                >
-                                    <Text style={s.bankLabel}>{tr('खाता संख्या:', 'اکاؤنٹ نمبر:', 'Account Number:')}</Text>
-                                    <View style={s.copyRow}>
-                                        <Text style={s.bankValueGreen}>000405018892</Text>
-                                        <Copy color="#6ee7b7" size={13} />
-                                    </View>
-                                </TouchableOpacity>
-                                <View style={s.bankDivider} />
-                                <TouchableOpacity
-                                    onPress={() => copyToClipboard('ICIC0000004', 'IFSC')}
-                                    style={s.bankRow}
-                                >
-                                    <Text style={s.bankLabel}>IFSC Code:</Text>
-                                    <View style={s.copyRow}>
-                                        <Text style={s.bankValueGreen}>ICIC0000004</Text>
-                                        <Copy color="#6ee7b7" size={13} />
-                                    </View>
-                                </TouchableOpacity>
+                            <View className="items-center gap-3 rounded-[20px] border border-amber-500/30 bg-[#0f3322] p-5">
+                                {bankDetails.length > 0 ? bankDetails.map(({ label, value }, index) => (
+                                    <React.Fragment key={label}>
+                                        {index > 0 && <View className="h-px w-full bg-white/10" />}
+                                        <TouchableOpacity
+                                            onPress={() => copyToClipboard(value, label.replace(/:$/, ''))}
+                                            className="w-full flex-row items-center justify-between gap-3"
+                                        >
+                                            <Text className="flex-1 text-xs text-slate-400">{label}</Text>
+                                            <View className="max-w-[70%] flex-row items-center gap-1.5">
+                                                <Text className="flex-1 text-right font-mono text-xs font-bold text-[#f0c868]">{value}</Text>
+                                                <Copy color="#6ee7b7" size={13} />
+                                            </View>
+                                        </TouchableOpacity>
+                                    </React.Fragment>
+                                )) : (
+                                    <Text className="py-2 text-center text-xs text-slate-300">
+                                        {tr('बैंक विवरण अभी उपलब्ध नहीं है।', 'بینک کی تفصیلات دستیاب نہیں ہیں۔', 'Bank details are not available yet.')}
+                                    </Text>
+                                )}
                             </View>
                         )}
 
                         {/* UTR Input */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('12 अंकों का बैंक UTR / संदर्भ संख्या *', '12 ہندسوں کا UTR / ریفرنس نمبر *', '12-Digit Bank UTR / Transaction Ref No *')}
                             </Text>
                             <TextInput
-                                style={[s.input, s.inputMono, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder, color: dynamicText }]}
+                                className={`rounded-xl border border-slate-200 bg-white px-4 py-3 font-mono text-sm dark:border-slate-800 dark:bg-slate-800 ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
                                 placeholder={tr('उदा. 420199381029', 'مثال: 420199381029', 'e.g. 420199381029')}
                                 placeholderTextColor={placeholderColor}
                                 value={utrNumber}
@@ -1380,28 +1405,28 @@ export default function SignUpScreen() {
                         </View>
 
                         {/* Screenshot Upload */}
-                        <View style={s.fieldGroup}>
-                            <Text style={[s.label, { color: dynamicSubText }]}>
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('भुगतान रसीद / स्क्रीनशॉट *', 'ادائیگی کی رسید / اسکرین شاٹ *', 'Payment Screenshot / Receipt *')}
                             </Text>
                             {screenshotUri ? (
-                                <View style={[s.previewCard, { backgroundColor: isDark ? '#064e3b' : '#f0fdf4', borderColor: isDark ? '#059669' : '#86efac' }]}>
-                                    <Image source={{ uri: screenshotUri }} style={s.docPreview} />
-                                    <View style={s.previewMeta}>
-                                        <Text style={[s.previewFileName, { color: dynamicText }]} numberOfLines={1}>
+                                <View className="flex-row items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-600 dark:bg-emerald-950">
+                                    <Image source={{ uri: screenshotUri }} className="h-[50px] w-[50px] rounded-[10px] bg-slate-300" />
+                                    <View className="flex-1 gap-1">
+                                        <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`} numberOfLines={1}>
                                             {screenshotFileName || 'payment_receipt.jpg'}
                                         </Text>
-                                        <View style={s.badgeAttached}>
+                                        <View className="flex-row items-center gap-1">
                                             <CheckCircle2 color="#059669" size={12} />
-                                            <Text style={s.badgeAttachedText}>
+                                            <Text className="text-[11px] font-semibold text-emerald-600">
                                                 {tr('भुगतान रसीद संलग्न है', 'رسید منسلک ہے', 'Payment Receipt Attached')}
                                             </Text>
                                         </View>
                                     </View>
-                                    <View style={s.previewActions}>
+                                    <View className="flex-row items-center gap-2">
                                         <TouchableOpacity
                                             onPress={() => setPickerTarget('screenshot')}
-                                            style={[s.changeBtn, { backgroundColor: dynamicCardBg, borderColor: '#a7f3d0' }]}
+                                            className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-emerald-200 bg-white dark:bg-slate-900"
                                         >
                                             <Upload color="#059669" size={16} />
                                         </TouchableOpacity>
@@ -1410,7 +1435,7 @@ export default function SignUpScreen() {
                                                 setScreenshotUri('');
                                                 setScreenshotFileName('');
                                             }}
-                                            style={s.deleteBtn}
+                                            className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-red-200 bg-red-50"
                                         >
                                             <Trash2 color="#ef4444" size={16} />
                                         </TouchableOpacity>
@@ -1419,16 +1444,16 @@ export default function SignUpScreen() {
                             ) : (
                                 <TouchableOpacity
                                     onPress={() => setPickerTarget('screenshot')}
-                                    style={[s.uploadBox, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}
+                                    className="items-center justify-center rounded-2xl border-[1.5px] border-dashed border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-800"
                                     activeOpacity={0.7}
                                 >
-                                    <View style={[s.uploadIconCircle, { backgroundColor: isDark ? '#064e3b' : '#ecfdf5' }]}>
+                                    <View className="mb-1.5 h-[42px] w-[42px] items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950">
                                         <Upload color="#059669" size={20} />
                                     </View>
-                                    <Text style={[s.uploadTitle, { color: dynamicText }]}>
+                                    <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                         {tr('भुगतान रसीद अपलोड करने के लिए क्लिक करें *', 'ادائیگی کی رسید اپلوڈ کریں *', 'Click to upload payment receipt *')}
                                     </Text>
-                                    <Text style={[s.uploadSubtitle, { color: dynamicSubText }]}>
+                                    <Text className={`mt-0.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                         {tr('गैलरी या कैमरे से रसीद संलग्न करें', 'گیلری یا کیمرے سے رسید منسلک کریں', 'Attach receipt from gallery or camera')}
                                     </Text>
                                 </TouchableOpacity>
@@ -1438,13 +1463,13 @@ export default function SignUpScreen() {
                         {/* Agreement */}
                         <TouchableOpacity
                             onPress={() => setIsFeePaid(!isFeePaid)}
-                            style={[s.checkRow, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}
+                            className="flex-row items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-800"
                             activeOpacity={0.7}
                         >
-                            <View style={[s.checkbox, isFeePaid ? s.checkboxActive : [s.checkboxIdle, { borderColor: placeholderColor }]]}>
+                            <View className={`h-5 w-5 items-center justify-center rounded-md border-2 ${isFeePaid ? 'border-emerald-600 bg-emerald-600' : 'border-slate-400'}`}>
                                 {isFeePaid && <Check color="#fff" size={14} />}
                             </View>
-                            <Text style={[s.checkLabel, { color: dynamicSubText }]}>
+                            <Text className={`flex-1 text-xs font-medium leading-[18px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr(
                                     'मैंने ₹100 का भुगतान पूरा कर लिया है और MFCT सामुदायिक दिशानिर्देशों से सहमत हूँ।',
                                     'میں نے ₹100 کی ادائیگی مکمل کر لی ہے اور MFCT اصولوں سے متفق ہوں۔',
@@ -1454,24 +1479,24 @@ export default function SignUpScreen() {
                         </TouchableOpacity>
 
                         {/* Action Buttons */}
-                        <View style={s.actionRow}>
+                        <View className="flex-row gap-3">
                             <TouchableOpacity
                                 onPress={() => setStep(1)}
-                                style={[s.backSecondaryBtn, { backgroundColor: isDark ? '#1e293b' : '#e2e8f0' }]}
+                                className={`items-center justify-center rounded-2xl px-5 py-4 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}
                             >
-                                <Text style={[s.backSecondaryText, { color: dynamicText }]}>
+                                <Text className={`text-sm font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                     ← {tr('वापस', 'واپس', 'Back')}
                                 </Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={handleFinishRegistration}
                                 disabled={!isFeePaid || submitting}
-                                style={[s.submitBtn, (!isFeePaid || submitting) ? s.submitBtnDisabled : s.submitBtnEnabled]}
+                                className={`flex-1 items-center justify-center rounded-2xl py-4 ${(!isFeePaid || submitting) ? 'bg-slate-300' : 'bg-[#0f3322]'}`}
                             >
                                 {submitting
                                     ? <ActivityIndicator color="#f0c868" size="small" />
-                                    : <View style={s.rowCenter}>
-                                        <Text style={s.submitBtnText}>
+                                    : <View className="flex-row items-center justify-center gap-1.5">
+                                        <Text className="text-sm font-extrabold text-[#f0c868]">
                                             {tr('सदस्यता पंजीकरण पूर्ण करें', 'ممبرشپ رجسٹریشن مکمل کریں', 'Complete Registration')}
                                         </Text>
                                         <ArrowRight color="#f0c868" size={16} />
@@ -1486,14 +1511,14 @@ export default function SignUpScreen() {
                     STEP 3: Registration Success Screen
                    ════════════════════════════════════════════════════════════════ */}
                 {step === 3 && (
-                    <View style={s.successContainer}>
-                        <View style={s.successIcon}>
+                    <View className="mt-4 items-center gap-4 p-6">
+                        <View className="h-[84px] w-[84px] items-center justify-center rounded-full border-2 border-emerald-500 bg-green-100">
                             <UserCheck color="#047857" size={48} />
                         </View>
-                        <Text style={[s.successTitle, { color: dynamicText }]}>
+                        <Text className={`text-center text-[22px] font-black ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                             {tr('पंजीकरण अनुरोध सबमिट हुआ!', 'درخواست کامیابی سے جمع ہوئی!', 'Registration Submitted!')}
                         </Text>
-                        <Text style={[s.successSubtitle, { color: dynamicSubText }]}>
+                        <Text className={`text-center text-sm leading-[22px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                             {tr(
                                 `अल्हम्दुलिल्लाह! आप अब ${activeCommunity?.name} के एक पंजीकृत सदस्य हैं।`,
                                 `الحمدللہ! آپ اب ${activeCommunity?.name} کے رجسٹرڈ ممبر بن چکے ہیں۔`,
@@ -1502,23 +1527,23 @@ export default function SignUpScreen() {
                         </Text>
 
                         {/* Trust Badges */}
-                        <View style={s.badgesRow}>
+                        <View className="my-1 flex-row flex-wrap justify-center gap-2">
                             {[
                                 { icon: ShieldCheck, hi: 'सत्यापित सदस्य', ur: 'تصدیق شدہ ممبر', en: 'Verified Member' },
                                 { icon: CheckCircle2, hi: 'UTR रिकॉर्ड', ur: 'UTR ریکارڈ', en: 'UTR Recorded' },
                                 { icon: HandHeart, hi: 'राहत के पात्र', ur: 'امداد के اہل', en: 'Relief Eligible' },
                             ].map(({ icon: Icon, hi, ur, en }) => (
-                                <View key={en} style={[s.trustBadge, { backgroundColor: dynamicCardBg, borderColor: dynamicBorder }]}>
+                                <View key={en} className="flex-row items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
                                     <Icon color="#059669" size={16} />
-                                    <Text style={[s.trustBadgeText, { color: dynamicText }]}>
+                                    <Text className={`text-[11px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                         {tr(hi, ur, en)}
                                     </Text>
                                 </View>
                             ))}
                         </View>
 
-                        <View style={{ width: '100%', alignItems: 'center', marginTop: 4, marginBottom: 2 }}>
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#059669' }}>
+                        <View className="my-0.5 w-full items-center">
+                            <Text className="text-xs font-bold text-emerald-600">
                                 {tr(
                                     'समीक्षा स्थिति पृष्ठ पर स्वतः भेजा जा रहा है…',
                                     'آپ کو خود بخود جائزہ صفحہ پر لے جایا جا رہا ہے…',
@@ -1527,9 +1552,9 @@ export default function SignUpScreen() {
                             </Text>
                         </View>
 
-                        <TouchableOpacity onPress={() => handleCompleteAndNavigate()} style={s.primaryBtn}>
+                        <TouchableOpacity onPress={() => handleCompleteAndNavigate()} className="mt-1.5 flex-row items-center justify-center gap-2 rounded-2xl bg-[#0f3322] py-4 shadow-md">
                             <ActivityIndicator size="small" color="#f0c868" />
-                            <Text style={s.primaryBtnText}>
+                            <Text className="text-[15px] font-extrabold text-[#f0c868]">
                                 {tr('खाता समीक्षा स्थिति देखें', 'اکاؤنٹ اسٹیٹس دیکھیں', 'View Account Review Status')}
                             </Text>
                             <ArrowRight color="#f0c868" size={18} />
@@ -1537,9 +1562,9 @@ export default function SignUpScreen() {
 
                         <TouchableOpacity
                             onPress={() => router.push('/(auth)/sign-in')}
-                            style={s.linkBtn}
+                            className="mt-1 items-center"
                         >
-                            <Text style={[s.linkText, { color: dynamicSubText }]}>
+                            <Text className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {tr('साइन इन पृष्ठ पर जाएं', 'سائن ان پر جائیں', 'Go to Sign In page')} →
                             </Text>
                         </TouchableOpacity>
@@ -1560,13 +1585,13 @@ export default function SignUpScreen() {
                     onRequestClose={() => setPickerTarget(null)}
                 >
                     <TouchableOpacity
-                        style={s.modalBackdrop}
+                        className="flex-1 justify-end bg-slate-900/[0.65]"
                         activeOpacity={1}
                         onPress={() => setPickerTarget(null)}
                     >
-                        <View style={[s.modalSheet, { backgroundColor: dynamicCardBg }]}>
-                            <View style={s.sheetHeader}>
-                                <Text style={[s.sheetTitle, { color: dynamicText }]}>
+                        <View className={`rounded-t-3xl p-5 ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
+                            <View className="mb-4 flex-row items-center justify-between">
+                                <Text className={`text-base font-extrabold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                     {pickerTarget === 'avatar'
                                         ? tr('प्रोफ़ाइल फ़ोटो अपलोड करें', 'پروفائل تصویر اپلوڈ کریں', 'Upload Profile Photo')
                                         : pickerTarget === 'aadhaarFront'
@@ -1577,41 +1602,41 @@ export default function SignUpScreen() {
                                 </Text>
                                 <TouchableOpacity
                                     onPress={() => setPickerTarget(null)}
-                                    style={[s.closeBtn, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}
+                                    className={`h-8 w-8 items-center justify-center rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
                                 >
                                     <X color={dynamicSubText} size={18} />
                                 </TouchableOpacity>
                             </View>
 
-                            <View style={s.pickerOptionsRow}>
+                            <View className="mb-4 flex-row gap-3">
                                 <TouchableOpacity
-                                    style={[s.pickerOptionCard, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}
+                                    className={`flex-1 items-center justify-center rounded-2xl border p-4 ${isDark ? 'border-slate-800 bg-slate-800' : 'border-slate-200 bg-white'}`}
                                     onPress={() => handlePickMedia('camera')}
                                     activeOpacity={0.7}
                                 >
-                                    <View style={[s.optionIconCircle, { backgroundColor: isDark ? '#064e3b' : '#ecfdf5' }]}>
+                                    <View className="mb-2 h-12 w-12 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950">
                                         <Camera color="#059669" size={24} />
                                     </View>
-                                    <Text style={[s.optionTitle, { color: dynamicText }]}>
+                                    <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                         {tr('कैमरा का उपयोग करें', 'کیمرا استعمال کریں', 'Use Camera')}
                                     </Text>
-                                    <Text style={[s.optionSub, { color: dynamicSubText }]}>
+                                    <Text className={`mt-0.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                         {tr('नई तस्वीर लें', 'نئی تصویر لیں', 'Take a new photo')}
                                     </Text>
                                 </TouchableOpacity>
 
                                 <TouchableOpacity
-                                    style={[s.pickerOptionCard, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]}
+                                    className={`flex-1 items-center justify-center rounded-2xl border p-4 ${isDark ? 'border-slate-800 bg-slate-800' : 'border-slate-200 bg-white'}`}
                                     onPress={() => handlePickMedia('gallery')}
                                     activeOpacity={0.7}
                                 >
-                                    <View style={[s.optionIconCircle, { backgroundColor: isDark ? '#1e3a8a' : '#eff6ff' }]}>
+                                    <View className="mb-2 h-12 w-12 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-950">
                                         <ImageIcon color="#2563eb" size={24} />
                                     </View>
-                                    <Text style={[s.optionTitle, { color: dynamicText }]}>
+                                    <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                         {tr('गैलरी से चुनें', 'گیلری سے منتخب کریں', 'Choose from Gallery')}
                                     </Text>
-                                    <Text style={[s.optionSub, { color: dynamicSubText }]}>
+                                    <Text className={`mt-0.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                         {tr('फ़ाइल / छवि चुनें', 'فائل / تصویر منتخب کریں', 'Select file / image')}
                                     </Text>
                                 </TouchableOpacity>
@@ -1619,9 +1644,9 @@ export default function SignUpScreen() {
 
                             <TouchableOpacity
                                 onPress={() => setPickerTarget(null)}
-                                style={[s.cancelBtn, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}
+                                className={`items-center justify-center rounded-[14px] py-3.5 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
                             >
-                                <Text style={[s.cancelBtnText, { color: dynamicSubText }]}>
+                                <Text className={`text-sm font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                     {tr('रद्द करें', 'منسوخ کریں', 'Cancel')}
                                 </Text>
                             </TouchableOpacity>
@@ -1639,24 +1664,24 @@ export default function SignUpScreen() {
                     onRequestClose={() => setShowReligionPicker(false)}
                 >
                     <TouchableOpacity
-                        style={s.modalBackdrop}
+                        className="flex-1 justify-end bg-slate-900/[0.65]"
                         activeOpacity={1}
                         onPress={() => setShowReligionPicker(false)}
                     >
-                        <View style={[s.modalSheet, { backgroundColor: dynamicCardBg }]}>
-                            <View style={s.sheetHeader}>
-                                <Text style={[s.sheetTitle, { color: dynamicText }]}>
+                        <View className={`rounded-t-3xl p-5 ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
+                            <View className="mb-4 flex-row items-center justify-between">
+                                <Text className={`text-base font-extrabold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                     {tr('धर्म चुनें', 'مذہب منتخب کریں', 'Select Religion')}
                                 </Text>
                                 <TouchableOpacity
                                     onPress={() => setShowReligionPicker(false)}
-                                    style={[s.closeBtn, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}
+                                    className={`h-8 w-8 items-center justify-center rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
                                 >
                                     <X color={dynamicSubText} size={18} />
                                 </TouchableOpacity>
                             </View>
 
-                            <View style={s.pickerVerticalList}>
+                            <View className="mb-4 gap-2.5">
                                 {[
                                     { id: 'Hindu', hi: 'हिन्दू (Hindu)', ur: 'ہندو (Hindu)', en: 'Hindu' },
                                     { id: 'Muslim', hi: 'मुस्लिम (Muslim)', ur: 'مسلم (Muslim)', en: 'Muslim' },
@@ -1668,14 +1693,9 @@ export default function SignUpScreen() {
                                         <TouchableOpacity
                                             key={item.id}
                                             onPress={() => handleReligionChange(item.id as any)}
-                                            style={[
-                                                s.selectionItem,
-                                                isSelected
-                                                    ? [s.selectionItemActive, { backgroundColor: isDark ? '#14281f' : '#fef9e7', borderColor: '#d97706' }]
-                                                    : [s.selectionItemIdle, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]
-                                            ]}
+                                            className={`flex-row items-center justify-between rounded-[14px] border p-4 ${isSelected ? 'border-amber-600 bg-amber-50 dark:bg-[#14281f]' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-800'}`}
                                         >
-                                            <Text style={[s.selectionItemText, { color: dynamicText }]}>
+                                            <Text className={`text-sm font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                                 {tr(item.hi, item.ur, item.en)}
                                             </Text>
                                             {isSelected && <Check color="#059669" size={20} />}
@@ -1686,9 +1706,9 @@ export default function SignUpScreen() {
 
                             <TouchableOpacity
                                 onPress={() => setShowReligionPicker(false)}
-                                style={[s.cancelBtn, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}
+                                className={`items-center justify-center rounded-[14px] py-3.5 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
                             >
-                                <Text style={[s.cancelBtnText, { color: dynamicSubText }]}>
+                                <Text className={`text-sm font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                     {tr('रद्द करें', 'منسوخ کریں', 'Cancel')}
                                 </Text>
                             </TouchableOpacity>
@@ -1709,32 +1729,32 @@ export default function SignUpScreen() {
                         onRequestClose={() => setShowCommunityPicker(false)}
                     >
                         <TouchableOpacity
-                            style={s.modalBackdrop}
+                            className="flex-1 justify-end bg-slate-900/[0.65]"
                             activeOpacity={1}
                             onPress={() => setShowCommunityPicker(false)}
                         >
-                            <View style={[s.pickerSheet, { backgroundColor: dynamicCardBg }]}>
-                                <View style={[s.pickerHeader, { borderBottomColor: dynamicBorder }]}>
-                                    <Text style={[s.pickerTitle, { color: dynamicText }]}>
+                            <View className={`max-h-[75%] rounded-t-3xl p-5 ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
+                                <View className={`flex-row items-center justify-between border-b pb-4 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                                    <Text className={`text-base font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                         {tr('अपना स्थानीय समुदाय चुनें', 'اپنی مقامی کمیونٹی منتخب کریں', 'Select Your Local Community')}
                                     </Text>
                                     <TouchableOpacity
                                         onPress={() => setShowCommunityPicker(false)}
-                                        style={[s.pickerClose, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}
+                                        className={`rounded-full p-2 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}
                                     >
                                         <X color={dynamicSubText} size={18} />
                                     </TouchableOpacity>
                                 </View>
 
                                 {city.trim() ? (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: dynamicBorder, backgroundColor: isDark ? '#1e293b50' : '#f8fafc' }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1 }}>
+                                    <View className={`flex-row items-center justify-between border-b px-5 py-2.5 ${isDark ? 'border-slate-800 bg-slate-800/30' : 'border-slate-200 bg-slate-50'}`}>
+                                        <View className="flex-1 flex-row items-center gap-1">
                                             {hasCitySpecificCommunities ? (
                                                 <CheckCircle2 color="#10b981" size={14} />
                                             ) : (
                                                 <AlertCircle color={isDark ? '#fbbf24' : '#d97706'} size={14} />
                                             )}
-                                            <Text style={{ fontSize: 12, fontWeight: '700', color: hasCitySpecificCommunities ? '#10b981' : (isDark ? '#fbbf24' : '#d97706') }}>
+                                            <Text className={`text-xs font-bold ${hasCitySpecificCommunities ? 'text-emerald-500' : (isDark ? 'text-amber-300' : 'text-amber-700')}`}>
                                                 {hasCitySpecificCommunities && !showAllInPicker
                                                     ? tr(`"${city.trim()}" के समुदाय (${filteredCommunities.length})`, `"${city.trim()}" کی کمیونٹیز (${filteredCommunities.length})`, `"${city.trim()}" Communities (${filteredCommunities.length})`)
                                                     : tr('सभी समुदाय', 'تمام کمیونٹیز', 'All Communities')}
@@ -1743,9 +1763,9 @@ export default function SignUpScreen() {
                                         {hasCitySpecificCommunities && (
                                             <TouchableOpacity
                                                 onPress={() => setShowAllInPicker(!showAllInPicker)}
-                                                style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: isDark ? '#334155' : '#e2e8f0' }}
+                                                className={`rounded-lg px-2.5 py-1 ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}
                                             >
-                                                <Text style={{ fontSize: 11, fontWeight: '700', color: dynamicText }}>
+                                                <Text className={`text-[11px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
                                                     {showAllInPicker
                                                         ? tr(`केवल ${city.trim()}`, `صرف ${city.trim()}`, `Only ${city.trim()}`)
                                                         : tr('सभी दिखाएं', 'تمام دکھائیں', 'Show All')}
@@ -1755,7 +1775,7 @@ export default function SignUpScreen() {
                                     </View>
                                 ) : null}
 
-                                <ScrollView style={s.pickerList}>
+                                <ScrollView className="mt-3">
                                     {displayCommunities.map((item) => {
                                         const isSelected = item.id === selectedCommunityId;
                                         return (
@@ -1765,16 +1785,11 @@ export default function SignUpScreen() {
                                                     setSelectedCommunityId(item.id);
                                                     setShowCommunityPicker(false);
                                                 }}
-                                                style={[
-                                                    s.communityItem,
-                                                    isSelected
-                                                        ? [s.communityItemActive, { backgroundColor: isDark ? '#14281f' : '#ecfdf5', borderColor: '#059669' }]
-                                                        : [s.communityItemIdle, { backgroundColor: dynamicInputBg, borderColor: dynamicBorder }]
-                                                ]}
+                                                className={`mb-2.5 flex-row items-center justify-between rounded-2xl border p-4 ${isSelected ? 'border-emerald-600 bg-emerald-50 dark:bg-[#14281f]' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-800'}`}
                                             >
-                                                <View style={s.flex1}>
-                                                    <Text style={[s.communityItemName, { color: dynamicText }]}>{item.name}</Text>
-                                                    <Text style={[s.communityItemSub, { color: dynamicSubText }]}>
+                                                <View className="flex-1">
+                                                    <Text className={`text-sm font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>{item.name}</Text>
+                                                    <Text className={`mt-0.5 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                                         {item.city} • {tr('प्रशासक:', 'ایڈمن:', 'Admin:')} {item.adminName}
                                                     </Text>
                                                 </View>
@@ -1791,679 +1806,3 @@ export default function SignUpScreen() {
         </KeyboardAvoidingView>
     );
 }
-
-const s = StyleSheet.create({
-    flex1: { flex: 1 },
-    rowCenter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-    // Header
-    header: { paddingHorizontal: 20, paddingTop: 48, paddingBottom: 18, borderBottomWidth: 1 },
-    headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-    backBtn: { width: 40, height: 40, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-    stepBadgeContainer: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    stepBadgePill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 },
-    stepBadgePillActive: { backgroundColor: '#0f3322' },
-    stepBadgePillDone: { backgroundColor: '#dcfce7' },
-    stepBadgePillIdle: { backgroundColor: '#e2e8f0' },
-    stepBadgePillText: { fontSize: 11, fontWeight: '700' },
-    stepBadgePillTextActive: { color: '#f0c868' },
-    stepBadgePillTextDone: { color: '#166534' },
-    stepBadgePillTextIdle: { color: '#64748b' },
-    heroBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, marginBottom: 8 },
-    heroBadgeText: { fontSize: 11, fontWeight: '700' },
-    heroTitle: { fontSize: 22, fontWeight: '800' },
-    heroSubtitle: { fontSize: 12, marginTop: 4, lineHeight: 18 },
-    // Toast
-    toast: { marginHorizontal: 16, marginTop: 12, padding: 12, borderRadius: 12, borderWidth: 1 },
-    toastError: { backgroundColor: '#fef2f2', borderColor: '#fecaca' },
-    toastSuccess: { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' },
-    toastText: { fontSize: 12, fontWeight: '700' },
-    toastTextError: { color: '#b91c1c' },
-    toastTextSuccess: { color: '#15803d' },
-    // Scroll
-    scrollContent: { flexGrow: 1, paddingBottom: 40 },
-    stepContainer: { padding: 20, gap: 16 },
-    // Fields
-    fieldGroup: { gap: 6 },
-    label: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
-    input: { borderWidth: 1, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, fontSize: 14 },
-    inputWithIcon: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, paddingHorizontal: 14 },
-    inputClean: { flex: 1, paddingVertical: 12, paddingHorizontal: 8, fontSize: 14 },
-    inputMono: { fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
-    eyeBtn: { paddingHorizontal: 6, paddingVertical: 12 },
-    row: { flexDirection: 'row' },
-    gap12: { width: 12 },
-    // Pickers triggers
-    pickerTrigger: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12 },
-    pickerTriggerText: { fontWeight: '500', fontSize: 14, flex: 1, marginRight: 8 },
-    // Nisab Card
-    nisabCard: {
-        borderWidth: 1.5,
-        borderRadius: 20,
-        padding: 16,
-        gap: 12,
-    },
-    nisabHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingBottom: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(217, 119, 6, 0.25)',
-    },
-    nisabTitle: {
-        fontSize: 13,
-        fontWeight: '800',
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-    },
-    nisabContent: {
-        gap: 10,
-    },
-    nisabQuestion: {
-        fontSize: 13,
-        fontWeight: '700',
-    },
-    nisabHint: {
-        fontSize: 11,
-        lineHeight: 16,
-    },
-    nisabOptionRow: {
-        flexDirection: 'row',
-        gap: 10,
-        marginTop: 4,
-    },
-    nisabOptionBtn: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        paddingVertical: 12,
-        paddingHorizontal: 8,
-        borderRadius: 12,
-        borderWidth: 1,
-    },
-    nisabOptionBtnIdle: {},
-    nisabOptionBtnActive: {},
-    nisabOptionText: {
-        fontSize: 12,
-        fontWeight: '700',
-    },
-    radioCircle: {
-        width: 16,
-        height: 16,
-        borderRadius: 8,
-        borderWidth: 1.5,
-        borderColor: '#94a3b8',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    radioCircleActive: {
-        borderColor: '#d97706',
-    },
-    radioDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: '#d97706',
-    },
-    nisabSuccessBanner: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        padding: 12,
-        borderRadius: 12,
-        borderWidth: 1,
-        marginTop: 4,
-    },
-    nisabSuccessText: {
-        fontSize: 12,
-        fontWeight: '600',
-        flex: 1,
-        lineHeight: 18,
-    },
-    helpSelectionContainer: {
-        marginTop: 6,
-        gap: 10,
-        paddingTop: 10,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(217, 119, 6, 0.2)',
-    },
-    helpSectionLabel: {
-        fontSize: 12,
-        fontWeight: '700',
-    },
-    helpGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 8,
-    },
-    helpCard: {
-        width: '48.5%',
-        borderWidth: 1,
-        borderRadius: 12,
-        padding: 10,
-        gap: 4,
-    },
-    helpCardIdle: {},
-    helpCardActive: {},
-    helpCardHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    helpCardTitle: {
-        fontSize: 12,
-        fontWeight: '700',
-    },
-    helpCardDesc: {
-        fontSize: 10,
-    },
-    radioCircleSmall: {
-        width: 14,
-        height: 14,
-        borderRadius: 7,
-        borderWidth: 1.5,
-        borderColor: '#94a3b8',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    radioDotSmall: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: '#d97706',
-    },
-    helpDetailsBox: {
-        gap: 6,
-        marginTop: 4,
-    },
-    // Upload Box
-    uploadBox: {
-        borderWidth: 1.5,
-        borderStyle: 'dashed',
-        borderRadius: 16,
-        padding: 16,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    uploadIconCircle: {
-        width: 42,
-        height: 42,
-        borderRadius: 21,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 6,
-    },
-    uploadTitle: {
-        fontSize: 13,
-        fontWeight: '700',
-    },
-    uploadSubtitle: {
-        fontSize: 11,
-        marginTop: 2,
-    },
-    // Preview Cards
-    previewCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderRadius: 16,
-        padding: 12,
-        gap: 12,
-    },
-    avatarPreview: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: '#cbd5e1',
-    },
-    docPreview: {
-        width: 50,
-        height: 50,
-        borderRadius: 10,
-        backgroundColor: '#cbd5e1',
-    },
-    previewMeta: {
-        flex: 1,
-        gap: 4,
-    },
-    previewFileName: {
-        fontSize: 13,
-        fontWeight: '700',
-    },
-    badgeAttached: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-    },
-    badgeAttachedText: {
-        fontSize: 11,
-        fontWeight: '600',
-        color: '#059669',
-    },
-    previewActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
-    changeBtn: {
-        width: 34,
-        height: 34,
-        borderRadius: 10,
-        borderWidth: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    deleteBtn: {
-        width: 34,
-        height: 34,
-        borderRadius: 10,
-        backgroundColor: '#fef2f2',
-        borderWidth: 1,
-        borderColor: '#fecaca',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    // Buttons
-    primaryBtn: {
-        backgroundColor: '#0f3322',
-        paddingVertical: 16,
-        borderRadius: 16,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        marginTop: 6,
-        shadowColor: '#000',
-        shadowOpacity: 0.15,
-        shadowRadius: 6,
-        elevation: 3,
-    },
-    primaryBtnText: {
-        color: '#f0c868',
-        fontWeight: '800',
-        fontSize: 15,
-    },
-    linkBtn: {
-        alignItems: 'center',
-        marginTop: 4,
-    },
-    linkText: {
-        fontSize: 12,
-        fontWeight: '500',
-    },
-    linkTextBold: {
-        color: '#0f3322',
-        fontWeight: '800',
-        textDecorationLine: 'underline',
-    },
-    // Fee banner
-    feeBanner: {
-        padding: 16,
-        borderWidth: 1.5,
-        borderRadius: 16,
-        gap: 4,
-    },
-    feeRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    feeBannerTitle: {
-        fontWeight: '800',
-        fontSize: 13,
-        textTransform: 'uppercase',
-    },
-    feeAmount: {
-        color: '#0f3322',
-        fontWeight: '900',
-        fontSize: 22,
-    },
-    feeBannerDesc: {
-        fontSize: 12,
-        lineHeight: 18,
-    },
-    // Tabs
-    tabRow: {
-        flexDirection: 'row',
-        padding: 4,
-        borderRadius: 16,
-    },
-    tab: {
-        flex: 1,
-        paddingVertical: 10,
-        borderRadius: 12,
-        alignItems: 'center',
-    },
-    tabActive: {
-        shadowColor: '#000',
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
-        elevation: 2,
-    },
-    tabInactive: {
-        backgroundColor: 'transparent',
-    },
-    tabText: {
-        fontSize: 12,
-        fontWeight: '700',
-    },
-    tabTextActive: {},
-    tabTextInactive: {},
-    // Dark panel (UPI / Bank)
-    darkPanel: {
-        backgroundColor: '#0f3322',
-        borderRadius: 20,
-        padding: 20,
-        gap: 12,
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(200,168,75,0.3)',
-    },
-    qrBox: {
-        backgroundColor: '#fff',
-        padding: 16,
-        borderRadius: 16,
-    },
-    upiLabel: {
-        color: '#f0c868',
-        fontSize: 11,
-        fontWeight: '700',
-        textTransform: 'uppercase',
-        letterSpacing: 0.8,
-    },
-    upiRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
-    },
-    upiId: {
-        color: '#f0c868',
-        fontWeight: '800',
-        fontSize: 15,
-        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    },
-    upiHint: {
-        color: '#94a3b8',
-        fontSize: 11,
-        textAlign: 'center',
-    },
-    bankRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        width: '100%',
-    },
-    bankLabel: {
-        color: '#94a3b8',
-        fontSize: 12,
-    },
-    bankValue: {
-        color: '#e2e8f0',
-        fontSize: 12,
-        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    },
-    bankValueGreen: {
-        color: '#f0c868',
-        fontWeight: '700',
-        fontSize: 12,
-        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    },
-    bankDivider: {
-        height: 1,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        width: '100%',
-    },
-    copyRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        maxWidth: '65%',
-    },
-    // Checkbox
-    checkRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        padding: 12,
-        borderRadius: 12,
-        borderWidth: 1,
-    },
-    checkbox: {
-        width: 20,
-        height: 20,
-        borderRadius: 6,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 2,
-    },
-    checkboxIdle: {},
-    checkboxActive: {
-        backgroundColor: '#059669',
-        borderColor: '#059669',
-    },
-    checkLabel: {
-        flex: 1,
-        fontSize: 12,
-        fontWeight: '500',
-        lineHeight: 18,
-    },
-    // Action
-    actionRow: {
-        flexDirection: 'row',
-        gap: 12,
-    },
-    backSecondaryBtn: {
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-        borderRadius: 16,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    backSecondaryText: {
-        fontWeight: '700',
-        fontSize: 14,
-    },
-    submitBtn: {
-        flex: 1,
-        paddingVertical: 16,
-        borderRadius: 16,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    submitBtnEnabled: {
-        backgroundColor: '#0f3322',
-    },
-    submitBtnDisabled: {
-        backgroundColor: '#cbd5e1',
-    },
-    submitBtnText: {
-        color: '#f0c868',
-        fontWeight: '800',
-        fontSize: 14,
-    },
-    // Success
-    successContainer: {
-        padding: 24,
-        alignItems: 'center',
-        gap: 16,
-        marginTop: 16,
-    },
-    successIcon: {
-        width: 84,
-        height: 84,
-        borderRadius: 42,
-        backgroundColor: '#dcfce7',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 2,
-        borderColor: '#10b981',
-    },
-    successTitle: {
-        fontSize: 22,
-        fontWeight: '900',
-        textAlign: 'center',
-    },
-    successSubtitle: {
-        fontSize: 14,
-        textAlign: 'center',
-        lineHeight: 22,
-    },
-    badgesRow: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'center',
-        gap: 8,
-        marginVertical: 4,
-    },
-    trustBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 12,
-        borderWidth: 1,
-    },
-    trustBadgeText: {
-        fontSize: 11,
-        fontWeight: '700',
-    },
-    // Modal Sheets
-    modalBackdrop: {
-        flex: 1,
-        backgroundColor: 'rgba(15, 23, 42, 0.65)',
-        justifyContent: 'flex-end',
-    },
-    modalSheet: {
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        padding: 20,
-        paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-    },
-    sheetHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 16,
-    },
-    sheetTitle: {
-        fontSize: 16,
-        fontWeight: '800',
-    },
-    closeBtn: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    pickerOptionsRow: {
-        flexDirection: 'row',
-        gap: 12,
-        marginBottom: 16,
-    },
-    pickerOptionCard: {
-        flex: 1,
-        borderWidth: 1,
-        borderRadius: 16,
-        padding: 16,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    optionIconCircle: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 8,
-    },
-    optionTitle: {
-        fontSize: 13,
-        fontWeight: '700',
-    },
-    optionSub: {
-        fontSize: 11,
-        marginTop: 2,
-    },
-    pickerVerticalList: {
-        gap: 10,
-        marginBottom: 16,
-    },
-    selectionItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: 16,
-        borderRadius: 14,
-        borderWidth: 1,
-    },
-    selectionItemIdle: {},
-    selectionItemActive: {},
-    selectionItemText: {
-        fontSize: 14,
-        fontWeight: '700',
-    },
-    cancelBtn: {
-        paddingVertical: 14,
-        borderRadius: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    cancelBtnText: {
-        fontSize: 14,
-        fontWeight: '700',
-    },
-    // Community Sheet
-    pickerSheet: {
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        padding: 20,
-        maxHeight: '75%',
-    },
-    pickerHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingBottom: 16,
-        borderBottomWidth: 1,
-    },
-    pickerTitle: {
-        fontSize: 16,
-        fontWeight: '700',
-    },
-    pickerClose: {
-        padding: 8,
-        borderRadius: 20,
-    },
-    pickerList: {
-        marginTop: 12,
-    },
-    communityItem: {
-        padding: 16,
-        borderRadius: 16,
-        marginBottom: 10,
-        borderWidth: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    communityItemIdle: {},
-    communityItemActive: {},
-    communityItemName: {
-        fontWeight: '700',
-        fontSize: 14,
-    },
-    communityItemSub: {
-        fontSize: 12,
-        marginTop: 2,
-    },
-});

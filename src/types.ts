@@ -5,6 +5,7 @@ export type UserRole =
   | 'community_admin'
   | 'executive_admin'
   | 'member'
+  | 'team_member'
   | 'district_president'
   | 'district_coordinator'
   | 'district_gen_secretary'
@@ -242,6 +243,7 @@ export interface AccountDetails {
   ifsc_code: string;
   upi_id: string;
   account_holder_name?: string;
+  branch_name?: string;
   qr_code_url?: string;
   created_at?: string;
   updated_at?: string;

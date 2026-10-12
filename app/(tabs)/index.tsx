@@ -711,7 +711,7 @@ export default function HomeScreen() {
                   <>
                     <LayoutDashboard color={C.gold} size={12} />
                     <Text style={{ color: C.gold, fontSize: 10, fontWeight: '900', maxWidth: 85 }} numberOfLines={1}>
-                      {activeUser?.name ? (activeUser.name.split(' ')[0] || activeUser.name) : t('drawer.dashboard', 'Portal')}
+                      {t('drawer.dashboard', 'Portal')}
                     </Text>
                   </>
                 ) : (

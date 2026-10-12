@@ -362,44 +362,6 @@ export default function DashboardIndex() {
 
     return (
       <View className="flex-1 bg-slate-50 dark:bg-slate-950">
-        {/* District Role Perspectives Pills (matching website committee scope) */}
-        <View className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2.5">
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-            {DISTRICT_ROLES_TABS.map((tab) => {
-              const isSelected = activeRoleKey === tab.key;
-              const isUserAssignedRole = (effectiveDistrictRole || userRole) === tab.key;
-              const tabLabel = lang === 'hi' ? tab.labelHi : lang === 'ur' ? tab.labelUr : tab.labelEn;
-              return (
-                <TouchableOpacity
-                  key={tab.key}
-                  onPress={() => setSelectedDistrictRole(tab.key)}
-                  className={`px-3.5 py-1.5 rounded-full flex-row items-center border ${
-                    isSelected
-                      ? 'bg-emerald-600 border-emerald-600'
-                      : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                  }`}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    className={`text-xs font-bold ${
-                      isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    {tabLabel}
-                  </Text>
-                  {isUserAssignedRole && (
-                    <View
-                      className={`ml-1.5 w-1.5 h-1.5 rounded-full ${
-                        isSelected ? 'bg-amber-300' : 'bg-emerald-500'
-                      }`}
-                    />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
         {/* Active Role Dashboard */}
         <View className="flex-1">
           {renderRoleDashboard()}
@@ -870,13 +832,13 @@ export default function DashboardIndex() {
   const categoryData =
     Object.keys(categoryTotals).length > 0 && totalRaisedAll > 0
       ? Object.entries(categoryTotals).map(([cat, amount]) => ({
-          name: t(`cat.${cat.toLowerCase().replace(/\s+/g, '')}`, cat),
-          value: Math.max(1, Math.round((amount / totalRaisedAll) * 100)),
-          color: categoryColorMap[cat] || '#10b981',
-        }))
+        name: t(`cat.${cat.toLowerCase().replace(/\s+/g, '')}`, cat),
+        value: Math.max(1, Math.round((amount / totalRaisedAll) * 100)),
+        color: categoryColorMap[cat] || '#10b981',
+      }))
       : [
-          { name: t('cat.general', 'General Fund'), value: 100, color: '#059669' },
-        ];
+        { name: t('cat.general', 'General Fund'), value: 100, color: '#059669' },
+      ];
 
   const donutRadius = 45;
   const donutCircumference = 2 * Math.PI * donutRadius;

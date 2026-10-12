@@ -250,6 +250,8 @@ export async function createAccountDetails(details: Omit<AccountDetails, 'id' | 
       account_number: details.account_number,
       ifsc_code: details.ifsc_code,
       upi_id: details.upi_id,
+      account_holder_name: details.account_holder_name || null,
+      branch_name: details.branch_name || null,
       qr_code_url: details.qr_code_url || null,
       updated_at: new Date().toISOString(),
     };
@@ -284,6 +286,8 @@ export async function updateAccountDetails(details: Partial<AccountDetails> & { 
     if (rest.account_number !== undefined) payload.account_number = rest.account_number;
     if (rest.ifsc_code !== undefined) payload.ifsc_code = rest.ifsc_code;
     if (rest.upi_id !== undefined) payload.upi_id = rest.upi_id;
+    if (rest.account_holder_name !== undefined) payload.account_holder_name = rest.account_holder_name;
+    if (rest.branch_name !== undefined) payload.branch_name = rest.branch_name;
     if (rest.qr_code_url !== undefined) payload.qr_code_url = rest.qr_code_url;
 
     const { data, error } = await supabase
