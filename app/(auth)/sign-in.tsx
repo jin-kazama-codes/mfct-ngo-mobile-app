@@ -10,11 +10,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppState } from '../../src/context/AppStateProvider';
 import { useColorScheme } from 'nativewind';
 import {
-    Phone, Mail, Lock, LogIn, Eye, EyeOff, Globe,
+    CreditCard, Mail, Lock, LogIn, Eye, EyeOff, Globe,
     ArrowLeft, ShieldCheck, AlertCircle, X, CheckCircle2,
     RotateCcw, Sparkles, Check, KeyRound
 } from 'lucide-react-native';
-import { getUserByEmail, getUserByPhone, updateUser } from '../../src/services/userService';
+import {
+    getUserByEmail,
+    getUserByMembershipId,
+    getUserByPhone,
+    updateUser,
+} from '../../src/services/userService';
 
 export default function SignInScreen() {
     const { t, i18n } = useTranslation();
@@ -115,7 +120,7 @@ export default function SignInScreen() {
             setForgotEmail(trimmed.toLowerCase());
         } else if (trimmed.length >= 10) {
             try {
-                const u = await getUserByPhone(trimmed);
+                const u = await getUserByMembershipId(trimmed) || await getUserByPhone(trimmed);
                 if (u?.email) {
                     setForgotEmail(u.email);
                 } else {
@@ -379,8 +384,8 @@ export default function SignInScreen() {
         if (!identifier.trim() || !password) {
             setError(
                 tr(
-                    'कृपया अपना मोबाइल नंबर और पासवर्ड दर्ज करें।',
-                    'Please enter your phone number and password.'
+                    'कृपया अपनी सदस्यता आईडी और पासवर्ड दर्ज करें।',
+                    'Please enter your membership ID and password.'
                 )
             );
             return;
@@ -516,21 +521,19 @@ export default function SignInScreen() {
                                 </View>
                             ) : null}
 
-                            {/* Phone Input */}
+                            {/* Membership ID / legacy phone or email input */}
                             <View className="gap-1">
                                 <Text className="text-slate-700 dark:text-slate-300 font-semibold text-xs ml-1">
-                                    {tr('मोबाइल नंबर ', 'Phone Number')}
+                                    {tr('सदस्यता आईडी / मोबाइल / ईमेल', 'Membership ID / Phone / Email')}
                                 </Text>
                                 <View className="flex-row items-center bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl px-3.5">
-                                    <Phone color="#94a3b8" size={17} />
+                                    <CreditCard color="#94a3b8" size={17} />
                                     <TextInput
                                         className="flex-1 text-slate-900 dark:text-white px-3 py-3 text-sm"
-                                        placeholder={tr('मोबाइल नंबर दर्ज करें', 'Enter 10-digit phone number')}
+                                        placeholder={tr('MFCT-00001 या मोबाइल / ईमेल', 'MFCT-00001 or phone / email')}
                                         placeholderTextColor="#94a3b8"
                                         autoCapitalize="none"
                                         autoCorrect={false}
-                                        keyboardType="numeric"
-                                        maxLength={10}
                                         returnKeyType="next"
                                         value={identifier}
                                         onChangeText={(txt) => {
@@ -1034,4 +1037,3 @@ export default function SignInScreen() {
         </KeyboardAvoidingView>
     );
 }
-

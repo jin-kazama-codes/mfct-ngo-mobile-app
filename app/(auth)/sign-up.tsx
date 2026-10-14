@@ -602,7 +602,8 @@ export default function SignUpScreen() {
                 avatar: uploadedAvatar || avatarUri,
                 communityId: activeCommunity.id,
                 communityName: activeCommunity.name,
-                membershipId: `SS-${userCity.substring(0, 3).toUpperCase()}-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+                membershipId: '',
+                membershipFee: 100,
                 status: 'pending',
                 isVerified: false,
                 joinDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
@@ -632,7 +633,7 @@ export default function SignUpScreen() {
                 await AsyncStorage.removeItem('@signup_form_draft');
                 await AsyncStorage.removeItem('@camera_active_target');
                 await AsyncStorage.removeItem('@camera_launch_origin');
-            } catch {}
+            } catch { }
 
             // Auto redirect to Under Review screen after allowing user to view Step 3
             if (redirectTimerRef.current) {
@@ -677,7 +678,7 @@ export default function SignUpScreen() {
             await AsyncStorage.removeItem('@signup_form_draft');
             await AsyncStorage.removeItem('@camera_active_target');
             await AsyncStorage.removeItem('@camera_launch_origin');
-        } catch {}
+        } catch { }
         router.replace('/(auth)/under-review');
     };
 
@@ -1268,22 +1269,6 @@ export default function SignUpScreen() {
                    ════════════════════════════════════════════════════════════════ */}
                 {step === 2 && (
                     <View className="gap-4 p-5">
-                        {/* Fee Banner */}
-                        <View className="gap-1 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-emerald-900 dark:bg-[#14281f]">
-                            <View className="flex-row items-center justify-between">
-                                <Text className={`text-[13px] font-extrabold uppercase ${isDark ? 'text-slate-50' : 'text-[#0f3322]'}`}>
-                                    {tr('वार्षिक सदस्यता एकजुटता शुल्क', 'سالانہ ممبرشپ فیس', 'Annual Membership Solidarity Fee')}
-                                </Text>
-                                <Text className="text-[22px] font-black text-[#0f3322]">₹100</Text>
-                            </View>
-                            <Text className={`text-xs leading-[18px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                                {tr(
-                                    `यह ₹100 शुल्क आपकी सदस्यता को ${activeCommunity?.name} में सक्रिय करता है और आपातकालीन सहायता व मतदान का अधिकार देता है।`,
-                                    `یہ فیس آپ کی ممبرشپ کو ${activeCommunity?.name} میں فعال کرتی ہے۔`,
-                                    `Activates membership in ${activeCommunity?.name} for direct priority emergency relief.`
-                                )}
-                            </Text>
-                        </View>
 
                         {/* Payment Tabs */}
                         <View className="flex-row rounded-2xl bg-slate-200 p-1 dark:bg-slate-800">

@@ -71,6 +71,7 @@ export interface User {
   communityId: string;
   communityName: string;
   membershipId: string;
+  membershipFee?: number;
   status: 'pending' | 'approved' | 'reject' | 'rejected';
   rejectionReason?: string;
   rejection_reason?: string;
@@ -281,4 +282,3 @@ export interface MemberBankDetails {
   created_at?: string;
   updated_at?: string;
 }
-

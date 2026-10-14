@@ -95,6 +95,7 @@ function mapRow(row: Record<string, unknown>): User {
     communityId: row.community_id as string,
     communityName: row.community_name as string,
     membershipId: row.membership_id as string,
+    membershipFee: row.membership_fee as number | undefined,
     status: userStatus,
     isVerified: userStatus === 'approved',
     rejectionReason: effectiveRejectionReason,
@@ -153,6 +154,19 @@ export async function getUserByPhone(phone: string): Promise<User | null> {
   return null;
 }
 
+export async function getUserByMembershipId(membershipId: string): Promise<User | null> {
+  const normalizedId = membershipId.trim().toUpperCase();
+  if (!normalizedId) return null;
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('membership_id', normalizedId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return mapRow(data);
+}
+
 export async function getUsers(district?: string): Promise<User[]> {
   let query = supabase.from('users').select('*').order('created_at', { ascending: false });
   if (district && district !== 'all') {
@@ -206,7 +220,7 @@ export async function authenticateUser(
 
     let user = cleanId.includes('@')
       ? await getUserByEmail(cleanId)
-      : await getUserByPhone(cleanId);
+      : await getUserByMembershipId(cleanId) || await getUserByPhone(cleanId);
 
     // Fallback search if initial lookup produced no user
     if (!user) {
@@ -218,7 +232,7 @@ export async function authenticateUser(
     }
 
     if (!user) {
-      return { success: false, error: 'User account not found. Please check your phone number or email.' };
+      return { success: false, error: 'User account not found. Please check your membership ID, phone number, or email.' };
     }
     if (user.passwordHash) {
       const isValid = await verifyPassword(cleanPass, user.passwordHash);
@@ -249,7 +263,8 @@ export async function createUser(user: User & { kycDocumentUrl?: string; aadhaar
     avatar: user.avatar || null,
     community_id: user.communityId || null,
     community_name: user.communityName || null,
-    membership_id: user.membershipId || `MFCT-${(city || 'IND').substring(0, 3).toUpperCase()}-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+    membership_id: user.membershipId || null,
+    membership_fee: user.membershipFee ?? 100,
     status: initialStatus,
     is_verified: initialStatus === 'approved',
     rejection_reason: user.rejectionReason || user.rejection_reason || null,

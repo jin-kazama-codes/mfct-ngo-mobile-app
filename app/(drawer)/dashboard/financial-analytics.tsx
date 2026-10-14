@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { getRecentDonations } from '../../../src/services/donationService';
-import { Donation } from '../../../src/types';
+import { Donation, User } from '../../../src/types';
+import { getUsers } from '../../../src/services/userService';
+import { useAppState } from '../../../src/context/AppStateProvider';
 import { TrendingUp, FileCheck, ShieldCheck } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
@@ -9,7 +11,6 @@ import { FinancialAnalyticsSkeleton } from '../../../src/components/SkeletonLoad
 import {
   getLanguageCode,
   translateCategory,
-  translateDonorName,
   translateStatus,
   translateRole,
   translateRoleResponsibility,
@@ -17,16 +18,45 @@ import {
 import { DynamicText } from '../../../src/components/DynamicText';
 
 export default function FinancialAnalyticsScreen() {
+  const { activeUser } = useAppState();
   const { t, i18n } = useTranslation();
   const lang = getLanguageCode(i18n.language);
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
   const [donations, setDonations] = useState<Donation[]>([]);
+  const [registrationPayments, setRegistrationPayments] = useState<User[]>([]);
+  const [registrationPaymentsError, setRegistrationPaymentsError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const isCentralAdmin = activeUser?.role === 'super_admin' || activeUser?.role === 'executive_admin';
 
   useEffect(() => {
-    getRecentDonations(50).then(setDonations).finally(() => setLoading(false));
-  }, []);
+    const loadFinancialData = async () => {
+      const [donationsResult, usersResult] = await Promise.allSettled([
+        getRecentDonations(50),
+        isCentralAdmin ? getUsers() : Promise.resolve<User[]>([]),
+      ]);
+
+      if (donationsResult.status === 'fulfilled') {
+        setDonations(donationsResult.value);
+      } else {
+        console.error('Failed to load donations for financial analytics:', donationsResult.reason);
+      }
+
+      if (isCentralAdmin) {
+        if (usersResult.status === 'fulfilled') {
+          setRegistrationPayments(usersResult.value.filter(
+            (user) => user.status === 'approved' && Boolean(user.paymentUtr?.trim())
+          ));
+        } else {
+          console.error('Failed to load registration payments:', usersResult.reason);
+          setRegistrationPaymentsError(true);
+        }
+      }
+
+      setLoading(false);
+    };
+    loadFinancialData();
+  }, [isCentralAdmin]);
 
   const total = donations.filter(d => d.status === 'verified').reduce((a, d) => a + d.amountINR, 0);
   const pending = donations.filter(d => d.status === 'pending_verification').reduce((a, d) => a + d.amountINR, 0);
@@ -103,6 +133,80 @@ export default function FinancialAnalyticsScreen() {
           <Text className="text-white/80 text-xs mt-0.5">{t('admin.kyc_subtitle', 'Pending Verification')}</Text>
         </View>
       </View>
+
+      {isCentralAdmin && (
+        <View className="bg-white dark:bg-slate-900 rounded-2xl border border-emerald-200 dark:border-emerald-900 p-4 mb-5">
+          <View className="flex-row items-start justify-between gap-3 mb-3">
+            <View className="flex-1">
+              <Text className="text-base font-bold text-slate-900 dark:text-white">
+                {lang === 'hi' ? 'पंजीकरण भुगतान' : lang === 'ur' ? 'رجسٹریشن ادائیگیاں' : 'Registration Payments'}
+              </Text>
+              <Text className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                {lang === 'hi' ? 'स्वीकृत सदस्य और दर्ज UTR वाले भुगतान।' : lang === 'ur' ? 'منظور شدہ اراکین اور درج UTR والی ادائیگیاں۔' : 'Payments attached to approved member registrations.'}
+              </Text>
+            </View>
+            <View className="items-end">
+              <Text className="text-emerald-700 dark:text-emerald-400 font-bold">
+                ₹{(registrationPayments.length * 100).toLocaleString('en-IN')}
+              </Text>
+              <Text className="text-[10px] text-slate-500 dark:text-slate-400">
+                {registrationPayments.length} {lang === 'hi' ? 'सदस्य' : lang === 'ur' ? 'اراکین' : 'members'}
+              </Text>
+            </View>
+          </View>
+          {registrationPaymentsError ? (
+            <Text className="text-sm text-red-600 dark:text-red-400">
+              {lang === 'hi' ? 'पंजीकरण भुगतान लोड नहीं हो सके।' : lang === 'ur' ? 'رجسٹریشن ادائیگیاں لوڈ نہیں ہو سکیں۔' : 'Registration payments could not be loaded.'}
+            </Text>
+          ) : registrationPayments.length === 0 ? (
+            <Text className="text-sm text-slate-500 dark:text-slate-400">
+              {lang === 'hi' ? 'दर्ज UTR वाला कोई स्वीकृत पंजीकरण नहीं है।' : lang === 'ur' ? 'درج UTR کے ساتھ کوئی منظور شدہ رجسٹریشن نہیں۔' : 'No approved registrations with a recorded UTR.'}
+            </Text>
+          ) : (
+            registrationPayments.map((member) => (
+              <View key={member.id} className="border-t border-slate-100 dark:border-slate-800 py-3">
+                <View className="flex-row items-start justify-between gap-2">
+                  <View className="flex-1">
+                    <DynamicText
+                      text={member.name}
+                      className="text-sm font-semibold text-slate-900 dark:text-white"
+                      numberOfLines={1}
+                    />
+                    <Text className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      {member.membershipId} · {member.joinDate || 'N/A'}
+                    </Text>
+                    <Text className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                      UTR: {member.paymentUtr}
+                    </Text>
+                    <Text className="text-xs text-slate-500 dark:text-slate-400">
+                      {member.paymentMethod || 'N/A'}
+                    </Text>
+                  </View>
+                  <Text className="text-sm font-bold text-emerald-700 dark:text-emerald-400">₹100</Text>
+                </View>
+                {member.paymentScreenshotUrl && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      const screenshotUrl = member.paymentScreenshotUrl;
+                      if (screenshotUrl) {
+                        Linking.openURL(screenshotUrl).catch((error) =>
+                          console.error('Could not open registration payment proof:', error)
+                        );
+                      }
+                    }}
+                    className="mt-2 self-start"
+                    accessibilityRole="link"
+                  >
+                    <Text className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                      {lang === 'hi' ? 'भुगतान प्रमाण देखें' : lang === 'ur' ? 'ادائیگی کا ثبوت دیکھیں' : 'View payment proof'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))
+          )}
+        </View>
+      )}
 
       {/* By Category */}
       <Text className="text-base font-bold text-slate-900 dark:text-white mb-3">

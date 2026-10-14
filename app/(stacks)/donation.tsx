@@ -21,7 +21,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppState } from '../../src/context/AppStateProvider';
 import { getCampaigns, getCampaignById } from '../../src/services/campaignService';
 import { getAccountDetails } from '../../src/services/adminService';
-import { createDonation, updateCampaignRaised } from '../../src/services/donationService';
+import { createDonation } from '../../src/services/donationService';
 import { uploadImageToSupabase } from '../../src/services/storageService';
 import { Campaign, DonationCategory, AccountDetails, Donation, UserRole } from '../../src/types';
 import {
@@ -47,6 +47,10 @@ import {
   FileText,
   Share2,
   ChevronDown,
+  User,
+  UserCheck,
+  Phone,
+  MapPin,
 } from 'lucide-react-native';
 
 const PRESET_AMOUNTS = [500, 1000, 2500, 5000, 10000];
@@ -160,6 +164,10 @@ export default function DonationScreen() {
   const [isUtrFocused, setIsUtrFocused] = useState(false);
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
 
+  const isLoggedIn = Boolean(
+    activeUser && activeUser.id && activeUser.name && activeUser.name !== 'No User'
+  );
+
   // Form states
   const [amount, setAmount] = useState<number>(2500);
   const [customAmount, setCustomAmount] = useState<string>('');
@@ -167,17 +175,23 @@ export default function DonationScreen() {
     (params.initialCategory as DonationCategory) || 'General'
   );
   const [donorName, setDonorName] = useState<string>(
-    activeUser?.name || tr('उदार दानदाता', 'عطیہ دہندہ', 'Generous Supporter')
+    (isLoggedIn && activeUser?.name && activeUser.name !== 'No User') ? activeUser.name : ''
+  );
+  const [donorMobile, setDonorMobile] = useState<string>(
+    (isLoggedIn && activeUser?.phone) ? activeUser.phone : ''
+  );
+  const [donorCity, setDonorCity] = useState<string>(
+    (isLoggedIn && (activeUser?.city || activeUser?.district || activeUser?.address)) ? (activeUser.city || activeUser.district || activeUser.address || '') : ''
   );
   const [isOutsideCommunity, setIsOutsideCommunity] = useState<boolean>(false);
 
   // Zakat Wakalah Form states
   const [zakatGuardianName, setZakatGuardianName] = useState<string>('');
   const [zakatAddress, setZakatAddress] = useState<string>(
-    activeUser?.address || activeUser?.city || ''
+    (isLoggedIn && (activeUser?.address || activeUser?.city)) ? (activeUser.address || activeUser.city || '') : ''
   );
   const [zakatMobile, setZakatMobile] = useState<string>(
-    activeUser?.phone || ''
+    (isLoggedIn && activeUser?.phone) ? activeUser.phone : ''
   );
   const [zakatAmountWords, setZakatAmountWords] = useState<string>('');
   const [zakatAgreed, setZakatAgreed] = useState<boolean>(true);
@@ -198,13 +212,14 @@ export default function DonationScreen() {
   // Step 3 Result
   const [createdDonation, setCreatedDonation] = useState<Donation | null>(null);
 
-  const userCity = (activeUser?.city || activeUser?.address || '').trim();
+  // Registered member's city (stable, only set for logged-in users)
+  const registeredCity = (isLoggedIn ? (activeUser?.city || activeUser?.district || activeUser?.address) : '')?.trim() || '';
 
-  // Locality matcher
+  // Locality matcher for registered member's city
   const isMatchUserCity = useCallback(
     (c: Campaign | null | undefined) => {
-      if (!c || !userCity) return false;
-      const uCity = userCity.toLowerCase().trim();
+      if (!c || !registeredCity) return false;
+      const uCity = registeredCity.toLowerCase().trim();
       const cCity = (c.city || '').toLowerCase().trim();
       const cDistrict = ((c as any).district || '').toLowerCase().trim();
       const cComm = (c.communityName || '').toLowerCase().trim();
@@ -215,56 +230,67 @@ export default function DonationScreen() {
         (cComm && (cComm.includes(uCity) || uCity.includes(cComm)))
       );
     },
-    [userCity]
+    [registeredCity]
   );
 
   useEffect(() => {
+    let isMounted = true;
     async function initData() {
       try {
         const allCamps = await getCampaigns();
+        if (!isMounted) return;
         setCampaigns(allCamps);
 
         if (params.campaignId) {
           const camp = await getCampaignById(params.campaignId);
-          if (camp) {
+          if (camp && isMounted) {
             setCampaign(camp);
             setSelectedCategory(camp.category);
-          } else if (allCamps.length > 0) {
-            const localCamp = userCity ? allCamps.find(isMatchUserCity) : null;
+          } else if (allCamps.length > 0 && isMounted) {
+            const localCamp = registeredCity ? allCamps.find(isMatchUserCity) : null;
             setCampaign(localCamp || allCamps[0]);
           }
-        } else if (allCamps.length > 0) {
-          const localCamp = userCity ? allCamps.find(isMatchUserCity) : null;
+        } else if (allCamps.length > 0 && isMounted) {
+          const localCamp = registeredCity ? allCamps.find(isMatchUserCity) : null;
           setCampaign(localCamp || allCamps[0]);
         }
 
         const accData = await getAccountDetails();
-        if (accData && accData.length > 0) {
+        if (accData && accData.length > 0 && isMounted) {
           setAccountDetails(accData[0]);
         }
       } catch (err) {
         console.warn('Error loading donation screen data:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
     initData();
-  }, [params.campaignId, userCity, isMatchUserCity]);
+    return () => {
+      isMounted = false;
+    };
+  }, [params.campaignId, registeredCity, isMatchUserCity]);
 
   // Sync user details
   useEffect(() => {
-    if (activeUser) {
-      if (activeUser.name && (!donorName || donorName === 'Generous Supporter' || donorName === 'उदार दानदाता')) {
+    if (isLoggedIn && activeUser) {
+      if (activeUser.name && activeUser.name !== 'No User' && !donorName.trim()) {
         setDonorName(activeUser.name);
       }
-      if (activeUser.phone && !zakatMobile) {
+      if (activeUser.phone && !donorMobile.trim()) {
+        setDonorMobile(activeUser.phone);
+      }
+      if ((activeUser.city || activeUser.district || activeUser.address) && !donorCity.trim()) {
+        setDonorCity(activeUser.city || activeUser.district || activeUser.address || '');
+      }
+      if (activeUser.phone && !zakatMobile.trim()) {
         setZakatMobile(activeUser.phone);
       }
-      if ((activeUser.address || activeUser.city) && !zakatAddress) {
+      if ((activeUser.address || activeUser.city) && !zakatAddress.trim()) {
         setZakatAddress(activeUser.address || activeUser.city || '');
       }
     }
-  }, [activeUser]);
+  }, [activeUser, isLoggedIn]);
 
   // Sync Zakat Amount in words when amount or language changes
   useEffect(() => {
@@ -281,8 +307,8 @@ export default function DonationScreen() {
   }, [isZakatSelected, campaigns]);
 
   const localCityCampaigns = useMemo(() => {
-    return userCity ? filteredCampaigns.filter(isMatchUserCity) : [];
-  }, [userCity, filteredCampaigns, isMatchUserCity]);
+    return registeredCity ? filteredCampaigns.filter(isMatchUserCity) : [];
+  }, [registeredCity, filteredCampaigns, isMatchUserCity]);
 
   // Manual list according to outside community toggle
   const displayCampaigns = useMemo(() => {
@@ -393,6 +419,22 @@ export default function DonationScreen() {
         );
         return;
       }
+      if (!isLoggedIn) {
+        if (!donorName.trim()) {
+          Alert.alert(
+            tr('सूचना', 'نوٹس', 'Notice'),
+            tr('कृपया अपना पूरा नाम दर्ज करें।', 'براہ کرم अपना पूरा नाम درج کریں۔', 'Please enter your full name.')
+          );
+          return;
+        }
+        if (!donorMobile.trim()) {
+          Alert.alert(
+            tr('सूचना', 'نوٹس', 'Notice'),
+            tr('कृपया मोबाइल नंबर दर्ज करें।', 'براہ کرم मोबाइल नंबर درج کریں۔', 'Please enter mobile number.')
+          );
+          return;
+        }
+      }
     }
     setStep(2);
   };
@@ -401,19 +443,26 @@ export default function DonationScreen() {
     if (!donorName.trim()) {
       Alert.alert(
         tr('सूचना', 'نوٹس', 'Notice'),
-        tr('कृपया अपना पूरा नाम दर्ज करें।', 'براہ کرم اپنا پورا نام درج کریں۔', 'Please enter your full name.')
+        tr('कृपया अपना पूरा नाम दर्ज करें।', 'براہ کرم अपना पूरा नाम درج کریں۔', 'Please enter your full name.')
       );
       return;
     }
-    if (!utrNumber.trim() && !screenshotUri) {
+    if (!isLoggedIn && !donorMobile.trim()) {
+      Alert.alert(
+        tr('सूचना', 'نوٹس', 'Notice'),
+        tr('कृपया मोबाइल नंबर दर्ज करें।', 'براہ کرم موبائل नंबर درج کریں۔', 'Please enter mobile number.')
+      );
+      return;
+    }
+    if (!/^\d{12}$/.test(utrNumber.trim()) || !screenshotUri) {
       Alert.alert(
         t('donation.verification_needed', tr('सत्यापन आवश्यक', 'تصدیق درکار ہے', 'Verification Needed')),
         t(
           'donation.enter_utr_or_screenshot',
           tr(
-            'कृपया 12 अंकों का बैंक UTR नंबर दर्ज करें या भुगतान स्क्रीनशॉट अपलोड करें।',
-            'براہ کرم 12 ہندسوں کا بینک UTR نمبر درج کریں یا رسید اپلوڈ کریں۔',
-            'Please enter a valid 12-digit Bank UTR number or upload payment screenshot.'
+            'कृपया सही 12 अंकों का UTR दर्ज करें और भुगतान स्क्रीनशॉट अपलोड करें।',
+            'براہ کرم درست 12 ہندسوں کا UTR درج کریں اور ادائیگی کی رسید اپلوڈ کریں۔',
+            'Please enter the actual 12-digit UTR and upload the payment screenshot.'
           )
         )
       );
@@ -422,11 +471,11 @@ export default function DonationScreen() {
 
     setSubmitting(true);
     try {
-      const finalUtr = utrNumber.trim() || `UTR${Math.floor(100000000000 + Math.random() * 900000000000)}`;
-      const finalDonorName = donorName.trim() || tr('उदार दानदाता', 'عطیہ دہندہ', 'Generous Supporter');
+      const finalUtr = utrNumber.trim();
+      const finalDonorName = donorName.trim();
       const isOutside = Boolean(
         isOutsideCommunity ||
-        (userCity && campaign && !isMatchUserCity(campaign))
+        (registeredCity && campaign && !isMatchUserCity(campaign))
       );
 
       // Upload payment screenshot to Supabase storage IMAGES bucket
@@ -438,8 +487,8 @@ export default function DonationScreen() {
         transactionId: `TXN${Math.floor(100000000 + Math.random() * 900000000)}`,
         utrNumber: finalUtr,
         donorName: finalDonorName,
-        donorId: activeUser?.id || 'anonymous',
-        donorRole: ((activeUser?.districtRole?.trim() || activeUser?.district_role?.trim() || activeUser?.role || 'member') as UserRole),
+        donorId: (isLoggedIn && activeUser?.id) ? activeUser.id : 'anonymous',
+        donorRole: (isLoggedIn && activeUser) ? ((activeUser?.districtRole?.trim() || activeUser?.district_role?.trim() || activeUser?.role || 'member') as UserRole) : 'member',
         // When outside community: do NOT link to any specific campaign
         campaignId: isOutside ? 'general' : (campaign?.id || 'general'),
         campaignTitle: isOutside ? `${selectedCategory} General Fund (MFCT)` : (campaign?.title || `${selectedCategory} General Fund`),
@@ -452,13 +501,13 @@ export default function DonationScreen() {
         status: 'pending_verification',
         date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
         receiptNumber: `RCP-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
-        district: activeUser?.district || activeUser?.city || campaign?.district || campaign?.city || '',
+        district: (isLoggedIn ? (activeUser?.district || activeUser?.city) : donorCity.trim()) || campaign?.district || campaign?.city || 'General',
         wakalahInformation: selectedCategory === 'Zakat' ? [
           {
             donorName: finalDonorName,
             guardianName: zakatGuardianName.trim(),
             address: zakatAddress.trim(),
-            mobile: zakatMobile.trim(),
+            mobile: zakatMobile.trim() || donorMobile.trim(),
             amountINR: amount,
             amountInWords: zakatAmountWords || numberToWordsINR(amount, lang === 'en' ? 'en' : 'hi'),
             isAccepted: true,
@@ -472,10 +521,6 @@ export default function DonationScreen() {
       };
 
       const saved = await createDonation(donationData);
-      // Only credit the campaign raised amount when donation is for a specific campaign
-      if (!isOutside && campaign?.id) {
-        await updateCampaignRaised(campaign.id, amount);
-      }
 
       setCreatedDonation(saved);
       setStep(3);
@@ -566,6 +611,51 @@ export default function DonationScreen() {
           {/* STEP 1: Select Amount, Category & Zakat Wakalah */}
           {step === 1 && (
             <View className="space-y-4">
+              {isLoggedIn ? (
+                <View className="rounded-2xl border border-emerald-200 bg-emerald-50/90 dark:border-emerald-800 dark:bg-emerald-950/40 p-3.5 flex-row items-center gap-3">
+                  <View className="w-10 h-10 rounded-xl bg-emerald-600 items-center justify-center">
+                    <UserCheck color="#ffffff" size={20} />
+                  </View>
+                  <View className="flex-1">
+                    <View className="flex-row items-center gap-2">
+                      <Text className="text-xs font-bold text-slate-900 dark:text-white">
+                        {donorName || activeUser?.name}
+                      </Text>
+                      <View className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60">
+                        <Text className="text-[9px] font-extrabold text-emerald-800 dark:text-emerald-200">
+                          {tr('पंजीकृत सदस्य ✓', 'رجسٹرڈ ممبر ✓', 'Registered Member ✓')}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      {[activeUser?.phone, activeUser?.district || activeUser?.city].filter(Boolean).join(' • ') || tr('खाता सत्यापित', 'اکاؤنٹ تصدیق شدہ', 'Account Verified')}
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <View className="rounded-2xl border border-amber-200 bg-amber-50/80 dark:border-amber-900/40 dark:bg-amber-950/30 p-3.5 flex-row items-center gap-3">
+                  <View className="w-10 h-10 rounded-xl bg-amber-500/20 dark:bg-amber-500/30 items-center justify-center">
+                    <Sparkles color="#d97706" size={20} />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                      {tr(
+                        'खुला दान (साइन अप आवश्यक नहीं)',
+                        'کھلا عطیہ (سائن اپ ضروری نہیں)',
+                        'Open Donation (No Sign-Up Needed)'
+                      )}
+                    </Text>
+                    <Text className="text-[11px] text-amber-800/80 dark:text-amber-300/80 mt-0.5 leading-4">
+                      {tr(
+                        'दान करने के लिए सदस्यता या पंजीकरण अनिवार्य नहीं है। कोई भी सीधे दान कर सकता है।',
+                        'عطیہ دینے کے لیے رکنیت یا اکاؤنٹ ضروری نہیں ہے۔ کوئی بھی براہ راست عطیہ دے سکتا ہے۔',
+                        'No registration or sign-up required. Anyone can donate directly.'
+                      )}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
               {/* Outside Community Assistance Toggle */}
               {campaigns.length > 0 && (
                 <View
@@ -1088,19 +1178,77 @@ export default function DonationScreen() {
                     />
                   </View>
 
-                  {/* Donor Name Input for General Giving */}
-                  <View className="pt-1">
-                    <Text className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {tr('आपका नाम:', 'آپ کا نام:', 'Your Name:')}
-                    </Text>
-                    <TextInput
-                      value={donorName}
-                      onChangeText={setDonorName}
-                      placeholder={tr('उदा. मोहम्मद आरिफ़', 'مثال: محمد عارف', 'e.g. Mohammad Arif')}
-                      placeholderTextColor="#94a3b8"
-                      className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2.5 rounded-xl text-xs font-semibold text-slate-900 dark:text-white"
-                    />
-                  </View>
+                  {/* Donor Details for General Giving */}
+                  {isLoggedIn ? (
+                    <View className="pt-2">
+                      <View className="bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 p-3 rounded-xl flex-row items-center gap-2.5">
+                        <UserCheck color="#059669" size={16} />
+                        <View className="flex-1">
+                          <Text className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                            {tr('दानदाता:', 'عطیہ دہندہ:', 'Donor:')} {donorName || activeUser?.name}
+                          </Text>
+                          <Text className="text-[10px] text-slate-500 dark:text-slate-400">
+                            {[activeUser?.phone, activeUser?.district || activeUser?.city].filter(Boolean).join(' • ') || tr('पंजीकृत खाता विवरण', 'رجسٹرڈ اکاؤنٹ تفصیلات', 'Registered Account Profile')}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  ) : (
+                    <View className="pt-2 space-y-3">
+                      <View className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 p-2.5 rounded-xl">
+                        <Text className="text-[11px] font-semibold text-amber-900 dark:text-amber-200">
+                          {tr(
+                            'दान रसीद एवं सत्यापन के लिए कृपया अपना विवरण भरें:',
+                            'عطیہ کی رسید اور تصدیق کے لیے براہ کرم اپنی تفصیلات درج کریں:',
+                            'Please enter your details for tax receipt and verification:'
+                          )}
+                        </Text>
+                      </View>
+
+                      {/* Donor Name Input */}
+                      <View>
+                        <Text className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          {tr('पूरा नाम:', 'پورا نام:', 'Full Name:')} <Text className="text-rose-500">*</Text>
+                        </Text>
+                        <TextInput
+                          value={donorName}
+                          onChangeText={setDonorName}
+                          placeholder={tr('उदा. मोहम्मद आरिफ़', 'مثال: محمد عارف', 'e.g. Mohammad Arif')}
+                          placeholderTextColor="#94a3b8"
+                          className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2.5 rounded-xl text-xs font-semibold text-slate-900 dark:text-white"
+                        />
+                      </View>
+
+                      {/* Donor Mobile Input */}
+                      <View>
+                        <Text className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          {tr('मोबाइल नंबर:', 'موبائل نمبر:', 'Mobile Number:')} <Text className="text-rose-500">*</Text>
+                        </Text>
+                        <TextInput
+                          value={donorMobile}
+                          onChangeText={setDonorMobile}
+                          keyboardType="phone-pad"
+                          placeholder="9876543210"
+                          placeholderTextColor="#94a3b8"
+                          className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2.5 rounded-xl text-xs font-mono font-semibold text-slate-900 dark:text-white"
+                        />
+                      </View>
+
+                      {/* Donor City Input */}
+                      <View>
+                        <Text className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          {tr('शहर / ज़िला:', 'شہر / ضلع:', 'City / District:')}
+                        </Text>
+                        <TextInput
+                          value={donorCity}
+                          onChangeText={setDonorCity}
+                          placeholder={tr('उदा. संभल', 'مثال: سنبھل', 'e.g. Sambhal')}
+                          placeholderTextColor="#94a3b8"
+                          className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2.5 rounded-xl text-xs font-semibold text-slate-900 dark:text-white"
+                        />
+                      </View>
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -1220,15 +1368,19 @@ export default function DonationScreen() {
                   </Text>
 
                   {/* QR Code Container */}
-                  <View className="bg-white p-3.5 rounded-2xl shadow-md items-center justify-center">
-                    {accountDetails?.qr_code_url ? (
+                  <View className="h-[162px] w-[162px] items-center justify-center rounded-2xl bg-white p-4 shadow-md">
+                    {loading ? (
+                      <ActivityIndicator color="#059669" />
+                    ) : accountDetails?.qr_code_url ? (
                       <Image
                         source={{ uri: accountDetails.qr_code_url }}
-                        className="w-36 h-36"
+                        className="h-[130px] w-[130px]"
                         resizeMode="contain"
                       />
                     ) : (
-                      <QrCode color="#064e3b" size={144} />
+                      <Text className="text-center text-xs font-medium text-slate-600">
+                        {tr('QR कोड उपलब्ध नहीं है', 'QR کوڈ دستیاب नहीं है', 'QR code is not available')}
+                      </Text>
                     )}
                   </View>
 
@@ -1373,19 +1525,71 @@ export default function DonationScreen() {
 
               {/* Verification Inputs (Donor Name, UTR, Screenshot) */}
               <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
-                {/* Donor Full Name */}
-                <View>
-                  <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-1.5">
-                    {t('donation.full_name', tr('आपका पूरा नाम', 'آپ کا پورا نام', 'Your Full Name'))} <Text className="text-rose-500">*</Text>
-                  </Text>
-                  <TextInput
-                    value={donorName}
-                    onChangeText={setDonorName}
-                    placeholder={t('donation.donor_name_placeholder', tr('उदा. मोहम्मद आरिफ़', 'مثال: محمد عارف', 'e.g. Mohammad Arif'))}
-                    placeholderTextColor="#94a3b8"
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-sm text-slate-900 dark:text-white font-medium"
-                  />
-                </View>
+                {/* Donor Profile / Verification Information */}
+                {isLoggedIn ? (
+                  <View className="rounded-xl border border-emerald-200 bg-emerald-50/80 dark:border-emerald-900/60 dark:bg-emerald-950/30 p-3.5 flex-row items-center justify-between">
+                    <View className="flex-row items-center gap-2.5 flex-1 mr-2">
+                      <View className="w-9 h-9 rounded-xl bg-emerald-600 items-center justify-center">
+                        <UserCheck color="#ffffff" size={18} />
+                      </View>
+                      <View className="flex-1">
+                        <Text className="text-xs font-bold text-slate-900 dark:text-white">
+                          {donorName || activeUser?.name}
+                        </Text>
+                        <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          {[activeUser?.phone, activeUser?.district || activeUser?.city].filter(Boolean).join(' • ') || tr('पंजीकृत दानदाता', 'رجسٹرڈ عطیہ دہندہ', 'Registered Donor')}
+                        </Text>
+                      </View>
+                    </View>
+                    <View className="px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60">
+                      <Text className="text-[9px] font-extrabold text-emerald-800 dark:text-emerald-200">
+                        {tr('सत्यापित खाता ✓', 'تصدیق شدہ اکاؤنٹ ✓', 'Verified Account ✓')}
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View className="space-y-3">
+                    <View>
+                      <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-1.5">
+                        {t('donation.full_name', tr('दानदाता का पूरा नाम', 'عطیہ دہندہ کا پورا نام', 'Donor Full Name'))} <Text className="text-rose-500">*</Text>
+                      </Text>
+                      <TextInput
+                        value={donorName}
+                        onChangeText={setDonorName}
+                        placeholder={t('donation.donor_name_placeholder', tr('उदा. मोहम्मद आरिफ़', 'مثال: محمد عارف', 'e.g. Mohammad Arif'))}
+                        placeholderTextColor="#94a3b8"
+                        className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-sm text-slate-900 dark:text-white font-medium"
+                      />
+                    </View>
+                    <View className="flex-row gap-3">
+                      <View className="flex-1">
+                        <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-1.5">
+                          {tr('मोबाइल नंबर', 'موبائل نمبر', 'Mobile Number')} <Text className="text-rose-500">*</Text>
+                        </Text>
+                        <TextInput
+                          value={donorMobile}
+                          onChangeText={setDonorMobile}
+                          keyboardType="phone-pad"
+                          placeholder="9876543210"
+                          placeholderTextColor="#94a3b8"
+                          className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-sm font-mono text-slate-900 dark:text-white font-medium"
+                        />
+                      </View>
+                      <View className="flex-1">
+                        <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-1.5">
+                          {tr('शहर / ज़िला', 'شہر / ضلع', 'City / District')}
+                        </Text>
+                        <TextInput
+                          value={donorCity}
+                          onChangeText={setDonorCity}
+                          placeholder={tr('उदा. संभल', 'مثال: سنبھل', 'e.g. Sambhal')}
+                          placeholderTextColor="#94a3b8"
+                          className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-sm text-slate-900 dark:text-white font-medium"
+                        />
+                      </View>
+                    </View>
+                  </View>
+                )}
 
                 {/* 12-Digit Bank UTR */}
                 <View>
@@ -1417,8 +1621,9 @@ export default function DonationScreen() {
                     <TextInput
                       value={utrNumber}
                       onChangeText={(txt) => {
-                        setUtrNumber(txt);
-                        if (txt.trim().length >= 12) {
+                        const digits = txt.replace(/\D/g, '').slice(0, 12);
+                        setUtrNumber(digits);
+                        if (digits.length === 12) {
                           Keyboard.dismiss();
                           setIsUtrFocused(false);
                         }
@@ -1459,7 +1664,7 @@ export default function DonationScreen() {
                           {utrNumber}
                         </Text>
                       </Text>
-                      {utrNumber.length >= 12 && (
+                      {utrNumber.length === 12 && (
                         <View className="bg-emerald-500 rounded-full p-0.5">
                           <Check color="#ffffff" size={12} />
                         </View>
@@ -1488,7 +1693,7 @@ export default function DonationScreen() {
                       <View className="items-center">
                         <Upload color="#64748b" size={22} />
                         <Text className="text-slate-700 dark:text-slate-300 text-xs font-bold mt-1">
-                          {t('donation.upload_screenshot_optional', tr('भुगतान स्क्रीनशॉट अपलोड करें (वैकल्पिक)', 'ادائیگی کی رسید اپلوڈ کریں (اختیاری)', 'Upload Payment Screenshot (Optional)'))}
+                          {t('donation.upload_screenshot_optional', tr('भुगतान स्क्रीनशॉट अपलोड करें (आवश्यक)', 'ادائیگی کی رسید اپلوڈ کریں (ضروری)', 'Upload Payment Screenshot (Required)'))}
                         </Text>
                         <Text className="text-slate-400 text-[10px] mt-0.5">
                           {t('donation.gallery_format', tr('फ़ोन गैलरी से JPG या PNG', 'فون گیلری سے JPG یا PNG', 'JPG or PNG from phone gallery'))}
