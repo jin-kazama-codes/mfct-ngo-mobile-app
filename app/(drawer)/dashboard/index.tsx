@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Image, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Image, TextInput, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
@@ -35,12 +35,13 @@ import {
   Building2, Activity, TrendingUp, Heart, ShieldCheck, Users,
   CreditCard, Award, ArrowRight, BarChart3, PieChart,
   PlusCircle, CheckCircle2, Megaphone, UserCheck, Banknote,
-  Calendar, Network, MapPin, AlertCircle, Clock
+  Calendar, Network, MapPin, AlertCircle, Clock, Download
 } from 'lucide-react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 import { useDynamicTranslatedText } from '@/src/lib/autoTranslate';
 import FinancialAnalyticsScreen from './financial-analytics';
 import { KycUpdateModal } from '../../../src/components/KycUpdateModal';
+import { downloadRegistrationPaymentSlipPdf } from '../../../src/services/receiptPdfService';
 import DistrictPresidentDashboard from '../../../src/components/DistrictPresidentDashboard';
 import DistrictCoordinatorDashboard from '../../../src/components/DistrictCoordinatorDashboard';
 import DistrictGeneralSecretaryDashboard from '../../../src/components/GenSecretary';
@@ -73,6 +74,7 @@ export default function DashboardIndex() {
   const [broadcasting, setBroadcasting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [kycModalVisible, setKycModalVisible] = useState(false);
+  const [downloadingRegistrationSlip, setDownloadingRegistrationSlip] = useState(false);
   const [selectedDistrictRole, setSelectedDistrictRole] = useState<DistrictRoleKey | null>(null);
 
   const handleDistrictNavigate = (tab: string) => {
@@ -111,6 +113,23 @@ export default function DashboardIndex() {
   };
 
   const displayName = useDynamicTranslatedText(activeUser?.name, lang);
+
+  const handleDownloadRegistrationSlip = async () => {
+    if (!activeUser || downloadingRegistrationSlip) return;
+
+    setDownloadingRegistrationSlip(true);
+    try {
+      await downloadRegistrationPaymentSlipPdf(activeUser);
+    } catch (error) {
+      console.error('Failed to create registration payment slip:', error);
+      Alert.alert(
+        lang === 'hi' ? 'रसीद डाउनलोड नहीं हुई' : lang === 'ur' ? 'رسید ڈاؤن لوڈ نہیں ہوئی' : 'Could not download slip',
+        error instanceof Error ? error.message : 'Please try again.'
+      );
+    } finally {
+      setDownloadingRegistrationSlip(false);
+    }
+  };
 
   // ─── Resolve District Role vs Primary System Role (Matching website AdminPanel.tsx) ──────
   const distRoleKeys: DistrictRoleKey[] = [
@@ -451,6 +470,51 @@ export default function DashboardIndex() {
             </TouchableOpacity>
           </View>
         ) : null}
+
+        {activeUser?.status === 'approved' && activeUser.paymentUtr && (
+          <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-900 mb-4">
+            <Text className="text-slate-900 dark:text-white font-bold text-sm">
+              {lang === 'hi' ? 'पंजीकरण भुगतान रसीद' : lang === 'ur' ? 'رجسٹریشن ادائیگی کی رسید' : 'Registration Payment Slip'}
+            </Text>
+            <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1">
+              {lang === 'hi'
+                ? 'आपकी ₹100 सदस्यता पंजीकरण राशि दर्ज है।'
+                : lang === 'ur'
+                  ? 'آپ کی ₹100 رکنیت رجسٹریشن فیس درج ہے۔'
+                  : 'Your ₹100 membership registration payment is recorded.'}
+            </Text>
+            <Text className="text-slate-500 dark:text-slate-400 text-xs mt-1">
+              UTR: {activeUser.paymentUtr}
+            </Text>
+            <TouchableOpacity
+              onPress={handleDownloadRegistrationSlip}
+              disabled={downloadingRegistrationSlip}
+              className="bg-emerald-700 rounded-xl px-4 py-3 mt-3"
+              style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: downloadingRegistrationSlip }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                {downloadingRegistrationSlip ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Download color="#ffffff" size={16} />
+                )}
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                  className="text-white text-sm font-bold text-center"
+                  style={{ flexShrink: 1, lineHeight: 20, textAlignVertical: 'center' }}
+                >
+                  {downloadingRegistrationSlip
+                    ? (lang === 'hi' ? 'तैयार हो रहा है...' : lang === 'ur' ? 'تیار ہو رہا ہے...' : 'Preparing slip...')
+                    : (lang === 'hi' ? 'भुगतान रसीद डाउनलोड करें' : lang === 'ur' ? 'ادائیگی کی رسید ڈاؤن لوڈ کریں' : 'Download Payment Slip')}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Stats Grid */}
         <View className="flex-row gap-3 mb-4">

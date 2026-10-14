@@ -604,3 +604,124 @@ Trust PAN: AABTM8912E | 80G Reg: AAATM9081EF20214
     });
   }
 }
+
+function escapeReceiptHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+    return entities[character];
+  });
+}
+
+export function generateRegistrationPaymentSlipHtml(user: User): string {
+  if (user.status !== 'approved' || !user.paymentUtr) {
+    throw new Error('An approved member with a recorded payment UTR is required.');
+  }
+
+  const receiptNumber = `MFCT-REG-${user.membershipId || user.id}`;
+  const rows: [string, string][] = [
+    ['Member Name', user.name],
+    ['Member ID', user.membershipId || user.id],
+    ['Email', user.email || 'N/A'],
+    ['Registration Payment', `₹${(user.membershipFee ?? 100).toFixed(2)}`],
+    ['Payment Date', user.joinDate || 'N/A'],
+    ['Transaction / UTR ID', user.paymentUtr],
+    ['Payment Method', user.paymentMethod || 'N/A'],
+    ['Purpose', 'Membership Registration Fee'],
+  ];
+  const tableRows = rows
+    .map(([label, value]) => `<tr><th>${escapeReceiptHtml(label)}</th><td>${escapeReceiptHtml(value)}</td></tr>`)
+    .join('');
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Registration Payment Slip - ${escapeReceiptHtml(receiptNumber)}</title>
+  <style>
+    @page { size: A4; margin: 18mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #17211c; font: 15px Arial, sans-serif; }
+    .slip { max-width: 760px; margin: 30px auto; border: 2px dashed #0f3322; padding: 42px; }
+    header { text-align: center; color: #0f3322; border-bottom: 1px solid #d6e2da; padding-bottom: 20px; }
+    h1 { margin: 0; font-size: 24px; }
+    header p { margin: 7px 0 0; color: #59675e; }
+    .receipt { margin: 20px 0; text-align: right; color: #59675e; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 13px 10px; border-bottom: 1px solid #e4e9e5; text-align: left; vertical-align: top; }
+    th { width: 42%; color: #24382c; }
+    td { overflow-wrap: anywhere; }
+    footer { margin-top: 28px; text-align: center; color: #0f3322; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <main class="slip">
+    <header>
+      <h1>MOHAMMAD FAEEM CHARITABLE TRUST</h1>
+      <p>Membership Registration Payment Slip</p>
+    </header>
+    <div class="receipt">Receipt No: ${escapeReceiptHtml(receiptNumber)}</div>
+    <table>${tableRows}</table>
+    <footer>Thank you for becoming a member of MFCT.</footer>
+  </main>
+</body>
+</html>`;
+}
+
+export async function downloadRegistrationPaymentSlipPdf(user: User): Promise<GeneratePdfResult> {
+  const html = generateRegistrationPaymentSlipHtml(user);
+  const cleanId = (user.membershipId || user.id).replace(/[^a-zA-Z0-9_-]/g, '');
+  const filename = `Registration_Payment_Slip_${cleanId}.pdf`;
+  const { uri: tempUri } = await Print.printToFileAsync({ html, base64: false });
+  const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+  const targetUri = `${baseDir}${filename}`;
+  let result: GeneratePdfResult;
+
+  try {
+    await FileSystem.copyAsync({ from: tempUri, to: targetUri });
+    result = { uri: targetUri, filename };
+  } catch (copyErr) {
+    console.warn('Could not rename registration slip PDF; using temporary file:', copyErr);
+    result = { uri: tempUri, filename };
+  }
+
+  if (Platform.OS === 'android' && FileSystem.StorageAccessFramework) {
+    try {
+      const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+      if (permissions.granted) {
+        const fileContent = await FileSystem.readAsStringAsync(result.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const createdFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          permissions.directoryUri,
+          filename,
+          'application/pdf'
+        );
+        await FileSystem.writeAsStringAsync(createdFileUri, fileContent, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        return { uri: createdFileUri, filename };
+      }
+    } catch (saveErr) {
+      console.warn('Could not save registration slip through Android storage access:', saveErr);
+    }
+  }
+
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(result.uri, {
+      UTI: '.pdf',
+      mimeType: 'application/pdf',
+      dialogTitle: `Save ${filename}`,
+    });
+  } else {
+    await Print.printAsync({ html });
+  }
+
+  return result;
+}

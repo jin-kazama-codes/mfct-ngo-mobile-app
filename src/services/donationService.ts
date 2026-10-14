@@ -70,6 +70,19 @@ export async function getRecentDonations(limit = 10): Promise<Donation[]> {
 }
 
 export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Donation> {
+  if (!donation.donorName.trim()) {
+    throw new Error('Donor name is required');
+  }
+  if (!Number.isFinite(donation.amountINR) || donation.amountINR <= 0) {
+    throw new Error('Donation amount must be greater than zero');
+  }
+  if (!/^\d{12}$/.test(donation.utrNumber.trim())) {
+    throw new Error('A valid 12-digit UTR is required');
+  }
+  if (!donation.paymentScreenshotUrl?.trim().startsWith('https://')) {
+    throw new Error('Payment screenshot is required');
+  }
+
   const campaignId = (!donation.campaignId || donation.campaignId === 'general') ? null : donation.campaignId;
   const donorId = (!donation.donorId || donation.donorId === 'anonymous') ? null : donation.donorId;
 
@@ -77,7 +90,7 @@ export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Do
     id: `don_${Date.now()}`,
     transaction_id: donation.transactionId || `TXN${Math.floor(100000000 + Math.random() * 900000000)}`,
     utr_number: donation.utrNumber,
-    donor_name: donation.donorName || 'Generous Member',
+    donor_name: donation.donorName.trim(),
     donor_id: donorId,
     donor_role: donation.donorRole || 'member',
     campaign_id: campaignId,
@@ -130,27 +143,13 @@ export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Do
 
     if (error) {
       console.error('Failed to insert donation after retries:', error);
-      return {
-        id: payload.id,
-        ...donation,
-        transactionId: payload.transaction_id,
-        receiptNumber: payload.receipt_number,
-        date: payload.date,
-        status: payload.status as Donation['status'],
-      };
+      throw error;
     }
     return mapRow(data);
 
   } catch (err) {
     console.warn('createDonation error:', err);
-    return {
-      id: payload.id,
-      ...donation,
-      transactionId: payload.transaction_id,
-      receiptNumber: payload.receipt_number,
-      date: payload.date,
-      status: payload.status as Donation['status'],
-    };
+    throw err;
   }
 }
 
