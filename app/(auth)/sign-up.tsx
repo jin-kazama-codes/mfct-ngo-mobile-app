@@ -20,7 +20,8 @@ import {
     Sparkles, ArrowLeft, ArrowRight, UserCheck, Eye, EyeOff,
     Upload, ChevronDown, Check, Copy, Camera, Image as ImageIcon,
     Trash2, FileText, CheckCircle2, AlertCircle, X, Globe, ShieldCheck, HeartHandshake,
-    HandHeart, Building2, MapPin, Mail, Phone, Lock, User as UserIcon
+    HandHeart, Building2, MapPin, Mail, Phone, Lock, User as UserIcon,
+    Home, Building, Landmark
 } from 'lucide-react-native';
 
 export default function SignUpScreen() {
@@ -41,13 +42,19 @@ export default function SignUpScreen() {
 
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [fullName, setFullName] = useState('');
+    const [fatherName, setFatherName] = useState('');
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-    const [city, setCity] = useState('');
+    const [houseNo, setHouseNo] = useState('');
+    const [villageTown, setVillageTown] = useState('');
+    const [postOffice, setPostOffice] = useState('');
+    const [block, setBlock] = useState('');
+    const [tehsil, setTehsil] = useState('');
+    const [district, setDistrict] = useState('');
     const [state, setState] = useState('');
-    const [address, setAddress] = useState('');
+    const city = (villageTown.trim() || district.trim());
     const [religion, setReligion] = useState<'Hindu' | 'Muslim' | 'Sikh' | 'Christian' | ''>('');
     const [isMalikENisab, setIsMalikENisab] = useState<boolean | null>(null);
     const [helpType, setHelpType] = useState<'Zakat' | 'Sadaka' | 'Fitra' | 'Other' | ''>('');
@@ -70,7 +77,7 @@ export default function SignUpScreen() {
     const [aadhaarBackUri, setAadhaarBackUri] = useState<string>('');
     const [aadhaarBackFileName, setAadhaarBackFileName] = useState<string>('');
 
-    const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Bank Transfer'>('UPI');
+    const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Bank Transfer'>('Bank Transfer');
     const [utrNumber, setUtrNumber] = useState('');
     const [screenshotUri, setScreenshotUri] = useState<string>('');
     const [screenshotFileName, setScreenshotFileName] = useState<string>('');
@@ -97,12 +104,17 @@ export default function SignUpScreen() {
             const draft = {
                 step,
                 fullName,
+                fatherName,
                 phone,
                 email,
                 password,
-                city,
+                houseNo,
+                villageTown,
+                postOffice,
+                block,
+                tehsil,
+                district,
                 state,
-                address,
                 religion,
                 isMalikENisab,
                 helpType,
@@ -139,12 +151,17 @@ export default function SignUpScreen() {
                     const d = JSON.parse(draftStr);
                     if (d.step) setStep(d.step);
                     if (d.fullName) setFullName(d.fullName);
+                    if (d.fatherName) setFatherName(d.fatherName);
                     if (d.phone) setPhone(d.phone);
                     if (d.email) setEmail(d.email);
                     if (d.password) setPassword(d.password);
-                    if (d.city) setCity(d.city);
+                    if (d.houseNo) setHouseNo(d.houseNo);
+                    if (d.villageTown) setVillageTown(d.villageTown);
+                    if (d.postOffice) setPostOffice(d.postOffice);
+                    if (d.block) setBlock(d.block);
+                    if (d.tehsil) setTehsil(d.tehsil);
+                    if (d.district) setDistrict(d.district);
                     if (d.state) setState(d.state);
-                    if (d.address) setAddress(d.address);
                     if (d.religion) setReligion(d.religion);
                     if (d.isMalikENisab !== undefined) setIsMalikENisab(d.isMalikENisab);
                     if (d.helpType) setHelpType(d.helpType);
@@ -241,18 +258,21 @@ export default function SignUpScreen() {
         });
     }, []);
 
-    // Filter communities strictly by city typed by user
+    // Filter communities strictly by village/town or district typed by user
     const filteredCommunities = useMemo(() => {
-        const q = city.trim().toLowerCase();
-        if (!q) return communities;
+        const qCity = villageTown.trim().toLowerCase();
+        const qDist = district.trim().toLowerCase();
+        if (!qCity && !qDist) return communities;
         return communities.filter((c) => {
             const cCity = (c.city || '').trim().toLowerCase();
             const cDist = (c.district || '').trim().toLowerCase();
-            const matchCity = cCity.length > 0 && (cCity.includes(q) || q.includes(cCity));
-            const matchDist = cDist.length > 0 && (cDist.includes(q) || q.includes(cDist));
-            return matchCity || matchDist;
+            const matchCity = qCity.length > 0 && cCity.length > 0 && (cCity.includes(qCity) || qCity.includes(cCity));
+            const matchDist = qDist.length > 0 && cDist.length > 0 && (cDist.includes(qDist) || qDist.includes(cDist));
+            const crossCity = qDist.length > 0 && cCity.length > 0 && (cCity.includes(qDist) || qDist.includes(cCity));
+            const crossDist = qCity.length > 0 && cDist.length > 0 && (cDist.includes(qCity) || qCity.includes(cDist));
+            return matchCity || matchDist || crossCity || crossDist;
         });
-    }, [communities, city]);
+    }, [communities, villageTown, district]);
 
     const hasCitySpecificCommunities = useMemo(() => {
         return city.trim().length > 0 && filteredCommunities.length > 0;
@@ -460,13 +480,20 @@ export default function SignUpScreen() {
 
         const missingFields: string[] = [];
         if (!fullName.trim()) missingFields.push(tr('पूरा नाम', 'مکمل نام', 'Full Name'));
+        if (!fatherName.trim()) missingFields.push(tr('पिता का नाम', 'والد کا نام', "Father's Name"));
         if (!phone.trim()) missingFields.push(tr('मोबाइल नंबर', 'موبائل نمبر', 'Mobile Number'));
         if (!password) missingFields.push(tr('पासवर्ड', 'پاس ورڈ', 'Password'));
-        if (!state.trim()) missingFields.push(tr('राज्य', 'ریاست', 'State'));
-        if (!city.trim()) missingFields.push(tr('शहर', 'شہر', 'City'));
-        if (!address.trim()) missingFields.push(tr('पूरा पता', 'مکمل پتہ', 'Full Address'));
+        if (!houseNo.trim()) missingFields.push(tr('मकान संख्या (H.No.)', 'مکان نمبر (H.No.)', 'House No. (H.No.)'));
+        if (!villageTown.trim()) missingFields.push(tr('गाँव / कस्बा (Village / Town)', 'گاؤں / قصبہ (Village / Town)', 'Village / Town'));
+        if (!postOffice.trim()) missingFields.push(tr('डाकघर (Post Office)', 'پوسٹ آفس (Post Office)', 'Post Office'));
+        if (!block.trim()) missingFields.push(tr('ब्लॉक (Block)', 'بلاک (Block)', 'Block'));
+        if (!tehsil.trim()) missingFields.push(tr('तहसील (Tehsil)', 'تحصیل (Tehsil)', 'Tehsil'));
+        if (!district.trim()) missingFields.push(tr('ज़िला (District)', 'ضلع (District)', 'District'));
+        if (!state.trim()) missingFields.push(tr('राज्य (State)', 'ریاست (State)', 'State'));
         if (!religion) missingFields.push(tr('धर्म', 'مذہب', 'Religion'));
         if (!avatarUri) missingFields.push(tr('प्रोफ़ाइल फ़ोटो', 'پروفائل تصویر', 'Profile Photo'));
+        if (!aadhaarFrontUri) missingFields.push(tr('आधार कार्ड (सामने)', 'آدھار کارڈ (सामने)', 'Aadhaar Card (Front)'));
+        if (!aadhaarBackUri) missingFields.push(tr('आधार कार्ड (पीछे)', 'آدھار کارڈ (पीछे)', 'Aadhaar Card (Back)'));
 
         if (missingFields.length > 0) {
             showToast(
@@ -588,16 +615,36 @@ export default function SignUpScreen() {
             ]);
 
             const hashedPassword = await hashPassword(password);
-            const userCity = city.trim() || activeCommunity.city || '';
+            const userCity = (villageTown.trim() || district.trim() || activeCommunity.city || '').trim();
+            const fullAddress = [
+                houseNo ? `H.No: ${houseNo.trim()}` : '',
+                villageTown ? `Village/Town: ${villageTown.trim()}` : '',
+                postOffice ? `PO: ${postOffice.trim()}` : '',
+                block ? `Block: ${block.trim()}` : '',
+                tehsil ? `Tehsil: ${tehsil.trim()}` : '',
+                district ? `Dist: ${district.trim()}` : '',
+                state ? `State: ${state.trim()}` : ''
+            ].filter(Boolean).join(', ');
 
             const newMember: User = {
                 id: `usr_new_${Date.now()}`,
                 name: fullName.trim(),
+                fatherName: fatherName.trim(),
+                father_name: fatherName.trim(),
                 email: email.trim().toLowerCase(),
                 phone: phone.trim(),
                 city: userCity,
                 state: state.trim(),
-                address: address.trim(),
+                address: fullAddress,
+                houseNo: houseNo.trim(),
+                house_no: houseNo.trim(),
+                villageTown: villageTown.trim(),
+                village_town: villageTown.trim(),
+                postOffice: postOffice.trim(),
+                post_office: postOffice.trim(),
+                block: block.trim(),
+                tehsil: tehsil.trim(),
+                district: district.trim(),
                 role: 'member',
                 avatar: uploadedAvatar || avatarUri,
                 communityId: activeCommunity.id,
@@ -775,6 +822,23 @@ export default function SignUpScreen() {
                             </View>
                         </View>
 
+                        {/* Father's Name */}
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {tr('पिता का नाम *', 'والد کا نام *', "Father's Name *")}
+                            </Text>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
+                                <UserIcon color={placeholderColor} size={18} />
+                                <TextInput
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
+                                    placeholder={tr('पिता का नाम दर्ज करें', 'والد کا نام درج کریں', "Enter father's name")}
+                                    placeholderTextColor={placeholderColor}
+                                    value={fatherName}
+                                    onChangeText={setFatherName}
+                                />
+                            </View>
+                        </View>
+
                         {/* Mobile Number */}
                         <View className="gap-1.5">
                             <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -840,10 +904,122 @@ export default function SignUpScreen() {
                             </View>
                         </View>
 
+                        {/* Residential Address Details */}
+                        <View className="mt-2 border-t border-slate-200 pt-3 dark:border-slate-800">
+                            <Text className={`text-xs font-bold uppercase tracking-[0.6px] ${isDark ? 'text-emerald-400' : 'text-emerald-700'}`}>
+                                {tr('स्थानीय पता विवरण *', 'رہائشی پتے کی تفصیلات *', 'Residential Address Details *')}
+                            </Text>
+                            <Text className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {tr('कृपया अपने आधार कार्ड के अनुसार संपूर्ण पता भरें', 'براہ کرم آدھار کارڈ کے مطابق مکمل پتہ درج کریں', 'Please enter your complete address as per Aadhaar')}
+                            </Text>
+                        </View>
+
+                        {/* House No */}
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {tr('मकान संख्या (H.No.) *', 'مکان نمبر (H.No.) *', 'House No. (H.No.) *')}
+                            </Text>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
+                                <Home color={placeholderColor} size={18} />
+                                <TextInput
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
+                                    placeholder={tr('उदा. 124/B या गली नं. 4', 'مثال: 124/B', 'e.g. 124/B or Flat 4')}
+                                    placeholderTextColor={placeholderColor}
+                                    value={houseNo}
+                                    onChangeText={setHouseNo}
+                                />
+                            </View>
+                        </View>
+
+                        {/* Village / Town */}
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {tr('गाँव / कस्बा (Village / Town) *', 'گاؤں / قصبہ (Village / Town) *', 'Village / Town *')}
+                            </Text>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
+                                <Building2 color={placeholderColor} size={18} />
+                                <TextInput
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
+                                    placeholder={tr('उदा. रामपुर', 'مثال: رام پور', 'e.g. Rampur')}
+                                    placeholderTextColor={placeholderColor}
+                                    value={villageTown}
+                                    onChangeText={setVillageTown}
+                                />
+                            </View>
+                        </View>
+
+                        {/* Post Office */}
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {tr('डाकघर (Post Office) *', 'پوسٹ آفس (Post Office) *', 'Post Office *')}
+                            </Text>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
+                                <Mail color={placeholderColor} size={18} />
+                                <TextInput
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
+                                    placeholder={tr('उदा. मुख्य डाकघर', 'مثال: ڈاکخانہ', 'e.g. Head Post Office')}
+                                    placeholderTextColor={placeholderColor}
+                                    value={postOffice}
+                                    onChangeText={setPostOffice}
+                                />
+                            </View>
+                        </View>
+
+                        {/* Block */}
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {tr('ब्लॉक / प्रखंड (Block) *', 'بلاک (Block) *', 'Block *')}
+                            </Text>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
+                                <Building color={placeholderColor} size={18} />
+                                <TextInput
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
+                                    placeholder={tr('उदा. सदर', 'مثال: صدر', 'e.g. Sadar')}
+                                    placeholderTextColor={placeholderColor}
+                                    value={block}
+                                    onChangeText={setBlock}
+                                />
+                            </View>
+                        </View>
+
+                        {/* Tehsil */}
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {tr('तहसील (Tehsil) *', 'تحصیل (Tehsil) *', 'Tehsil *')}
+                            </Text>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
+                                <Landmark color={placeholderColor} size={18} />
+                                <TextInput
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
+                                    placeholder={tr('उदा. सदर तहसील', 'مثال: تحصیل صدر', 'e.g. Sadar Tehsil')}
+                                    placeholderTextColor={placeholderColor}
+                                    value={tehsil}
+                                    onChangeText={setTehsil}
+                                />
+                            </View>
+                        </View>
+
+                        {/* District */}
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {tr('ज़िला (District) *', 'ضلع (District) *', 'District *')}
+                            </Text>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
+                                <MapPin color={placeholderColor} size={18} />
+                                <TextInput
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
+                                    placeholder={tr('उदा. बरेली', 'مثال: بریلی', 'e.g. Bareilly')}
+                                    placeholderTextColor={placeholderColor}
+                                    value={district}
+                                    onChangeText={setDistrict}
+                                />
+                            </View>
+                        </View>
+
                         {/* State */}
                         <View className="gap-1.5">
                             <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {tr('राज्य *', 'ریاست *', 'State *')}
+                                {tr('राज्य (State) *', 'ریاست (State) *', 'State *')}
                             </Text>
                             <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
                                 <MapPin color={placeholderColor} size={18} />
@@ -855,39 +1031,6 @@ export default function SignUpScreen() {
                                     onChangeText={setState}
                                 />
                             </View>
-                        </View>
-
-                        {/* City */}
-                        <View className="gap-1.5">
-                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {tr('शहर / कस्बा *', 'شہر / قصبہ *', 'City / Town *')}
-                            </Text>
-                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
-                                <Building2 color={placeholderColor} size={18} />
-                                <TextInput
-                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
-                                    placeholder={tr('उदा. बरेली', 'مثال: بریلی', 'e.g. Bareilly')}
-                                    placeholderTextColor={placeholderColor}
-                                    value={city}
-                                    onChangeText={setCity}
-                                />
-                            </View>
-                        </View>
-
-                        {/* Full Address */}
-                        <View className="gap-1.5">
-                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {tr('पूरा पता *', 'مکمل پتہ *', 'Full Address *')}
-                            </Text>
-                            <TextInput
-                                className={`min-h-16 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-800 ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
-                                placeholder={tr('मकान संख्या, गली / मोहल्ला, लैंडमार्क, पिन कोड', 'مکان نمبر، گلی / محلہ، پن کوڈ', 'House No., Street / Area, Landmark, Pincode')}
-                                placeholderTextColor={placeholderColor}
-                                multiline
-                                numberOfLines={2}
-                                value={address}
-                                onChangeText={setAddress}
-                            />
                         </View>
 
                         {/* Local Community & Religion Selectors */}
@@ -1134,7 +1277,7 @@ export default function SignUpScreen() {
                         {/* Aadhaar Front Upload */}
                         <View className="gap-1.5">
                             <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {tr('आधार कार्ड - सामने (वैकल्पिक)', 'آدھار کارڈ - سامنے (اختیاری)', 'Aadhaar Front (Optional)')}
+                                {tr('आधार कार्ड - सामने *', 'آدھار کارڈ - سامنے *', 'Aadhaar Front *')}
                             </Text>
                             {aadhaarFrontUri ? (
                                 <View className="flex-row items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-600 dark:bg-emerald-950">
@@ -1178,7 +1321,7 @@ export default function SignUpScreen() {
                                         <FileText color="#059669" size={20} />
                                     </View>
                                     <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
-                                        {tr('आधार सामने का भाग अपलोड करें', 'آدھار سامنے کا حصہ اپلوڈ کریں', 'Upload Aadhaar Front')}
+                                        {tr('आधार सामने का भाग अपलोड करें *', 'آدھار سامنے کا حصہ اپلوڈ کریں *', 'Upload Aadhaar Front *')}
                                     </Text>
                                     <Text className={`mt-0.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                         {tr('आधार के सामने की साफ़ तस्वीर या स्कैन', 'آدھار کے سامنے کی صاف تصویر', 'Clear photo or scan of Aadhaar front')}
@@ -1190,7 +1333,7 @@ export default function SignUpScreen() {
                         {/* Aadhaar Back Upload */}
                         <View className="gap-1.5">
                             <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {tr('आधार कार्ड - पीछे (वैकल्पिक)', 'آدھار کارڈ - پیچھے (اختیاری)', 'Aadhaar Back (Optional)')}
+                                {tr('आधार कार्ड - पीछे *', 'آدھار کارڈ - پیچھے *', 'Aadhaar Back *')}
                             </Text>
                             {aadhaarBackUri ? (
                                 <View className="flex-row items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-600 dark:bg-emerald-950">
@@ -1234,7 +1377,7 @@ export default function SignUpScreen() {
                                         <FileText color="#059669" size={20} />
                                     </View>
                                     <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
-                                        {tr('आधार पीछे का भाग अपलोड करें', 'آدھار پیچھے کا حصہ اپلوڈ کریں', 'Upload Aadhaar Back')}
+                                        {tr('आधार पीछे का भाग अपलोड करें *', 'آدھار پیچھے کا حصہ اپلوڈ کریں *', 'Upload Aadhaar Back *')}
                                     </Text>
                                     <Text className={`mt-0.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                         {tr('आधार के पीछे (पते वाले भाग) की साफ़ तस्वीर', 'آدھار کے پتے والے حصے کی تصویر', 'Clear photo of Aadhaar back (Address side)')}
@@ -1271,7 +1414,8 @@ export default function SignUpScreen() {
                     <View className="gap-4 p-5">
 
                         {/* Payment Tabs */}
-                        <View className="flex-row rounded-2xl bg-slate-200 p-1 dark:bg-slate-800">
+                        {/* QR/UPI tab hidden — MFCT does not have a QR code */}
+                        {/* <View className="flex-row rounded-2xl bg-slate-200 p-1 dark:bg-slate-800">
                             <TouchableOpacity
                                 onPress={() => setPaymentMethod('UPI')}
                                 className="flex-1 items-center rounded-xl py-2.5"
@@ -1308,10 +1452,10 @@ export default function SignUpScreen() {
                                     {tr('बैंक ट्रांसफर (NEFT)', 'بینک ٹرانسفر (NEFT)', 'Bank Transfer (NEFT)')}
                                 </Text>
                             </TouchableOpacity>
-                        </View>
+                        </View> */}
 
-                        {/* UPI Panel */}
-                        {paymentMethod === 'UPI' && (
+                        {/* UPI Panel hidden — MFCT does not have a QR code */}
+                        {/* {paymentMethod === 'UPI' && (
                             <View className="items-center gap-3 rounded-[20px] border border-amber-500/30 bg-[#0f3322] p-5">
                                 <View className="h-[162px] w-[162px] items-center justify-center rounded-2xl bg-white p-4">
                                     {accountDetailsLoading ? (
@@ -1348,7 +1492,7 @@ export default function SignUpScreen() {
                                     {tr('Google Pay, PhonePe, Paytm या BHIM UPI द्वारा स्कैन करें', 'Google Pay, PhonePe, Paytm کے ذریعے اسکین کریں', 'Scan using Google Pay, PhonePe, Paytm, or BHIM UPI')}
                                 </Text>
                             </View>
-                        )}
+                        )} */}
 
                         {/* Bank Panel */}
                         {paymentMethod === 'Bank Transfer' && (

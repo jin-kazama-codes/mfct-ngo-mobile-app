@@ -9,6 +9,7 @@ import {
   translateCommunityName,
   translateCategory,
 } from '../lib/translateEntity';
+import { MFCT_LOGO_BASE64 } from './mfctLogoBase64';
 
 export interface GeneratePdfResult {
   uri: string;
@@ -36,7 +37,7 @@ export function generateReceiptHtml(
   const paymentDate = don.date || new Date().toISOString().split('T')[0];
   const utr = don.utrNumber || 'N/A';
   const txnId = don.transactionId || 'N/A';
-  const paymentMethod = don.paymentMethod || 'UPI / Online';
+  const paymentMethod = don.paymentMethod || don.payment_method || 'UPI / Online';
 
   // Localized dictionary for PDF
   const text = {
@@ -70,8 +71,8 @@ export function generateReceiptHtml(
       footer4: 'Approval No: AAATM9081EF20214. No physical signature required. Thank you for empowering communities in need.',
     },
     hi: {
-      trustName: 'मुस्लिम फैमिली केयर ट्रस्ट',
-      trustSub: 'सेक्शन 8 पंजीकृत गैर-सरकारी संगठन | 80G आयकर छूट प्राप्त',
+      trustName: 'Mohammad Faeem Charitable Trust',
+      trustSub: 'मोहम्मद फ़ईम चैरिटेबल ट्रस्ट | 80G आयकर छूट प्राप्त NGO',
       receiptTag: 'आधिकारिक 80G रसीद',
       watermark: 'MFCT 80G सत्यापित',
       trustPan: 'ट्रस्ट पैन',
@@ -93,14 +94,14 @@ export function generateReceiptHtml(
       auditDesc: 'कार्यकारी ऑडिट टीम एवं प्रत्यक्ष एस्क्रो भुगतान द्वारा सत्यापित।',
       sealHeader: 'MFCT डिजिटल सील',
       sealSub: 'डिजिटल रूप से हस्ताक्षरित व प्रमाणित',
-      footer1: 'यह मुस्लिम फैमिली केयर ट्रस्ट (MFCT) को प्राप्त दान हेतु कंप्यूटर जनरेटेड रसीद है।',
+      footer1: 'यह Mohammad Faeem Charitable Trust (MFCT) को प्राप्त दान हेतु कंप्यूटर जनरेटेड रसीद है।',
       footer2: 'यह दान आयकर अधिनियम 1961 की',
       footer3: 'धारा 80G के अंतर्गत 50% कर कटौती हेतु मान्य है',
       footer4: 'पंजीकरण संख्या: AAATM9081EF20214। किसी भौतिक हस्ताक्षर की आवश्यकता नहीं है।',
     },
     ur: {
-      trustName: 'مسلم فیملی کیئر ٹرسٹ',
-      trustSub: 'سیکشن 8 رجسٹرڈ این جی او | 80G انکم ٹیکس چھوٹ',
+      trustName: 'Mohammad Faeem Charitable Trust',
+      trustSub: 'محمد فہیم چیریٹیبل ٹرسٹ | 80G انکم ٹیکس چھوٹ',
       receiptTag: 'سرکاری 80G رسید',
       watermark: 'MFCT 80G تصدیق شدہ',
       trustPan: 'ٹرسٹ PAN',
@@ -122,7 +123,7 @@ export function generateReceiptHtml(
       auditDesc: 'ایگزیکٹو آڈٹ ٹیم اور براہ راست اسکرو ادائیگی سے تصدیق شدہ۔',
       sealHeader: 'MFCT ڈیجیٹل مہر',
       sealSub: 'ڈیجیٹل تصدیق شدہ',
-      footer1: 'یہ مسلم فیملی کیئر ٹرسٹ (MFCT) کو دیے گئے عطیہ کی کمپیوٹر سے تیار کردہ رسید ہے۔',
+      footer1: 'یہ Mohammad Faeem Charitable Trust (MFCT) کو دیے گئے عطیہ کی کمپیوٹر سے تیار کردہ رسید ہے۔',
       footer2: 'یہ عطیہ انکم ٹیکس ایکٹ 1961 کی',
       footer3: 'سیکشن 80G کے تحت ٹیکس چھوٹ کے لیے اہل ہے',
       footer4: 'رجسٹریشن نمبر: AAATM9081EF20214۔ شکریہ۔',
@@ -200,18 +201,17 @@ export function generateReceiptHtml(
       position: relative;
       background: #ffffff;
     }
-    .watermark {
+    .watermark-logo {
       position: absolute;
       top: 50%;
       left: 50%;
-      transform: translate(-50%, -50%) rotate(${isRtl ? '30deg' : '-30deg'});
-      font-size: 64px;
-      font-weight: 900;
-      color: rgba(4, 120, 87, 0.04);
+      transform: translate(-50%, -50%);
+      width: 280px;
+      height: 280px;
+      opacity: 0.08;
       pointer-events: none;
+      object-fit: contain;
       z-index: 0;
-      white-space: nowrap;
-      text-transform: uppercase;
     }
     .header {
       display: flex;
@@ -387,7 +387,7 @@ export function generateReceiptHtml(
 </head>
 <body>
   <div class="receipt-container">
-    <div class="watermark">${text.watermark}</div>
+    <img class="watermark-logo" src="${MFCT_LOGO_BASE64}" alt="MFCT Logo" />
 
     <!-- Header Section -->
     <div class="header">
@@ -476,87 +476,25 @@ export function generateReceiptHtml(
 }
 
 /**
- * Generates a local PDF file and saves it with a structured filename: Donation_Receipt_<ID>.pdf
+ * Generates a local PDF file and saves it with a structured filename: Donation_Payment_Slip_<ID>.pdf
  */
 export async function generateReceiptPdf(
   don: Donation,
   user?: User | null,
   language: Language = 'en'
 ): Promise<GeneratePdfResult> {
-  const cleanId = (don.receiptNumber || don.id || 'DON').replace(/[^a-zA-Z0-9_-]/g, '');
-  const filename = `Donation_Receipt_${cleanId}.pdf`;
-  const html = generateReceiptHtml(don, user, language);
-
-  // 1. Generate temp PDF
-  const { uri: tempUri } = await Print.printToFileAsync({
-    html,
-    base64: false,
-  });
-
-  // 2. Copy to document / cache directory with clear standard filename
-  const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
-  const targetUri = `${baseDir}${filename}`;
-
-  try {
-    await FileSystem.copyAsync({
-      from: tempUri,
-      to: targetUri,
-    });
-    return { uri: targetUri, filename };
-  } catch (copyErr) {
-    console.warn('Could not rename to targetUri, using tempUri:', copyErr);
-    return { uri: tempUri, filename };
-  }
+  return downloadDonationPaymentSlipPdf(don);
 }
 
 /**
- * Downloads and saves / exports PDF to device storage
+ * Downloads and saves / exports PDF to device storage (matches website Donation Payment Slip)
  */
 export async function downloadReceiptPdf(
   don: Donation,
   user?: User | null,
   language: Language = 'en'
 ): Promise<GeneratePdfResult> {
-  const result = await generateReceiptPdf(don, user, language);
-
-  if (Platform.OS === 'android') {
-    try {
-      // If StorageAccessFramework is available, allow saving directly to Android downloads/folder
-      if (FileSystem.StorageAccessFramework) {
-        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-        if (permissions.granted) {
-          const fileContent = await FileSystem.readAsStringAsync(result.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          const createdFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
-            permissions.directoryUri,
-            result.filename,
-            'application/pdf'
-          );
-          await FileSystem.writeAsStringAsync(createdFileUri, fileContent, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          return { uri: createdFileUri, filename: result.filename };
-        }
-      }
-    } catch (safErr) {
-      console.warn('SAF download fallback to sharing/printing:', safErr);
-    }
-  }
-
-  // Fallback / Standard: Open system save/share/print sheet
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(result.uri, {
-      UTI: '.pdf',
-      mimeType: 'application/pdf',
-      dialogTitle: `Save ${result.filename}`,
-    });
-  } else {
-    const html = generateReceiptHtml(don, user, language);
-    await Print.printAsync({ html });
-  }
-
-  return result;
+  return downloadDonationPaymentSlipPdf(don);
 }
 
 /**
@@ -567,46 +505,15 @@ export async function shareReceiptPdf(
   user?: User | null,
   language: Language = 'en'
 ): Promise<void> {
-  const result = await generateReceiptPdf(don, user, language);
-
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(result.uri, {
-      UTI: '.pdf',
-      mimeType: 'application/pdf',
-      dialogTitle: `Share ${result.filename}`,
-    });
-  } else {
-    // Text fallback
-    const lang = getLanguageCode(language);
-    const campaignTitle = translateCampaignTitle(don.campaignTitle, lang);
-    const commName = translateCommunityName(don.communityName, lang);
-
-    const message = `
-=========================================
-   Mohammad Faeem Charitable Trust (MFCT)
-   OFFICIAL DONATION RECEIPT (80G TAX EXEMPTION)
-=========================================
-Receipt No: ${don.receiptNumber || 'REC-' + don.id.slice(0, 8)}
-Date: ${don.date}
-Donor: ${don.donorName || user?.name || 'Supporter'}
-Cause: ${campaignTitle}
-Community: ${commName}
-Amount: ₹${(don.amountINR || 0).toLocaleString('en-IN')}
-UTR: ${don.utrNumber || 'N/A'}
-Txn ID: ${don.transactionId || 'N/A'}
-Status: ${don.status === 'verified' ? '100% Verified & Escrow Audited' : 'Pending'}
-
-Trust PAN: AABTM8912E | 80G Reg: AAATM9081EF20214
-`;
-    await Share.share({
-      title: `Donation Receipt - ${don.receiptNumber || don.id.slice(0, 8)}`,
-      message: message.trim(),
-    });
-  }
+  return shareDonationPaymentSlipPdf(don);
 }
 
-function escapeReceiptHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => {
+function toTitleCase(str: string): string {
+  return (str ?? '').replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
+}
+
+function escapeReceiptHtml(value: unknown): string {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => {
     const entities: Record<string, string> = {
       '&': '&amp;',
       '<': '&lt;',
@@ -618,24 +525,87 @@ function escapeReceiptHtml(value: string): string {
   });
 }
 
+function formatSlipDate(rawDate?: string | Date | null): string {
+  if (!rawDate) {
+    return new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
+  if (rawDate instanceof Date) {
+    if (!isNaN(rawDate.getTime())) {
+      const d = String(rawDate.getDate()).padStart(2, '0');
+      const m = String(rawDate.getMonth() + 1).padStart(2, '0');
+      const y = rawDate.getFullYear();
+      return `${d}/${m}/${y}`;
+    }
+    return new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+
+  const str = String(rawDate).trim();
+  if (!str) return 'N/A';
+
+  // 1) Match DD/MM/YYYY or DD-MM-YYYY (e.g. 21/10/2026 or 21-10-2026)
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (dmyMatch) {
+    const d = dmyMatch[1].padStart(2, '0');
+    const m = dmyMatch[2].padStart(2, '0');
+    const y = dmyMatch[3].length === 2 ? `20${dmyMatch[3]}` : dmyMatch[3];
+    return `${d}/${m}/${y}`;
+  }
+
+  // 2) Match YYYY-MM-DD or YYYY/MM/DD (e.g. 2026-10-21)
+  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (ymdMatch) {
+    const y = ymdMatch[1];
+    const m = ymdMatch[2].padStart(2, '0');
+    const d = ymdMatch[3].padStart(2, '0');
+    return `${d}/${m}/${y}`;
+  }
+
+  // 3) Try standard Date parsing
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const d = String(parsed.getDate()).padStart(2, '0');
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const y = parsed.getFullYear();
+    return `${d}/${m}/${y}`;
+  }
+
+  // 4) Clean any ISO or timestamp suffix
+  const cleaned = str.split(/[T\s,]/)[0];
+  if (cleaned && cleaned.length >= 8 && !cleaned.toLowerCase().includes('invalid')) {
+    return cleaned;
+  }
+
+  return new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+const MFCT_LOGO_URL = 'https://www.mfcttrust.com/mfct-logo.png';
+
+/**
+ * Generates the updated Registration Payment Slip HTML matching the website design
+ */
 export function generateRegistrationPaymentSlipHtml(user: User): string {
   if (user.status !== 'approved' || !user.paymentUtr) {
     throw new Error('An approved member with a recorded payment UTR is required.');
   }
 
   const receiptNumber = `MFCT-REG-${user.membershipId || user.id}`;
-  const rows: [string, string][] = [
+  const paymentDate = formatSlipDate(user.joinDate);
+  const details: [string, string][] = [
     ['Member Name', user.name],
     ['Member ID', user.membershipId || user.id],
     ['Email', user.email || 'N/A'],
     ['Registration Payment', `₹${(user.membershipFee ?? 100).toFixed(2)}`],
-    ['Payment Date', user.joinDate || 'N/A'],
+    ['Payment Date', paymentDate],
     ['Transaction / UTR ID', user.paymentUtr],
     ['Payment Method', user.paymentMethod || 'N/A'],
     ['Purpose', 'Membership Registration Fee'],
   ];
-  const tableRows = rows
-    .map(([label, value]) => `<tr><th>${escapeReceiptHtml(label)}</th><td>${escapeReceiptHtml(value)}</td></tr>`)
+  const tableRows = details
+    .map(
+      ([label, value]) =>
+        `<tr><th>${escapeReceiptHtml(label)}</th><td class="${label === 'Registration Payment' ? 'amount' : ''}">${escapeReceiptHtml(value)}</td></tr>`
+    )
     .join('');
 
   return `<!doctype html>
@@ -645,35 +615,160 @@ export function generateRegistrationPaymentSlipHtml(user: User): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Registration Payment Slip - ${escapeReceiptHtml(receiptNumber)}</title>
   <style>
-    @page { size: A4; margin: 18mm; }
+    @page { size: A4 portrait; margin: 10mm 14mm; }
     * { box-sizing: border-box; }
-    body { margin: 0; color: #17211c; font: 15px Arial, sans-serif; }
-    .slip { max-width: 760px; margin: 30px auto; border: 2px dashed #0f3322; padding: 42px; }
-    header { text-align: center; color: #0f3322; border-bottom: 1px solid #d6e2da; padding-bottom: 20px; }
-    h1 { margin: 0; font-size: 24px; }
-    header p { margin: 7px 0 0; color: #59675e; }
-    .receipt { margin: 20px 0; text-align: right; color: #59675e; font-size: 12px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 13px 10px; border-bottom: 1px solid #e4e9e5; text-align: left; vertical-align: top; }
-    th { width: 42%; color: #24382c; }
-    td { overflow-wrap: anywhere; }
-    footer { margin-top: 28px; text-align: center; color: #0f3322; font-weight: 700; }
+    html, body { margin: 0; padding: 0; background: #fff; color: #17211c; font-family: Arial, sans-serif; font-size: 12px; }
+
+    .slip {
+      position: relative;
+      max-width: 680px;
+      margin: 10px auto;
+      border: 2.5px dashed #c0392b;
+      padding: 24px 34px;
+      background: #fff;
+      overflow: hidden;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    /* MFCT Logo watermark */
+    .watermark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 250px;
+      height: 250px;
+      opacity: 0.10;
+      pointer-events: none;
+      object-fit: contain;
+      z-index: 0;
+    }
+
+    .content { position: relative; z-index: 1; }
+
+    header {
+      text-align: center;
+      color: #c0392b;
+      padding-bottom: 12px;
+      border-bottom: 1.5px solid #f5cac5;
+      margin-bottom: 10px;
+    }
+    h1 {
+      margin: 0 0 3px;
+      font-size: 19px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    header .subtitle {
+      margin: 3px 0 0;
+      color: #555;
+      font-size: 11.5px;
+    }
+
+    .receipt-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 11px;
+      color: #666;
+    }
+    .receipt-row .badge {
+      background: #f0fff4;
+      border: 1px solid #6ee7b7;
+      color: #065f46;
+      font-weight: 700;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 10px;
+    }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; page-break-inside: avoid; break-inside: avoid; }
+    th, td {
+      padding: 8px 8px;
+      border-bottom: 1px solid #e8eee9;
+      text-align: left;
+      vertical-align: middle;
+    }
+    th {
+      width: 42%;
+      color: #1a3328;
+      font-weight: 700;
+      font-size: 11.5px;
+    }
+    td {
+      overflow-wrap: anywhere;
+      color: #2d2d2d;
+      font-size: 11.5px;
+    }
+    .amount { color: #087443; font-size: 16px; font-weight: 900; }
+
+    footer {
+      margin-top: 10px;
+      text-align: center;
+      color: #c0392b;
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 0.3px;
+      padding-top: 10px;
+      border-top: 1.5px solid #f5cac5;
+    }
+    .footer-note {
+      margin-top: 3px;
+      font-size: 9.5px;
+      font-weight: 400;
+      color: #777;
+    }
+
+    @media print {
+      html, body {
+        width: 100%;
+        height: auto;
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .slip {
+        margin: 0 auto !important;
+        border: 2.5px dashed #c0392b !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+    }
   </style>
 </head>
 <body>
   <main class="slip">
-    <header>
-      <h1>MOHAMMAD FAEEM CHARITABLE TRUST</h1>
-      <p>Membership Registration Payment Slip</p>
-    </header>
-    <div class="receipt">Receipt No: ${escapeReceiptHtml(receiptNumber)}</div>
-    <table>${tableRows}</table>
-    <footer>Thank you for becoming a member of MFCT.</footer>
+    <img class="watermark" src="${MFCT_LOGO_BASE64}" alt="MFCT Logo" />
+    <div class="content">
+      <header>
+        <h1>Mohammad Faeem Charitable Trust</h1>
+        <p class="subtitle">Membership Registration Payment Slip</p>
+      </header>
+
+      <div class="receipt-row">
+        <span>Receipt No: <strong>${escapeReceiptHtml(receiptNumber)}</strong></span>
+        <span class="badge">✓ Payment Recorded</span>
+      </div>
+
+      <table>${tableRows}</table>
+
+      <footer>
+        Thank You For Becoming a Member of MFCT
+        <p class="footer-note">This is a computer-generated payment slip. For support: contact@mfct.org</p>
+      </footer>
+    </div>
   </main>
 </body>
 </html>`;
 }
 
+/**
+ * Downloads and saves / exports Registration Payment Slip PDF
+ */
 export async function downloadRegistrationPaymentSlipPdf(user: User): Promise<GeneratePdfResult> {
   const html = generateRegistrationPaymentSlipHtml(user);
   const cleanId = (user.membershipId || user.id).replace(/[^a-zA-Z0-9_-]/g, '');
@@ -725,3 +820,270 @@ export async function downloadRegistrationPaymentSlipPdf(user: User): Promise<Ge
 
   return result;
 }
+
+/**
+ * Generates the updated Donation Payment Slip HTML matching the website donationPaymentSlip.ts design
+ */
+export function generateDonationPaymentSlipHtml(donation: Donation): string {
+  const receiptNumber = donation.receiptNumber || `MFCT-DON-${donation.id.slice(0, 8).toUpperCase()}`;
+  const donorName = toTitleCase(donation.donorName || 'N/A');
+  const campaignTitle = donation.campaignTitle || 'General Donation';
+  const communityName = donation.communityName || 'MFCT Community';
+  const category = donation.category || 'General';
+  const paymentMethod = donation.paymentMethod || (donation as any).payment_method || 'N/A';
+  const utr = donation.utrNumber || donation.transactionId || 'N/A';
+  const amount = `₹${Number(donation.amountINR || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+  const dateStr = formatSlipDate(donation.date);
+
+  const details: [string, string][] = [
+    ['Donation Recipient', 'Mohammad Faeem Charitable Trust (MFCT)'],
+    ['Donor Name', donorName],
+    ['Campaign / Cause', campaignTitle],
+    ['Donation Category', category],
+    ['Community', communityName],
+    ['Donated Amount', amount],
+    ['Date', dateStr],
+    ['Transaction / UTR ID', utr],
+    ['Payment Method', paymentMethod],
+    ['Receipt No.', receiptNumber],
+  ];
+
+  const tableRows = details
+    .map(
+      ([label, value]) =>
+        `<tr><th>${escapeReceiptHtml(label)}</th><td class="${label === 'Donated Amount' ? 'amount' : ''}">${escapeReceiptHtml(value)}</td></tr>`
+    )
+    .join('');
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Donation Payment Slip - ${escapeReceiptHtml(receiptNumber)}</title>
+  <style>
+    @page { size: A4 portrait; margin: 10mm 14mm; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #fff; color: #17211c; font-family: Arial, sans-serif; font-size: 12px; }
+
+    .slip {
+      position: relative;
+      max-width: 680px;
+      margin: 10px auto;
+      border: 2.5px dashed #c0392b;
+      padding: 24px 34px;
+      background: #fff;
+      overflow: hidden;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    /* MFCT Logo watermark */
+    .watermark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 250px;
+      height: 250px;
+      opacity: 0.10;
+      pointer-events: none;
+      object-fit: contain;
+      z-index: 0;
+    }
+
+    /* Everything above watermark */
+    .content { position: relative; z-index: 1; }
+
+    header {
+      text-align: center;
+      color: #c0392b;
+      padding-bottom: 12px;
+      border-bottom: 1.5px solid #f5cac5;
+      margin-bottom: 10px;
+    }
+    h1 {
+      margin: 0 0 3px;
+      font-size: 19px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    header .subtitle {
+      margin: 3px 0 0;
+      color: #555;
+      font-size: 11.5px;
+    }
+
+    .receipt-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 11px;
+      color: #666;
+    }
+    .receipt-row .badge {
+      background: #f0fff4;
+      border: 1px solid #6ee7b7;
+      color: #065f46;
+      font-weight: 700;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 10px;
+    }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; page-break-inside: avoid; break-inside: avoid; }
+    th, td {
+      padding: 7px 8px;
+      border-bottom: 1px solid #e8eee9;
+      text-align: left;
+      vertical-align: middle;
+    }
+    th {
+      width: 44%;
+      color: #1a3328;
+      font-weight: 700;
+      font-size: 11.5px;
+    }
+    td {
+      overflow-wrap: anywhere;
+      color: #2d2d2d;
+      font-size: 11.5px;
+    }
+    .amount {
+      color: #0f3322;
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    footer {
+      margin-top: 10px;
+      text-align: center;
+      color: #c0392b;
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 0.3px;
+      padding-top: 10px;
+      border-top: 1.5px solid #f5cac5;
+    }
+    .footer-note {
+      margin-top: 3px;
+      font-size: 9.5px;
+      font-weight: 400;
+      color: #777;
+    }
+
+    @media print {
+      html, body {
+        width: 100%;
+        height: auto;
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .slip {
+        margin: 0 auto !important;
+        border: 2.5px dashed #c0392b !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="slip">
+    <img class="watermark" src="${MFCT_LOGO_BASE64}" alt="MFCT Logo" />
+    <div class="content">
+      <header>
+        <h1>Mohammad Faeem Charitable Trust</h1>
+        <p class="subtitle">Donation Payment Slip &nbsp;|&nbsp; Reg. Trust — 80G Exempt</p>
+      </header>
+
+      <div class="receipt-row">
+        <span>Receipt No: <strong>${escapeReceiptHtml(receiptNumber)}</strong></span>
+        <span class="badge">✓ Donation Recorded</span>
+      </div>
+
+      <table>${tableRows}</table>
+
+      <footer>
+        Thank You For Your Donation
+        <p class="footer-note">This is a computer-generated payment slip. For support: contact@mfct.org</p>
+      </footer>
+    </div>
+  </main>
+</body>
+</html>`;
+}
+
+/**
+ * Downloads and saves / exports Donation Payment Slip PDF
+ */
+export async function downloadDonationPaymentSlipPdf(donation: Donation): Promise<GeneratePdfResult> {
+  const html = generateDonationPaymentSlipHtml(donation);
+  const cleanId = (donation.receiptNumber || donation.id || 'DON').replace(/[^a-zA-Z0-9_-]/g, '');
+  const filename = `Donation_Payment_Slip_${cleanId}.pdf`;
+  const { uri: tempUri } = await Print.printToFileAsync({ html, base64: false });
+  const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+  const targetUri = `${baseDir}${filename}`;
+  let result: GeneratePdfResult;
+
+  try {
+    await FileSystem.copyAsync({ from: tempUri, to: targetUri });
+    result = { uri: targetUri, filename };
+  } catch (copyErr) {
+    console.warn('Could not rename donation slip PDF; using temporary file:', copyErr);
+    result = { uri: tempUri, filename };
+  }
+
+  if (Platform.OS === 'android' && FileSystem.StorageAccessFramework) {
+    try {
+      const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+      if (permissions.granted) {
+        const fileContent = await FileSystem.readAsStringAsync(result.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const createdFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          permissions.directoryUri,
+          filename,
+          'application/pdf'
+        );
+        await FileSystem.writeAsStringAsync(createdFileUri, fileContent, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        return { uri: createdFileUri, filename };
+      }
+    } catch (saveErr) {
+      console.warn('Could not save donation slip through Android storage access:', saveErr);
+    }
+  }
+
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(result.uri, {
+      UTI: '.pdf',
+      mimeType: 'application/pdf',
+      dialogTitle: `Save ${filename}`,
+    });
+  } else {
+    await Print.printAsync({ html });
+  }
+
+  return result;
+}
+
+/**
+ * Shares Donation Payment Slip PDF
+ */
+export async function shareDonationPaymentSlipPdf(donation: Donation): Promise<void> {
+  const result = await downloadDonationPaymentSlipPdf(donation);
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(result.uri, {
+      UTI: '.pdf',
+      mimeType: 'application/pdf',
+      dialogTitle: `Share ${result.filename}`,
+    });
+  }
+}
+

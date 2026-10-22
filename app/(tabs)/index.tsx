@@ -537,7 +537,7 @@ export default function HomeScreen() {
   const handleShareCampaign = async (camp: Campaign) => {
     try {
       await Share.share({
-        message: `Support ${camp.title} on MFCT - Muslim Family Care Trust: Goal ₹${camp.goalINR.toLocaleString('en-IN')}`,
+        message: `Support ${camp.title} on MFCT - Mohammad Faeem Charitable Trust: Goal ₹${camp.goalINR.toLocaleString('en-IN')}`,
       });
     } catch (error) {
       console.error(error);

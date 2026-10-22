@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, Image, ActivityIndicator } from 'react-native';
 import { useColorScheme } from 'nativewind';
 import { useAppState } from '../../../src/context/AppStateProvider';
@@ -14,6 +14,7 @@ import {
   translateRole,
 } from '../../../src/lib/translateEntity';
 import { DynamicText } from '../../../src/components/DynamicText';
+import { PaginationControl } from '../../../src/components/PaginationControl';
 
 export default function CommunityMembersScreen() {
   const { activeUser } = useAppState();
@@ -21,6 +22,10 @@ export default function CommunityMembersScreen() {
   const lang = getLanguageCode(i18n.language);
   const [members, setMembers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Pagination state
+  const PAGE_SIZE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     const fetchMembers = async () => {
@@ -51,6 +56,13 @@ export default function CommunityMembersScreen() {
 
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
+
+  const totalPages = Math.max(1, Math.ceil(members.length / PAGE_SIZE));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (validCurrentPage - 1) * PAGE_SIZE;
+  const paginatedMembers = useMemo(() => {
+    return members.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [members, startIndex]);
 
   if (loading) {
     return (
@@ -85,54 +97,65 @@ export default function CommunityMembersScreen() {
           <Text className="text-slate-500 dark:text-slate-400 text-sm mt-3">{t('community.no_members', 'No members found in this community')}</Text>
         </View>
       ) : (
-        members.map((member) => (
-          <View
-            key={member.id}
-            className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 mb-2 flex-row items-center justify-between"
-          >
-            <View className="flex-row items-center gap-3 flex-1 mr-2">
-              {member.avatar ? (
-                <Image source={{ uri: member.avatar }} className="w-10 h-10 rounded-full bg-slate-200" />
-              ) : (
-                <View className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900 items-center justify-center">
-                  <Text className="text-emerald-700 dark:text-emerald-300 font-bold text-base">
-                    {member.name?.[0]?.toUpperCase() || '?'}
-                  </Text>
-                </View>
-              )}
-              <View className="flex-1">
-                <DynamicText
-                  text={member.name}
-                  className="font-bold text-slate-900 dark:text-white text-sm"
-                  numberOfLines={1}
-                />
-                <View className="flex-row items-center flex-wrap mt-0.5">
-                  <Text className="text-xs text-slate-500 dark:text-slate-400">
-                    {translateRole(member.role || 'member', lang)}{' • '}
-                  </Text>
+        <>
+          {paginatedMembers.map((member) => (
+            <View
+              key={member.id}
+              className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 mb-2 flex-row items-center justify-between"
+            >
+              <View className="flex-row items-center gap-3 flex-1 mr-2">
+                {member.avatar ? (
+                  <Image source={{ uri: member.avatar }} className="w-10 h-10 rounded-full bg-slate-200" />
+                ) : (
+                  <View className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900 items-center justify-center">
+                    <Text className="text-emerald-700 dark:text-emerald-300 font-bold text-base">
+                      {member.name?.[0]?.toUpperCase() || '?'}
+                    </Text>
+                  </View>
+                )}
+                <View className="flex-1">
                   <DynamicText
-                    text={member.city || 'Bareilly'}
-                    className="text-xs text-slate-500 dark:text-slate-400"
+                    text={member.name}
+                    className="font-bold text-slate-900 dark:text-white text-sm"
+                    numberOfLines={1}
                   />
+                  <View className="flex-row items-center flex-wrap mt-0.5">
+                    <Text className="text-xs text-slate-500 dark:text-slate-400">
+                      {translateRole(member.role || 'member', lang)}{' • '}
+                    </Text>
+                    <DynamicText
+                      text={member.city || 'Bareilly'}
+                      className="text-xs text-slate-500 dark:text-slate-400"
+                    />
+                  </View>
                 </View>
               </View>
-            </View>
 
-            <View className={`px-2.5 py-0.5 rounded-full border ${
-              member.isVerified
-                ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800'
-                : 'bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800'
-            }`}>
-              <Text className={`text-xs font-bold ${
+              <View className={`px-2.5 py-0.5 rounded-full border ${
                 member.isVerified
-                  ? 'text-emerald-700 dark:text-emerald-300'
-                  : 'text-amber-700 dark:text-amber-300'
+                  ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800'
+                  : 'bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800'
               }`}>
-                {member.isVerified ? `✓ ${t('id_card.verified_badge', 'KYC Verified')}` : t('admin.kyc_subtitle', 'Pending KYC')}
-              </Text>
+                <Text className={`text-xs font-bold ${
+                  member.isVerified
+                    ? 'text-emerald-700 dark:text-emerald-300'
+                    : 'text-amber-700 dark:text-amber-300'
+                }`}>
+                  {member.isVerified ? `✓ ${t('id_card.verified_badge', 'KYC Verified')}` : t('admin.kyc_subtitle', 'Pending KYC')}
+                </Text>
+              </View>
             </View>
-          </View>
-        ))
+          ))}
+
+          <PaginationControl
+            currentPage={validCurrentPage}
+            totalPages={totalPages}
+            totalItems={members.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+            lang={lang}
+          />
+        </>
       )}
     </ScrollView>
   );

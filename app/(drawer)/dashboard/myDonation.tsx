@@ -24,6 +24,13 @@ import {
   Heart,
   ShieldCheck,
   Download,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
 } from 'lucide-react-native';
 import {
   getLanguageCode,
@@ -33,10 +40,13 @@ import {
   translateDonorName,
 } from '../../../src/lib/translateEntity';
 import {
-  downloadReceiptPdf,
   shareReceiptPdf,
+  downloadDonationPaymentSlipPdf,
 } from '../../../src/services/receiptPdfService';
+import { PaginationControl } from '../../../src/components/PaginationControl';
 import { DynamicText } from '../../../src/components/DynamicText';
+
+const PAGE_SIZE = 6;
 
 export default function MyDonationsScreen() {
   const { activeUser } = useAppState();
@@ -48,9 +58,11 @@ export default function MyDonationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<Donation | null>(null);
-  const [processingId, setProcessingId] = useState<string | null>(null);
-  const [isModalDownloading, setIsModalDownloading] = useState(false);
+  const [downloadingSlipId, setDownloadingSlipId] = useState<string | null>(null);
+  const [isModalSlipDownloading, setIsModalSlipDownloading] = useState(false);
   const [isModalSharing, setIsModalSharing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [expandedReasonId, setExpandedReasonId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -75,6 +87,7 @@ export default function MyDonationsScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
+    setCurrentPage(1);
     loadData();
   };
 
@@ -82,47 +95,33 @@ export default function MyDonationsScreen() {
     .filter((d) => d.status === 'verified')
     .reduce((acc, curr) => acc + (curr.amountINR || 0), 0);
 
-  // Handle direct download click on list item
-  const handleItemDownload = async (don: Donation) => {
-    if (processingId) return; // Prevent duplicate clicks
+  const totalPages = Math.max(1, Math.ceil(donations.length / PAGE_SIZE));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (validCurrentPage - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, donations.length);
+  const paginatedDonations = donations.slice(startIndex, endIndex);
+
+
+
+  // Handle direct donation payment slip (पर्ची) download
+  const handleDownloadDonationSlip = async (don: Donation) => {
+    if (downloadingSlipId) return;
 
     try {
-      setProcessingId(don.id);
-      const result = await downloadReceiptPdf(don, activeUser, lang);
+      setDownloadingSlipId(don.id);
+      const result = await downloadDonationPaymentSlipPdf(don);
       Alert.alert(
-        t('admin.pdf_success_title', 'Receipt Ready'),
-        `${t('admin.pdf_success_desc', '80G Tax Exemption Receipt downloaded:')}\n${result.filename}`
+        lang === 'hi' ? 'भुगतान पर्ची तैयार है' : lang === 'ur' ? 'ادائیگی سلپ تیار ہے' : 'Payment Slip Ready',
+        `${lang === 'hi' ? 'दान भुगतान पर्ची डाउनलोड हो गई है:' : lang === 'ur' ? 'عطیہ ادائیگی سلپ ڈاؤن لوڈ ہو گئی ہے:' : 'Donation payment slip downloaded:'}\n${result.filename}`
       );
     } catch (error) {
-      console.error('Error downloading receipt PDF:', error);
+      console.error('Error downloading donation payment slip:', error);
       Alert.alert(
-        t('admin.pdf_error_title', 'PDF Download Error'),
-        t('admin.pdf_error_desc', 'Could not generate PDF receipt. Please try again.')
+        lang === 'hi' ? 'डाउनलोड विफल' : lang === 'ur' ? 'ڈاؤن لوڈ ناکام' : 'Download Error',
+        error instanceof Error ? error.message : 'Could not generate payment slip. Please try again.'
       );
     } finally {
-      setProcessingId(null);
-    }
-  };
-
-  // Handle Modal Download PDF
-  const handleModalDownload = async (don: Donation) => {
-    if (isModalDownloading) return;
-
-    try {
-      setIsModalDownloading(true);
-      const result = await downloadReceiptPdf(don, activeUser, lang);
-      Alert.alert(
-        t('admin.pdf_success_title', 'Receipt Ready'),
-        `${t('admin.pdf_success_desc', '80G Tax Exemption Receipt downloaded:')}\n${result.filename}`
-      );
-    } catch (error) {
-      console.error('Modal PDF download error:', error);
-      Alert.alert(
-        t('admin.pdf_error_title', 'PDF Download Error'),
-        t('admin.pdf_error_desc', 'Could not generate PDF receipt. Please try again.')
-      );
-    } finally {
-      setIsModalDownloading(false);
+      setDownloadingSlipId(null);
     }
   };
 
@@ -137,6 +136,28 @@ export default function MyDonationsScreen() {
       console.error('Modal PDF share error:', error);
     } finally {
       setIsModalSharing(false);
+    }
+  };
+
+  // Handle Modal Payment Slip (पर्ची) Download
+  const handleModalSlipDownload = async (don: Donation) => {
+    if (isModalSlipDownloading) return;
+
+    try {
+      setIsModalSlipDownloading(true);
+      const result = await downloadDonationPaymentSlipPdf(don);
+      Alert.alert(
+        lang === 'hi' ? 'भुगतान पर्ची तैयार है' : lang === 'ur' ? 'ادائیگی سلپ تیار ہے' : 'Payment Slip Ready',
+        `${lang === 'hi' ? 'दान भुगतान पर्ची डाउनलोड हो गई है:' : lang === 'ur' ? 'عطیہ ادائیگی سلپ ڈاؤن لوڈ ہو گئی ہے:' : 'Donation payment slip downloaded:'}\n${result.filename}`
+      );
+    } catch (error) {
+      console.error('Modal payment slip download error:', error);
+      Alert.alert(
+        lang === 'hi' ? 'डाउनलोड विफल' : lang === 'ur' ? 'ڈاؤن لوڈ ناکام' : 'Download Error',
+        error instanceof Error ? error.message : 'Could not generate payment slip. Please try again.'
+      );
+    } finally {
+      setIsModalSlipDownloading(false);
     }
   };
 
@@ -229,121 +250,200 @@ export default function MyDonationsScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          donations.map((don) => {
-            const displayTitle = translateCampaignTitle(don.campaignTitle || 'General Support', lang);
-            const displayComm = translateCommunityName(
-              don.communityName || 'MFCT Community',
-              lang
-            );
-            const displayCat = translateCategory(don.category || 'General', lang);
+          <>
+            {paginatedDonations.map((don) => {
+              const displayTitle = translateCampaignTitle(don.campaignTitle || 'General Support', lang);
+              const displayComm = translateCommunityName(
+                don.communityName || 'MFCT Community',
+                lang
+              );
+              const displayCat = translateCategory(don.category || 'General', lang);
 
-            const isVerified = don.status === 'verified';
-            const isPending = don.status === 'pending_verification';
-            const isItemProcessing = processingId === don.id;
+              const isVerified = don.status === 'verified';
+              const isPending = don.status === 'pending_verification';
+              const isRejected = don.status === 'rejected';
+              const rejectionReason = don.rejectionReason || (don as any).rejection_reason;
+              const isReasonExpanded = expandedReasonId === don.id;
 
-            return (
-              <View
-                key={don.id}
-                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 mb-3 shadow-sm"
-              >
-                {/* Status & Amount */}
-                <View className="flex-row items-center justify-between mb-2">
-                  <View className="flex-row items-center gap-2">
-                    <View
-                      className={`px-2.5 py-0.5 rounded-full border ${
-                        isVerified
-                          ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-700'
-                          : isPending
-                          ? 'bg-amber-50 dark:bg-amber-950/80 border-amber-300 dark:border-amber-700'
-                          : 'bg-rose-50 dark:bg-rose-950/80 border-rose-300 dark:border-rose-700'
-                      }`}
-                    >
-                      <Text
-                        className={`text-[10px] font-extrabold ${
+              // Clean display date
+              let displayDate = don.date || 'Recent';
+              const dmyMatch = displayDate.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+              if (dmyMatch) {
+                displayDate = `${dmyMatch[1].padStart(2, '0')}/${dmyMatch[2].padStart(2, '0')}/${dmyMatch[3]}`;
+              } else {
+                const parsed = new Date(displayDate);
+                if (!isNaN(parsed.getTime())) {
+                  displayDate = parsed.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                }
+              }
+
+              return (
+                <View
+                  key={don.id}
+                  className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 mb-3 shadow-sm"
+                >
+                  {/* Top Statement Row: Icon + Cause + Amount & Status */}
+                  <View className="flex-row items-start justify-between gap-3 mb-2.5">
+                    <View className="flex-row items-start gap-3 flex-1">
+                      {/* Avatar / Icon Badge */}
+                      <View
+                        className={`w-10 h-10 rounded-2xl items-center justify-center shrink-0 border ${
                           isVerified
-                            ? 'text-emerald-700 dark:text-emerald-300'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800'
                             : isPending
-                            ? 'text-amber-700 dark:text-amber-300'
-                            : 'text-rose-700 dark:text-rose-300'
+                            ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800'
+                            : 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800'
                         }`}
                       >
-                        {isVerified
-                          ? t('home.utr_verified', '✓ UTR Verified')
-                          : isPending
-                          ? t('admin.pending_verification', '⏳ Pending')
-                          : t('admin.verification_failed', '❌ Failed')}
-                      </Text>
+                        {isVerified ? (
+                          <CheckCircle2 size={18} color="#059669" />
+                        ) : isPending ? (
+                          <Clock size={18} color="#d97706" />
+                        ) : (
+                          <AlertCircle size={18} color="#e11d48" />
+                        )}
+                      </View>
+
+                      {/* Cause & Metadata */}
+                      <View className="flex-1 pr-1">
+                        <DynamicText
+                          text={don.campaignTitle || 'General Support'}
+                          className="text-sm font-bold text-slate-900 dark:text-white"
+                          numberOfLines={2}
+                        />
+                        <View className="flex-row items-center gap-1.5 mt-0.5 flex-wrap">
+                          <DynamicText
+                            text={don.communityName || 'MFCT Community'}
+                            className="text-[11px] text-slate-500 dark:text-slate-400 font-medium"
+                          />
+                          <Text className="text-[11px] text-slate-400 dark:text-slate-500">•</Text>
+                          <Text className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                            {displayCat}
+                          </Text>
+                        </View>
+                        <Text className="text-[10.5px] font-mono text-slate-400 dark:text-slate-500 mt-0.5">
+                          {displayDate} {don.utrNumber ? `• UTR: ${don.utrNumber}` : ''}
+                        </Text>
+                      </View>
                     </View>
 
-                    <Text className="text-slate-400 text-xs font-mono">
-                      • {don.date || 'Recent'}
+                    {/* Right Amount & Status Badge */}
+                    <View className="items-end shrink-0">
+                      <Text className="text-base font-black font-mono text-emerald-700 dark:text-emerald-400">
+                        ₹{(don.amountINR || 0).toLocaleString('en-IN')}
+                      </Text>
+                      <View
+                        className={`px-2 py-0.5 rounded-full mt-1 border ${
+                          isVerified
+                            ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700'
+                            : isPending
+                            ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700'
+                            : 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-700'
+                        }`}
+                      >
+                        <Text
+                          className={`text-[9.5px] font-extrabold ${
+                            isVerified
+                              ? 'text-emerald-700 dark:text-emerald-300'
+                              : isPending
+                              ? 'text-amber-700 dark:text-amber-300'
+                              : 'text-rose-700 dark:text-rose-300'
+                          }`}
+                        >
+                          {isVerified
+                            ? (lang === 'hi' ? '✓ सत्यापित' : lang === 'ur' ? '✓ تصدیق شدہ' : '✓ Verified')
+                            : isPending
+                            ? (lang === 'hi' ? '⏳ लंबित' : lang === 'ur' ? '⏳ زیر التواء' : '⏳ Pending')
+                            : (lang === 'hi' ? '❌ अस्वीकृत' : lang === 'ur' ? '❌ مسترد' : '❌ Rejected')}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Rejection Reason (Inline expandable callout like website) */}
+                  {isReasonExpanded && rejectionReason && (
+                    <View className="mt-2 mb-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60">
+                      <View className="flex-row items-center gap-1.5 mb-1">
+                        <AlertCircle size={13} color="#e11d48" />
+                        <Text className="text-[11px] font-bold text-rose-800 dark:text-rose-300">
+                          {lang === 'hi' ? 'अस्वीकृति का कारण:' : lang === 'ur' ? 'مسترد کرنے کی وجہ:' : 'Rejection Reason:'}
+                        </Text>
+                      </View>
+                      <Text className="text-xs text-rose-700 dark:text-rose-200 font-medium leading-relaxed">
+                        {rejectionReason}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Bottom Action Bar */}
+                  <View className="flex-row items-center justify-between pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                    <Text className="text-[11px] text-slate-400 font-mono">
+                      {don.receiptNumber || 'RCP-' + don.id.slice(0, 8).toUpperCase()}
                     </Text>
-                  </View>
 
-                  <Text className="text-base font-black font-mono text-emerald-700 dark:text-emerald-400">
-                    ₹{(don.amountINR || 0).toLocaleString('en-IN')}
-                  </Text>
-                </View>
-
-                {/* Campaign Title & Community */}
-                <DynamicText
-                  text={don.campaignTitle || 'General Support'}
-                  className="text-sm font-bold text-slate-900 dark:text-white mb-1"
-                  numberOfLines={2}
-                />
-
-                <View className="flex-row flex-wrap items-center mb-3">
-                  <DynamicText
-                    text={don.communityName || 'MFCT Community'}
-                    className="text-xs text-slate-500 dark:text-slate-400"
-                  />
-                  <Text className="text-xs text-slate-500 dark:text-slate-400">
-                    {' • '}{displayCat}{don.utrNumber ? ` • UTR: ${don.utrNumber}` : ''}
-                  </Text>
-                </View>
-
-                {/* Action Buttons: View Receipt & Download PDF */}
-                <View className="flex-row items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
-                  <Text className="text-[11px] text-slate-400 font-mono">
-                    {don.receiptNumber || 'REC-' + don.id.slice(0, 8)}
-                  </Text>
-
-                  <View className="flex-row items-center gap-2">
-                    {/* Direct PDF Download Button */}
-                    <TouchableOpacity
-                      onPress={() => handleItemDownload(don)}
-                      disabled={!!processingId}
-                      activeOpacity={0.7}
-                      className="bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-700 px-3 py-1.5 rounded-xl flex-row items-center gap-1.5"
-                    >
-                      {isItemProcessing ? (
-                        <ActivityIndicator size="small" color="#059669" />
-                      ) : (
-                        <Download color="#059669" size={13} />
+                    <View className="flex-row items-center gap-1.5 flex-wrap justify-end">
+                      {/* Reason Button for rejected donations */}
+                      {isRejected && rejectionReason && (
+                        <TouchableOpacity
+                          onPress={() => setExpandedReasonId((prev) => (prev === don.id ? null : don.id))}
+                          activeOpacity={0.7}
+                          className="bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/60 px-2.5 py-1.5 rounded-xl flex-row items-center gap-1"
+                        >
+                          {isReasonExpanded ? <ChevronUp size={12} color="#e11d48" /> : <ChevronDown size={12} color="#e11d48" />}
+                          <Text className="text-rose-700 dark:text-rose-300 font-bold text-xs">
+                            {lang === 'hi' ? 'कारण' : lang === 'ur' ? 'وجہ' : 'Reason'}
+                          </Text>
+                        </TouchableOpacity>
                       )}
-                      <Text className="text-emerald-700 dark:text-emerald-300 font-bold text-xs">
-                        {isItemProcessing
-                          ? t('btn.loading', 'Generating...')
-                          : t('admin.download_pdf_short', 'PDF')}
-                      </Text>
-                    </TouchableOpacity>
 
-                    {/* View Receipt Details Modal Button */}
-                    <TouchableOpacity
-                      onPress={() => setSelectedReceipt(don)}
-                      activeOpacity={0.8}
-                      className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl flex-row items-center gap-1.5 border border-slate-200 dark:border-slate-700"
-                    >
-                      <FileText color="#64748b" size={13} />
-                      <Text className="text-slate-700 dark:text-slate-300 font-bold text-xs">
-                        {t('admin.view_receipt', 'Receipt (80G)')}
-                      </Text>
-                    </TouchableOpacity>
+                      {/* Payslip (पर्ची) Button for verified donations matching website */}
+                      {isVerified && (
+                        <TouchableOpacity
+                          onPress={() => handleDownloadDonationSlip(don)}
+                          disabled={!!downloadingSlipId}
+                          activeOpacity={0.7}
+                          className="bg-amber-400 dark:bg-amber-500 border border-amber-500 dark:border-amber-400 px-3 py-1.5 rounded-xl flex-row items-center gap-1.5 shadow-sm"
+                        >
+                          {downloadingSlipId === don.id ? (
+                            <ActivityIndicator size="small" color="#064e3b" />
+                          ) : (
+                            <Download color="#064e3b" size={13} />
+                          )}
+                          <Text className="text-emerald-950 font-extrabold text-xs">
+                            {downloadingSlipId === don.id
+                              ? (lang === 'hi' ? 'तैयार...' : lang === 'ur' ? 'تیار...' : 'Loading...')
+                              : (lang === 'hi' ? 'पर्ची / Payslip' : lang === 'ur' ? 'پرچی / Payslip' : 'Payslip')}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* View Details Modal Button */}
+                      <TouchableOpacity
+                        onPress={() => setSelectedReceipt(don)}
+                        activeOpacity={0.8}
+                        className="bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 rounded-xl flex-row items-center gap-1 border border-slate-200 dark:border-slate-700"
+                      >
+                        <FileText color="#64748b" size={13} />
+                        <Text className="text-slate-700 dark:text-slate-300 font-bold text-xs">
+                          {lang === 'hi' ? 'विवरण' : lang === 'ur' ? 'تفصیلات' : 'Details'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
-              </View>
-            );
-          })
+              );
+            })}
+
+            {/* Pagination Controls */}
+            <PaginationControl
+              currentPage={validCurrentPage}
+              totalPages={totalPages}
+              totalItems={donations.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setCurrentPage}
+              lang={lang}
+            />
+          </>
         )}
       </ScrollView>
 
@@ -383,7 +483,7 @@ export default function MyDonationsScreen() {
                     </View>
                     <View className="flex-1">
                       <Text className="font-extrabold text-base text-slate-900 dark:text-white">
-                        Muslim Family Care Trust
+                        Mohammad Faeem Charitable Trust
                       </Text>
                       <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                         Section 8 Regd NGO | 80G Tax Exempted
@@ -395,14 +495,14 @@ export default function MyDonationsScreen() {
                   <View className="flex-row items-center justify-between bg-emerald-50 dark:bg-emerald-950/60 p-3 rounded-2xl border border-emerald-200 dark:border-emerald-800 mb-4">
                     <View>
                       <Text className="text-[10px] font-bold uppercase text-emerald-800 dark:text-emerald-300">
-                        {t('modal.official_receipt', 'Official Donation Receipt')}
+                        {lang === 'hi' ? 'दान भुगतान पर्ची' : lang === 'ur' ? 'عطیہ ادائیگی سلپ' : 'Donation Payment Slip'}
                       </Text>
                       <Text className="text-xs font-mono font-bold text-emerald-950 dark:text-emerald-200 mt-0.5">
-                        {don.receiptNumber || 'REC-' + don.id.slice(0, 8)}
+                        {don.receiptNumber || 'RCP-' + don.id.slice(0, 8).toUpperCase()}
                       </Text>
                     </View>
                     <View className="bg-emerald-600 px-2.5 py-1 rounded-lg">
-                      <Text className="text-white text-[10px] font-extrabold">80G CERTIFIED</Text>
+                      <Text className="text-white text-[10px] font-extrabold">✓ Donation Recorded</Text>
                     </View>
                   </View>
 
@@ -514,24 +614,25 @@ export default function MyDonationsScreen() {
 
                   {/* Action Buttons */}
                   <View className="space-y-2.5">
-                    {/* Download PDF Button */}
+                    {/* Download Donation Payment Slip (पर्ची) */}
                     <TouchableOpacity
-                      onPress={() => handleModalDownload(don)}
-                      disabled={isModalDownloading}
+                      onPress={() => handleModalSlipDownload(don)}
+                      disabled={isModalSlipDownloading}
                       activeOpacity={0.8}
-                      className="bg-emerald-600 py-3.5 px-4 rounded-xl flex-row items-center justify-center gap-2 shadow-sm"
+                      className="bg-amber-400 dark:bg-amber-500 py-3.5 px-4 rounded-xl flex-row items-center justify-center gap-2 shadow-sm mb-2"
                     >
-                      {isModalDownloading ? (
-                        <ActivityIndicator color="#ffffff" size="small" />
+                      {isModalSlipDownloading ? (
+                        <ActivityIndicator color="#064e3b" size="small" />
                       ) : (
-                        <Download color="#ffffff" size={16} />
+                        <Download color="#064e3b" size={16} />
                       )}
-                      <Text className="text-white font-bold text-xs">
-                        {isModalDownloading
-                          ? t('btn.loading', 'Generating Official PDF...')
-                          : t('modal.download_pdf_receipt', 'Download PDF Receipt (80G)')}
+                      <Text className="text-emerald-950 font-extrabold text-xs">
+                        {isModalSlipDownloading
+                          ? (lang === 'hi' ? 'पर्ची तैयार हो रही है...' : lang === 'ur' ? 'سلپ تیار ہو رہی ہے...' : 'Generating Payment Slip...')
+                          : (lang === 'hi' ? 'भुगतान पर्ची डाउनलोड करें (Payslip)' : lang === 'ur' ? 'ادائیگی سلپ ڈاؤن لوڈ کریں' : 'Download Payment Slip (Payslip)')}
                       </Text>
                     </TouchableOpacity>
+
 
                     {/* Share PDF Button */}
                     <View className="flex-row gap-2.5">

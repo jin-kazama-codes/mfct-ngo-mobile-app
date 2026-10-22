@@ -88,7 +88,7 @@ export default function CampaignDetailsScreen() {
     if (!campaign) return;
     try {
       await Share.share({
-        message: `Support "${campaign.title}" on MFCT - Muslim Family Care Trust: Goal ₹${campaign.goalINR?.toLocaleString('en-IN')}`,
+        message: `Support "${campaign.title}" on MFCT - Mohammad Faeem Charitable Trust: Goal ₹${campaign.goalINR?.toLocaleString('en-IN')}`,
       });
     } catch (error) {
       console.error(error);
