@@ -29,6 +29,7 @@ import {
 import { useDynamicTranslatedText, autoTranslateCommunityData } from '../../../src/lib/autoTranslate';
 import { useAppState } from '../../../src/context/AppStateProvider';
 import { STANDARD_DISTRICTS } from '../../../src/data/districtsData';
+import { PaginationControl } from '../../../src/components/PaginationControl';
 
 interface ToastInfo {
   message: string;
@@ -358,6 +359,10 @@ export default function CommunitiesAdminScreen() {
   const [showDistrictFilterModal, setShowDistrictFilterModal] = useState(false);
   const [showDistrictFormModal, setShowDistrictFormModal] = useState(false);
 
+  // Pagination state
+  const PAGE_SIZE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+
   // Edit mode tracking
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -467,6 +472,18 @@ export default function CommunitiesAdminScreen() {
 
     return list;
   }, [communities, isDistrictPresident, userDistrict, selectedDistrictFilter, searchQuery]);
+
+  // Reset page on search or district filter change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedDistrictFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCommunities.length / PAGE_SIZE));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (validCurrentPage - 1) * PAGE_SIZE;
+  const paginatedCommunities = useMemo(() => {
+    return filteredCommunities.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [filteredCommunities, startIndex]);
 
   // Candidate users for becoming community admin:
   // - Super Admin & Executive Admin: all users are visible
@@ -976,20 +993,31 @@ export default function CommunitiesAdminScreen() {
                 </TouchableOpacity>
               </View>
             ) : (
-              filteredCommunities.map(c => (
-                <CommunityCardItem
-                  key={c.id}
-                  community={c}
+              <>
+                {paginatedCommunities.map(c => (
+                  <CommunityCardItem
+                    key={c.id}
+                    community={c}
+                    lang={lang}
+                    theme={{}}
+                    isDark={isDark}
+                    tr={tr}
+                    canVerify={isSuperOrExecutive}
+                    onQuickVerify={handleQuickVerify}
+                    onEdit={handleOpenEdit}
+                    onDelete={setDeleteConfirmId}
+                  />
+                ))}
+
+                <PaginationControl
+                  currentPage={validCurrentPage}
+                  totalPages={totalPages}
+                  totalItems={filteredCommunities.length}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={setCurrentPage}
                   lang={lang}
-                  theme={{}}
-                  isDark={isDark}
-                  tr={tr}
-                  canVerify={isSuperOrExecutive}
-                  onQuickVerify={handleQuickVerify}
-                  onEdit={handleOpenEdit}
-                  onDelete={setDeleteConfirmId}
                 />
-              ))
+              </>
             )}
           </ScrollView>
         )

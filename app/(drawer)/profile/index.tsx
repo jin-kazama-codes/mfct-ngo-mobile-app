@@ -418,10 +418,16 @@ export default function ProfileScreen() {
           <TouchableOpacity
             className="flex-row bg-red-50 dark:bg-red-950/60 p-4 rounded-2xl justify-center items-center border border-red-200 dark:border-red-900 gap-2"
             onPress={onLogout}
+            activeOpacity={0.7}
           >
             <LogOut color="#ef4444" size={20} />
-            <Text className="text-red-500 font-bold text-base">
-              {tr('साइन आउट', 'سائن آؤٹ', 'Sign Out')}
+            <Text
+              numberOfLines={1}
+              textBreakStrategy="simple"
+              className="text-red-500 font-bold text-base shrink-0"
+              style={{ flexShrink: 0 }}
+            >
+              {tr('साइन\u00A0आउट', 'سائن\u00A0آؤٹ', 'Sign Out')}
             </Text>
           </TouchableOpacity>
         </View>

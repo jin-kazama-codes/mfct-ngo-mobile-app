@@ -46,6 +46,7 @@ import { useTranslation } from 'react-i18next';
 import { getLanguageCode, translateCity, translateState, translateCommunityName } from '../../../src/lib/translateEntity';
 import { DynamicText } from '../../../src/components/DynamicText';
 import { KycCardSkeleton } from '../../../src/components/SkeletonLoader';
+import { PaginationControl } from '../../../src/components/PaginationControl';
 
 interface ToastInfo {
     message: string;
@@ -96,6 +97,10 @@ export default function KycApprovalScreen() {
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [processingAction, setProcessingAction] = useState<'approve' | 'reject' | null>(null);
+
+    // Pagination state
+    const PAGE_SIZE = 10;
+    const [currentPage, setCurrentPage] = useState(1);
 
     // Filter tab state
     const [activeFilter, setActiveFilter] = useState<VerificationFilter>('pending');
@@ -481,6 +486,16 @@ export default function KycApprovalScreen() {
         return matchesTab && matchesSearch && matchesDistrict;
     });
 
+    // Reset page when filter changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, activeFilter, selectedDistrict]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+    const validCurrentPage = Math.min(currentPage, totalPages);
+    const startIndex = (validCurrentPage - 1) * PAGE_SIZE;
+    const paginatedUsers = filteredUsers.slice(startIndex, startIndex + PAGE_SIZE);
+
     const theme = {
         bg: isDark ? '#090d16' : '#f8fafc',
         cardBg: isDark ? '#1e293b' : '#ffffff',
@@ -729,7 +744,7 @@ export default function KycApprovalScreen() {
                         </Text>
                     </View>
                 ) : (
-                    filteredUsers.map(user => {
+                    paginatedUsers.map(user => {
                         const isProcessing = processingId === user.id;
                         const userStatus = getUserStatus(user);
                         const isApproved = userStatus === 'approved';
@@ -1009,6 +1024,16 @@ export default function KycApprovalScreen() {
                         );
                     })
                 )}
+
+                {/* Pagination Controls */}
+                <PaginationControl
+                    currentPage={validCurrentPage}
+                    totalPages={totalPages}
+                    totalItems={filteredUsers.length}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setCurrentPage}
+                    lang={lang}
+                />
             </ScrollView>
 
             {/* User KYC Detail Modal */}

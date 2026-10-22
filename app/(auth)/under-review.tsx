@@ -278,14 +278,12 @@ export default function UnderReviewScreen() {
             <TouchableOpacity
               key={l}
               onPress={() => handleLanguageChange(l)}
-              className={`rounded-md px-2 py-1 ${
-                lang === l ? 'bg-[#f0c868]' : 'bg-white/[0.08]'
-              }`}
+              className={`rounded-md px-2 py-1 ${lang === l ? 'bg-[#f0c868]' : 'bg-white/[0.08]'
+                }`}
             >
               <Text
-                className={`text-[11px] ${
-                  lang === l ? 'font-extrabold text-[#0f3322]' : 'font-semibold text-slate-300'
-                }`}
+                className={`text-[11px] ${lang === l ? 'font-extrabold text-[#0f3322]' : 'font-semibold text-slate-300'
+                  }`}
               >
                 {l === 'hi' ? 'हिंदी' : l === 'ur' ? 'اردو' : 'EN'}
               </Text>
@@ -415,7 +413,7 @@ export default function UnderReviewScreen() {
             </View>
 
             {/* Action Button: Edit Details */}
-            <TouchableOpacity
+            {/* <TouchableOpacity
               onPress={() => setIsKycModalOpen(true)}
               className="mb-2.5 w-full flex-row items-center justify-center gap-2 rounded-[14px] bg-[#0f3322] py-3.5 active:opacity-90 dark:bg-emerald-900"
             >
@@ -423,7 +421,7 @@ export default function UnderReviewScreen() {
               <Text className="text-sm font-bold text-[#f0c868]">
                 {tr('विवरण सुधारें व पुनः भेजें', 'تفصیلات درست کریں', 'Edit & Resubmit Details')}
               </Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             <TouchableOpacity
               onPress={() => checkStatus(true)}

@@ -45,6 +45,7 @@ import {
 } from '../../../src/lib/translateEntity';
 import { DynamicText } from '../../../src/components/DynamicText';
 import { UtrDeskSkeleton } from '../../../src/components/SkeletonLoader';
+import { PaginationControl } from '../../../src/components/PaginationControl';
 
 const { width } = Dimensions.get('window');
 
@@ -66,6 +67,10 @@ export default function UtrApprovedScreen() {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'pending' | 'verified' | 'all'>('pending');
+
+  // Pagination state
+  const PAGE_SIZE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Selected Donation for Details Modal
   const [selectedDonation, setSelectedDonation] = useState<Donation | null>(null);
@@ -118,6 +123,7 @@ export default function UtrApprovedScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
+    setCurrentPage(1);
     fetchDonations(false);
   };
 
@@ -202,6 +208,18 @@ export default function UtrApprovedScreen() {
         d.receiptNumber?.toLowerCase().includes(query)
     );
   }, [donations, activeTab, pendingDonations, verifiedDonations, searchQuery]);
+
+  // Reset page when search or tab filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeTab]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredDonations.length / PAGE_SIZE));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (validCurrentPage - 1) * PAGE_SIZE;
+  const paginatedDonations = useMemo(() => {
+    return filteredDonations.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [filteredDonations, startIndex]);
 
   const totalPendingAmount = useMemo(
     () => pendingDonations.reduce((sum, d) => sum + (d.amountINR || 0), 0),
@@ -393,7 +411,7 @@ export default function UtrApprovedScreen() {
             </Text>
           </View>
         ) : (
-          filteredDonations.map((donation) => {
+          paginatedDonations.map((donation) => {
             const isProcessing = processingId === donation.id;
             const isPending = donation.status === 'pending_verification';
             const isVerified = donation.status === 'verified';
@@ -559,6 +577,16 @@ export default function UtrApprovedScreen() {
             );
           })
         )}
+
+        {/* Pagination Controls */}
+        <PaginationControl
+          currentPage={validCurrentPage}
+          totalPages={totalPages}
+          totalItems={filteredDonations.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setCurrentPage}
+          lang={lang}
+        />
       </ScrollView>
 
       {/* Details & Screenshot Modal */}

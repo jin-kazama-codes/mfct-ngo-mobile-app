@@ -32,6 +32,7 @@ import {
 } from '../../../src/lib/translateEntity';
 import { useDynamicTranslatedText, autoTranslateText } from '../../../src/lib/autoTranslate';
 import { UserListSkeleton } from '../../../src/components/SkeletonLoader';
+import { PaginationControl } from '../../../src/components/PaginationControl';
 
 const DISTRICT_ROLE_OPTIONS = [
   { id: '', label: '-- None (कोई भूमिका नहीं) --' },
@@ -216,6 +217,10 @@ export default function ManageUsersScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Pagination state
+  const PAGE_SIZE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -377,6 +382,18 @@ export default function ManageUsersScreen() {
       (u.role && u.role.toLowerCase().includes(q))
     );
   }, [users, searchQuery, roleFilter]);
+
+  // Reset page on search or role filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, roleFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (validCurrentPage - 1) * PAGE_SIZE;
+  const paginatedUsers = useMemo(() => {
+    return filteredUsers.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [filteredUsers, startIndex]);
 
   // Pick Image from Mobile
   const handlePickImage = async (field: 'avatar' | 'document' | 'screenshot') => {
@@ -722,18 +739,29 @@ export default function ManageUsersScreen() {
                   </TouchableOpacity>
                 </View>
               ) : (
-                filteredUsers.map(user => (
-                  <UserListItem
-                    key={user.id}
-                    user={user}
+                <>
+                  {paginatedUsers.map(user => (
+                    <UserListItem
+                      key={user.id}
+                      user={user}
+                      lang={lang}
+                      isDark={isDark}
+                      isCurrent={user.id === activeUser?.id}
+                      onView={setViewUser}
+                      onAssignRole={handleOpenAssignRole}
+                      onDelete={setDeleteConfirmId}
+                    />
+                  ))}
+
+                  <PaginationControl
+                    currentPage={validCurrentPage}
+                    totalPages={totalPages}
+                    totalItems={filteredUsers.length}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setCurrentPage}
                     lang={lang}
-                    isDark={isDark}
-                    isCurrent={user.id === activeUser?.id}
-                    onView={setViewUser}
-                    onAssignRole={handleOpenAssignRole}
-                    onDelete={setDeleteConfirmId}
                   />
-                ))
+                </>
               )}
             </ScrollView>
           )}
