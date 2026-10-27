@@ -77,7 +77,7 @@ export default function SignUpScreen() {
     const [aadhaarBackUri, setAadhaarBackUri] = useState<string>('');
     const [aadhaarBackFileName, setAadhaarBackFileName] = useState<string>('');
 
-    const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Bank Transfer'>('Bank Transfer');
+    const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Bank Transfer'>('UPI');
     const [utrNumber, setUtrNumber] = useState('');
     const [screenshotUri, setScreenshotUri] = useState<string>('');
     const [screenshotFileName, setScreenshotFileName] = useState<string>('');
@@ -1414,8 +1414,7 @@ export default function SignUpScreen() {
                     <View className="gap-4 p-5">
 
                         {/* Payment Tabs */}
-                        {/* QR/UPI tab hidden — MFCT does not have a QR code */}
-                        {/* <View className="flex-row rounded-2xl bg-slate-200 p-1 dark:bg-slate-800">
+                        <View className="flex-row rounded-2xl bg-slate-200 p-1 dark:bg-slate-800">
                             <TouchableOpacity
                                 onPress={() => setPaymentMethod('UPI')}
                                 className="flex-1 items-center rounded-xl py-2.5"
@@ -1452,18 +1451,18 @@ export default function SignUpScreen() {
                                     {tr('बैंक ट्रांसफर (NEFT)', 'بینک ٹرانسفر (NEFT)', 'Bank Transfer (NEFT)')}
                                 </Text>
                             </TouchableOpacity>
-                        </View> */}
+                        </View>
 
-                        {/* UPI Panel hidden — MFCT does not have a QR code */}
-                        {/* {paymentMethod === 'UPI' && (
+                        {/* UPI Panel */}
+                        {paymentMethod === 'UPI' && (
                             <View className="items-center gap-3 rounded-[20px] border border-amber-500/30 bg-[#0f3322] p-5">
-                                <View className="h-[162px] w-[162px] items-center justify-center rounded-2xl bg-white p-4">
+                                <View className="w-[260px] h-[260px] max-w-[90%] items-center justify-center rounded-2xl bg-white p-1 overflow-hidden shadow-md">
                                     {accountDetailsLoading ? (
                                         <ActivityIndicator color="#059669" />
                                     ) : accountDetails?.qr_code_url ? (
                                         <Image
                                             source={{ uri: accountDetails.qr_code_url }}
-                                            className="h-[130px] w-[130px]"
+                                            className="h-full w-full rounded-xl"
                                             resizeMode="contain"
                                         />
                                     ) : (
@@ -1472,7 +1471,8 @@ export default function SignUpScreen() {
                                         </Text>
                                     )}
                                 </View>
-                                <Text className="text-[11px] font-bold uppercase tracking-[0.8px] text-[#f0c868]">
+                                {/* UPI ID hidden — NGO currently does not have a UPI ID */}
+                                {/* <Text className="text-[11px] font-bold uppercase tracking-[0.8px] text-[#f0c868]">
                                     {tr('प्रत्यक्ष एस्क्रो के लिए UPI ID', 'براہ راست ادائیگی کے لیے UPI ID', 'UPI ID for Direct Escrow')}
                                 </Text>
                                 {accountDetails?.upi_id ? (
@@ -1487,12 +1487,12 @@ export default function SignUpScreen() {
                                     <Text className="text-xs font-medium text-slate-300">
                                         {tr('UPI ID उपलब्ध नहीं है', 'UPI ID دستیاب نہیں ہے', 'UPI ID is not available')}
                                     </Text>
-                                )}
+                                )} */}
                                 <Text className="text-center text-[11px] text-slate-400">
                                     {tr('Google Pay, PhonePe, Paytm या BHIM UPI द्वारा स्कैन करें', 'Google Pay, PhonePe, Paytm کے ذریعے اسکین کریں', 'Scan using Google Pay, PhonePe, Paytm, or BHIM UPI')}
                                 </Text>
                             </View>
-                        )} */}
+                        )}
 
                         {/* Bank Panel */}
                         {paymentMethod === 'Bank Transfer' && (

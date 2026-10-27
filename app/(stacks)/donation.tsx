@@ -1363,18 +1363,19 @@ export default function DonationScreen() {
               {/* TAB 1: UPI Payment Card */}
               {paymentMethod === 'UPI' ? (
                 <View key="upi-payment" className="bg-slate-900 p-5 rounded-3xl border border-emerald-500/30 items-center shadow-lg space-y-3">
-                  <Text className="text-amber-400 font-bold text-xs uppercase tracking-wider text-center">
+                  {/* UPI ID hidden — NGO currently does not have a UPI ID */}
+                  {/* <Text className="text-amber-400 font-bold text-xs uppercase tracking-wider text-center">
                     {t('donation.upi_id_escrow', tr('सीधे एस्क्रो के लिए UPI ID', 'براہ راست اسکرو کے لیے یو پی آئی آئی ڈی', 'UPI ID for Direct Escrow'))}
-                  </Text>
+                  </Text> */}
 
                   {/* QR Code Container */}
-                  <View className="h-[162px] w-[162px] items-center justify-center rounded-2xl bg-white p-4 shadow-md">
+                  <View className="w-[260px] h-[260px] max-w-[90%] items-center justify-center rounded-2xl bg-white p-1 shadow-md overflow-hidden">
                     {loading ? (
                       <ActivityIndicator color="#059669" />
                     ) : accountDetails?.qr_code_url ? (
                       <Image
                         source={{ uri: accountDetails.qr_code_url }}
-                        className="h-[130px] w-[130px]"
+                        className="h-full w-full rounded-xl"
                         resizeMode="contain"
                       />
                     ) : (
@@ -1385,7 +1386,7 @@ export default function DonationScreen() {
                   </View>
 
                   {/* UPI ID Display with Copy */}
-                  <View className="w-full bg-slate-800/90 border border-slate-700 p-3 rounded-xl flex-row items-center justify-between">
+                  {/* <View className="w-full bg-slate-800/90 border border-slate-700 p-3 rounded-xl flex-row items-center justify-between">
                     <Text className="text-white font-mono font-bold text-sm flex-1 mr-2" numberOfLines={1}>
                       {accountDetails?.upi_id || 'mfct@okicici'}
                     </Text>
@@ -1400,7 +1401,7 @@ export default function DonationScreen() {
                           : t('donation.copy', tr('कॉपी करें', 'کاپی کریں', 'Copy'))}
                       </Text>
                     </TouchableOpacity>
-                  </View>
+                  </View> */}
 
                   <Text className="text-slate-300 text-[11px] text-center px-2">
                     {t(
