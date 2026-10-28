@@ -293,3 +293,24 @@ export interface MemberBankDetails {
   created_at?: string;
   updated_at?: string;
 }
+
+export interface FemaleFamilyMember {
+  id: string;
+  user_id: string;
+  name: string;
+  relation: string;
+  age?: number;
+  date_of_birth?: string;
+  phone?: string;
+  aadhaar_number?: string;
+  address?: string;
+  photo_url?: string;
+  fee_amount: number;
+  payment_method: string;
+  payment_utr: string;
+  payment_screenshot_url?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  rejection_reason?: string;
+  created_at?: string;
+  updated_at?: string;
+}

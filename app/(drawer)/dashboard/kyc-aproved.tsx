@@ -13,8 +13,9 @@ import {
     Platform,
 } from 'react-native';
 import { getUsers, updateUser, deleteUser } from '../../../src/services/userService';
+import { getFemaleFamilyMembers, updateFemaleFamilyMember } from '../../../src/services/memberService';
 import { useAppState } from '../../../src/context/AppStateProvider';
-import { User } from '../../../src/types';
+import { User, FemaleFamilyMember } from '../../../src/types';
 import {
     ShieldCheck,
     UserCheck,
@@ -40,6 +41,9 @@ import {
     Image as ImageIcon,
     ZoomIn,
     Award,
+    Heart,
+    Copy,
+    User as UserIcon,
 } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useTranslation } from 'react-i18next';
@@ -47,6 +51,7 @@ import { getLanguageCode, translateCity, translateState, translateCommunityName 
 import { DynamicText } from '../../../src/components/DynamicText';
 import { KycCardSkeleton } from '../../../src/components/SkeletonLoader';
 import { PaginationControl } from '../../../src/components/PaginationControl';
+import { copyToClipboard } from '../../../src/lib/clipboard';
 
 interface ToastInfo {
     message: string;
@@ -98,6 +103,13 @@ export default function KycApprovalScreen() {
     const [processingId, setProcessingId] = useState<string | null>(null);
     const [processingAction, setProcessingAction] = useState<'approve' | 'reject' | null>(null);
 
+    // Segmented view: Primary Member KYC vs Female Family Member KYC
+    const [kycSection, setKycSection] = useState<'primary' | 'female_members'>('primary');
+    const [femaleMembers, setFemaleMembers] = useState<FemaleFamilyMember[]>([]);
+    const [rejectModalFemaleMember, setRejectModalFemaleMember] = useState<FemaleFamilyMember | null>(null);
+    const [femaleProcessingId, setFemaleProcessingId] = useState<string | null>(null);
+    const [femaleProcessingAction, setFemaleProcessingAction] = useState<'approve' | 'reject' | null>(null);
+
     // Pagination state
     const PAGE_SIZE = 10;
     const [currentPage, setCurrentPage] = useState(1);
@@ -141,7 +153,17 @@ export default function KycApprovalScreen() {
     const loadData = async (showLoader = true) => {
         if (showLoader) setLoading(true);
         try {
-            const data = await getUsers();
+            const [data, femaleData] = await Promise.all([
+                getUsers().catch(e => {
+                    console.warn('Failed to load users:', e);
+                    return [];
+                }),
+                getFemaleFamilyMembers().catch(e => {
+                    console.warn('Failed to load female members:', e);
+                    return [];
+                }),
+            ]);
+
             let filtered = data;
             const rawRole = (activeUser?.role || currentRole || '') as string;
             const isCommAdmin = rawRole.toLowerCase().includes('community');
@@ -152,6 +174,7 @@ export default function KycApprovalScreen() {
                 );
             }
             setUsers(filtered);
+            setFemaleMembers(femaleData || []);
         } catch (err: any) {
             console.error('KycApprovalScreen load error:', err);
             showToast(err?.message || 'Failed to load KYC verification list.', 'error');
@@ -458,7 +481,21 @@ export default function KycApprovalScreen() {
     const approvedUsers = users.filter(u => getUserStatus(u) === 'approved');
     const rejectedUsers = users.filter(u => getUserStatus(u) === 'rejected');
 
-    // Filter by tab + search + district
+    const pendingFemaleMembers = femaleMembers.filter(m => (m.status || 'pending') === 'pending');
+    const approvedFemaleMembers = femaleMembers.filter(m => m.status === 'approved');
+    const rejectedFemaleMembers = femaleMembers.filter(m => m.status === 'rejected');
+
+    // Users lookup map by id
+    const usersMap = React.useMemo(() => {
+        const map = new Map<string, User>();
+        users.forEach(u => {
+            map.set(u.id, u);
+            if (u.membershipId) map.set(u.membershipId, u);
+        });
+        return map;
+    }, [users]);
+
+    // Filter Primary Users by tab + search + district
     const filteredUsers = users.filter(u => {
         const st = getUserStatus(u);
         const matchesTab =
@@ -486,15 +523,119 @@ export default function KycApprovalScreen() {
         return matchesTab && matchesSearch && matchesDistrict;
     });
 
+    // Filter Female Family Members by tab + search + district
+    const filteredFemaleMembers = femaleMembers.filter(m => {
+        const mStatus = m.status || 'pending';
+        const matchesTab =
+            activeFilter === 'pending' ? mStatus === 'pending' :
+            activeFilter === 'approved' ? mStatus === 'approved' :
+            activeFilter === 'rejected' ? mStatus === 'rejected' : true;
+
+        const q = searchQuery.trim().toLowerCase();
+        const pUser = usersMap.get(m.user_id);
+        const matchesSearch =
+            !q ||
+            m.name?.toLowerCase().includes(q) ||
+            m.relation?.toLowerCase().includes(q) ||
+            m.phone?.toLowerCase().includes(q) ||
+            m.aadhaar_number?.toLowerCase().includes(q) ||
+            m.payment_utr?.toLowerCase().includes(q) ||
+            pUser?.name?.toLowerCase().includes(q) ||
+            pUser?.phone?.toLowerCase().includes(q);
+
+        const dist = selectedDistrict.toLowerCase();
+        const matchesDistrict =
+            selectedDistrict === 'All' ||
+            (pUser?.district && pUser.district.toLowerCase().includes(dist)) ||
+            (pUser?.city && pUser.city.toLowerCase().includes(dist));
+
+        return matchesTab && matchesSearch && matchesDistrict;
+    });
+
     // Reset page when filter changes
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchQuery, activeFilter, selectedDistrict]);
+    }, [searchQuery, activeFilter, selectedDistrict, kycSection]);
 
+    // Primary Pagination
     const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
     const validCurrentPage = Math.min(currentPage, totalPages);
     const startIndex = (validCurrentPage - 1) * PAGE_SIZE;
     const paginatedUsers = filteredUsers.slice(startIndex, startIndex + PAGE_SIZE);
+
+    // Female Pagination
+    const totalFemalePages = Math.max(1, Math.ceil(filteredFemaleMembers.length / PAGE_SIZE));
+    const validFemaleCurrentPage = Math.min(currentPage, totalFemalePages);
+    const startFemaleIndex = (validFemaleCurrentPage - 1) * PAGE_SIZE;
+    const paginatedFemaleMembers = filteredFemaleMembers.slice(startFemaleIndex, startFemaleIndex + PAGE_SIZE);
+
+    // Female Member Approval Action
+    const handleApproveFemaleMember = async (member: FemaleFamilyMember) => {
+        setFemaleProcessingId(member.id);
+        setFemaleProcessingAction('approve');
+        try {
+            await updateFemaleFamilyMember(member.id, {
+                status: 'approved',
+                rejection_reason: '',
+            });
+            setFemaleMembers(prev =>
+                prev.map(m => (m.id === member.id ? { ...m, status: 'approved', rejection_reason: '' } : m))
+            );
+            showToast(`${member.name} ${tr('सफलतापूर्वक स्वीकृत किया गया!', 'کامیابی سے منظور کیا گیا!', 'approved successfully!')}`, 'success');
+        } catch (err: any) {
+            console.error('Approve female member error:', err);
+            showToast(err?.message || 'Failed to approve female member.', 'error');
+        } finally {
+            setFemaleProcessingId(null);
+            setFemaleProcessingAction(null);
+        }
+    };
+
+    // Open Reject Modal for Female Member
+    const openRejectFemaleModal = (member: FemaleFamilyMember) => {
+        setRejectModalFemaleMember(member);
+        setRejectionReasonInput(member.rejection_reason || '');
+        setRejectionReasonError('');
+    };
+
+    // Confirm Rejection of Female Member
+    const handleConfirmRejectFemaleMember = async () => {
+        if (!rejectModalFemaleMember) return;
+        const reason = rejectionReasonInput.trim();
+        if (!reason) {
+            setRejectionReasonError(
+                tr(
+                    'कृपया अस्वीकृति का कारण अवश्य दर्ज करें।',
+                    'براہ کرم مسترد کرنے کی وجہ درج کریں۔',
+                    'Rejection reason is mandatory.'
+                )
+            );
+            return;
+        }
+
+        const member = rejectModalFemaleMember;
+        setFemaleProcessingId(member.id);
+        setFemaleProcessingAction('reject');
+        try {
+            await updateFemaleFamilyMember(member.id, {
+                status: 'rejected',
+                rejection_reason: reason,
+            });
+            setFemaleMembers(prev =>
+                prev.map(m => (m.id === member.id ? { ...m, status: 'rejected', rejection_reason: reason } : m))
+            );
+            showToast(`${member.name} ${tr('अस्वीकृत किया गया', 'مسترد کیا گیا', 'rejected.')}`, 'info');
+            setRejectModalFemaleMember(null);
+            setRejectionReasonInput('');
+            setRejectionReasonError('');
+        } catch (err: any) {
+            console.error('Reject female member error:', err);
+            showToast(err?.message || 'Failed to reject female member.', 'error');
+        } finally {
+            setFemaleProcessingId(null);
+            setFemaleProcessingAction(null);
+        }
+    };
 
     const theme = {
         bg: isDark ? '#090d16' : '#f8fafc',
@@ -553,6 +694,51 @@ export default function KycApprovalScreen() {
                     </TouchableOpacity>
                 </View>
 
+                {/* Section Switcher: Primary Member KYC vs Female Family Member KYC */}
+                <View style={[s.sectionToggleWrap, { backgroundColor: theme.chipIdle, borderColor: theme.cardBorder }]}>
+                    <TouchableOpacity
+                        style={[
+                            s.sectionToggleBtn,
+                            kycSection === 'primary' && { backgroundColor: theme.cardBg, elevation: 2 },
+                        ]}
+                        onPress={() => {
+                            setKycSection('primary');
+                            setCurrentPage(1);
+                        }}
+                    >
+                        <ShieldCheck color={kycSection === 'primary' ? '#10b981' : theme.textSub} size={15} />
+                        <Text style={[s.sectionToggleText, { color: kycSection === 'primary' ? theme.textMain : theme.textSub, fontWeight: kycSection === 'primary' ? '800' : '600' }]}>
+                            {tr('मुख्य सदस्य (₹100)', 'بنیادی اراکین (100 روپے)', 'Primary (₹100)')}
+                        </Text>
+                        {pendingUsers.length > 0 && (
+                            <View style={s.sectionBadgePending}>
+                                <Text style={s.sectionBadgePendingText}>{pendingUsers.length}</Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[
+                            s.sectionToggleBtn,
+                            kycSection === 'female_members' && { backgroundColor: theme.cardBg, elevation: 2 },
+                        ]}
+                        onPress={() => {
+                            setKycSection('female_members');
+                            setCurrentPage(1);
+                        }}
+                    >
+                        <Heart color={kycSection === 'female_members' ? '#ec4899' : theme.textSub} size={15} />
+                        <Text style={[s.sectionToggleText, { color: kycSection === 'female_members' ? '#ec4899' : theme.textSub, fontWeight: kycSection === 'female_members' ? '800' : '600' }]}>
+                            {tr('महिला सदस्य (₹50)', 'خواتین اراکین (50 روپے)', 'Female (₹50)')}
+                        </Text>
+                        {pendingFemaleMembers.length > 0 && (
+                            <View style={[s.sectionBadgePending, { backgroundColor: '#ec4899' }]}>
+                                <Text style={s.sectionBadgePendingText}>{pendingFemaleMembers.length}</Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+                </View>
+
                 {/* Overview Stats Cards (Tap to filter) */}
                 <View style={s.statsRow}>
                     <TouchableOpacity
@@ -563,7 +749,9 @@ export default function KycApprovalScreen() {
                         onPress={() => setActiveFilter('pending')}
                     >
                         <Clock color="#fff" size={20} />
-                        <Text style={s.statCount}>{loading ? '—' : pendingUsers.length}</Text>
+                        <Text style={s.statCount}>
+                            {loading ? '—' : kycSection === 'primary' ? pendingUsers.length : pendingFemaleMembers.length}
+                        </Text>
                         <Text style={s.statLabel}>{t('admin.kyc_pending', 'Pending')}</Text>
                     </TouchableOpacity>
 
@@ -575,7 +763,9 @@ export default function KycApprovalScreen() {
                         onPress={() => setActiveFilter('approved')}
                     >
                         <CheckCircle2 color="#fff" size={20} />
-                        <Text style={s.statCount}>{loading ? '—' : approvedUsers.length}</Text>
+                        <Text style={s.statCount}>
+                            {loading ? '—' : kycSection === 'primary' ? approvedUsers.length : approvedFemaleMembers.length}
+                        </Text>
                         <Text style={s.statLabel}>{t('admin.kyc_approved', 'Approved')}</Text>
                     </TouchableOpacity>
 
@@ -587,7 +777,9 @@ export default function KycApprovalScreen() {
                         onPress={() => setActiveFilter('rejected')}
                     >
                         <XCircle color="#fff" size={20} />
-                        <Text style={s.statCount}>{loading ? '—' : rejectedUsers.length}</Text>
+                        <Text style={s.statCount}>
+                            {loading ? '—' : kycSection === 'primary' ? rejectedUsers.length : rejectedFemaleMembers.length}
+                        </Text>
                         <Text style={s.statLabel}>{t('admin.kyc_rejected', 'Rejected')}</Text>
                     </TouchableOpacity>
                 </View>
@@ -596,6 +788,11 @@ export default function KycApprovalScreen() {
                 <View style={s.filterTabRow}>
                     {(['pending', 'approved', 'rejected', 'all'] as VerificationFilter[]).map(filterKey => {
                         const isActive = activeFilter === filterKey;
+                        const pendingCount = kycSection === 'primary' ? pendingUsers.length : pendingFemaleMembers.length;
+                        const approvedCount = kycSection === 'primary' ? approvedUsers.length : approvedFemaleMembers.length;
+                        const rejectedCount = kycSection === 'primary' ? rejectedUsers.length : rejectedFemaleMembers.length;
+                        const allCount = kycSection === 'primary' ? users.length : femaleMembers.length;
+
                         const label = loading
                             ? (filterKey === 'pending'
                                 ? 'Pending (—)'
@@ -605,12 +802,12 @@ export default function KycApprovalScreen() {
                                         ? 'Rejected (—)'
                                         : 'All (—)')
                             : (filterKey === 'pending'
-                                ? `Pending (${pendingUsers.length})`
+                                ? `Pending (${pendingCount})`
                                 : filterKey === 'approved'
-                                    ? `Approved (${approvedUsers.length})`
+                                    ? `Approved (${approvedCount})`
                                     : filterKey === 'rejected'
-                                        ? `Rejected (${rejectedUsers.length})`
-                                        : `All (${users.length})`);
+                                        ? `Rejected (${rejectedCount})`
+                                        : `All (${allCount})`);
 
                         const activeColor =
                             filterKey === 'pending'
@@ -694,8 +891,10 @@ export default function KycApprovalScreen() {
                     </ScrollView>
                 </View>
 
-                {/* List Header */}
-                <View style={s.sectionHeader}>
+                {kycSection === 'primary' ? (
+                    <>
+                        {/* List Header */}
+                        <View style={s.sectionHeader}>
                     <Text style={[s.sectionTitle, { color: theme.textMain }]}>
                         {loading
                             ? (activeFilter === 'pending'
@@ -1025,15 +1224,332 @@ export default function KycApprovalScreen() {
                     })
                 )}
 
-                {/* Pagination Controls */}
-                <PaginationControl
-                    currentPage={validCurrentPage}
-                    totalPages={totalPages}
-                    totalItems={filteredUsers.length}
-                    pageSize={PAGE_SIZE}
-                    onPageChange={setCurrentPage}
-                    lang={lang}
-                />
+                        {/* Pagination Controls */}
+                        <PaginationControl
+                            currentPage={validCurrentPage}
+                            totalPages={totalPages}
+                            totalItems={filteredUsers.length}
+                            pageSize={PAGE_SIZE}
+                            onPageChange={setCurrentPage}
+                            lang={lang}
+                        />
+                    </>
+                ) : (
+                    <>
+                        {/* Female Members List Header */}
+                        <View style={s.sectionHeader}>
+                            <Text style={[s.sectionTitle, { color: theme.textMain }]}>
+                                {loading
+                                    ? (activeFilter === 'pending'
+                                        ? 'Pending Female KYC (—)'
+                                        : activeFilter === 'approved'
+                                            ? 'Approved Female Members (—)'
+                                            : activeFilter === 'rejected'
+                                                ? 'Rejected Female Members (—)'
+                                                : 'All Female Members (—)')
+                                    : (activeFilter === 'pending'
+                                        ? `Pending Female KYC (${filteredFemaleMembers.length})`
+                                        : activeFilter === 'approved'
+                                            ? `Approved Female Members (${filteredFemaleMembers.length})`
+                                            : activeFilter === 'rejected'
+                                                ? `Rejected Female Members (${filteredFemaleMembers.length})`
+                                                : `All Female Members (${filteredFemaleMembers.length})`)}
+                            </Text>
+                            {activeFilter === 'pending' && filteredFemaleMembers.length > 0 && !loading && (
+                                <View style={[s.urgentBadge, { backgroundColor: '#ec489920' }]}>
+                                    <Text style={[s.urgentBadgeText, { color: '#ec4899' }]}>Needs Review</Text>
+                                </View>
+                            )}
+                        </View>
+
+                        {loading ? (
+                            <View style={{ gap: 4 }}>
+                                <KycCardSkeleton isDark={isDark} />
+                                <KycCardSkeleton isDark={isDark} />
+                                <KycCardSkeleton isDark={isDark} />
+                            </View>
+                        ) : filteredFemaleMembers.length === 0 ? (
+                            <View style={[s.emptyCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+                                <View style={[s.emptyIconCircle, { backgroundColor: '#ec489915' }]}>
+                                    <Heart color="#ec4899" size={32} />
+                                </View>
+                                <Text style={[s.emptyTitle, { color: theme.textMain }]}>
+                                    {tr('कोई महिला सदस्य नहीं मिला', 'کوئی خواتین رکن نہیں ملی', 'No female members found')}
+                                </Text>
+                                <Text style={[s.emptySub, { color: theme.textSub }]}>
+                                    {searchQuery
+                                        ? `No female member records matched "${searchQuery}".`
+                                        : activeFilter === 'pending'
+                                            ? tr('सत्यापन के लिए कोई लंबित महिला सदस्य नहीं है।', 'کوئی زیر التواء خواتین رکن نہیں ہے۔', 'No female members currently waiting for approval.')
+                                            : tr('इस श्रेणी में कोई रिकॉर्ड नहीं है।', 'اس زمرے میں کوئی ریکارڈ नहीं ہے۔', 'No records in this category.')}
+                                </Text>
+                            </View>
+                        ) : (
+                            paginatedFemaleMembers.map(member => {
+                                const primaryUser = usersMap.get(member.user_id);
+                                const isApproved = member.status === 'approved';
+                                const isRejected = member.status === 'rejected';
+                                const isPending = !member.status || member.status === 'pending';
+                                const isProcessing = femaleProcessingId === member.id;
+
+                                return (
+                                    <View
+                                        key={member.id}
+                                        style={[
+                                            s.userCard,
+                                            {
+                                                backgroundColor: theme.cardBg,
+                                                borderColor: isApproved
+                                                    ? '#10b98135'
+                                                    : isRejected
+                                                        ? '#ef444435'
+                                                        : '#ec489940',
+                                            },
+                                        ]}
+                                    >
+                                        {/* Top row: Relationship badge, Date, Status */}
+                                        <View style={s.cardTopRow}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                <View
+                                                    style={[
+                                                        s.badgeWrap,
+                                                        {
+                                                            backgroundColor: isApproved
+                                                                ? '#10b98118'
+                                                                : isRejected
+                                                                    ? '#ef444418'
+                                                                    : '#ec489918',
+                                                        },
+                                                    ]}
+                                                >
+                                                    <Text
+                                                        style={[
+                                                            s.userKycBadgeText,
+                                                            {
+                                                                color: isApproved
+                                                                    ? '#10b981'
+                                                                    : isRejected
+                                                                        ? '#ef4444'
+                                                                        : '#ec4899',
+                                                            },
+                                                        ]}
+                                                    >
+                                                        {isApproved
+                                                            ? 'VERIFIED'
+                                                            : isRejected
+                                                                ? 'REJECTED'
+                                                                : 'PENDING'}
+                                                    </Text>
+                                                </View>
+                                                <View style={{ backgroundColor: '#fce7f3', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                                                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#db2777' }}>
+                                                        {member.relation}
+                                                    </Text>
+                                                </View>
+                                            </View>
+
+                                            <View style={s.dateRow}>
+                                                <Clock color={theme.textSub} size={12} />
+                                                <Text style={[s.dateText, { color: theme.textSub }]}>
+                                                    {member.created_at ? new Date(member.created_at).toLocaleDateString() : 'Recent'}
+                                                </Text>
+                                            </View>
+                                        </View>
+
+                                        {/* Name and Avatar */}
+                                        <View style={s.userInfoRow}>
+                                            <View
+                                                style={[
+                                                    s.avatarFallback,
+                                                    {
+                                                        backgroundColor: isApproved
+                                                            ? '#10b98120'
+                                                            : isRejected
+                                                                ? '#ef444420'
+                                                                : '#fce7f3',
+                                                    },
+                                                ]}
+                                            >
+                                                <Heart
+                                                    color={isApproved ? '#10b981' : isRejected ? '#ef4444' : '#ec4899'}
+                                                    size={18}
+                                                    fill={isApproved ? '#10b981' : isRejected ? '#ef4444' : '#ec4899'}
+                                                />
+                                            </View>
+
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={[s.userName, { color: theme.textMain }]}>
+                                                    {member.name}
+                                                </Text>
+                                                {primaryUser && (
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                                                        <UserIcon color={theme.textSub} size={11} />
+                                                        <Text style={[s.userLocation, { color: theme.textSub }]}>
+                                                            {tr('मुख्य सदस्य:', 'بنیادی رکن:', 'Primary:')} {primaryUser.name} ({primaryUser.phone})
+                                                        </Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                        </View>
+
+                                        {/* Detail Info Grid */}
+                                        <View style={[s.detailGrid, { backgroundColor: theme.chipIdle, borderColor: theme.cardBorder }]}>
+                                            <View style={s.detailGridCol}>
+                                                <Text style={[s.detailGridLabel, { color: theme.textSub }]}>{tr('आयु', 'عمر', 'Age')}</Text>
+                                                <Text style={[s.detailGridVal, { color: theme.textMain }]}>{member.age ? `${member.age} yrs` : '—'}</Text>
+                                            </View>
+                                            <View style={s.detailGridDivider} />
+                                            <View style={s.detailGridCol}>
+                                                <Text style={[s.detailGridLabel, { color: theme.textSub }]}>{tr('फ़ोन', 'فون', 'Phone')}</Text>
+                                                <Text style={[s.detailGridVal, { color: theme.textMain }]}>{member.phone || '—'}</Text>
+                                            </View>
+                                            <View style={s.detailGridDivider} />
+                                            <View style={s.detailGridCol}>
+                                                <Text style={[s.detailGridLabel, { color: theme.textSub }]}>{tr('आधार', 'آدھار', 'Aadhaar')}</Text>
+                                                <Text style={[s.detailGridVal, { color: theme.textMain }]}>
+                                                    {member.aadhaar_number ? `•••• ${member.aadhaar_number.slice(-4)}` : '—'}
+                                                </Text>
+                                            </View>
+                                        </View>
+
+                                        {/* Payment Box */}
+                                        <View style={[s.femalePaymentBox, { backgroundColor: isDark ? '#1e1b4b30' : '#fdf2f8', borderColor: '#fbcfe8' }]}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                    <CreditCard color="#db2777" size={14} />
+                                                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#db2777' }}>
+                                                        {tr('शुल्क: ₹50 (UPI)', 'فیس: 50 روپے (UPI)', 'Fee: ₹50 (UPI)')}
+                                                    </Text>
+                                                </View>
+                                                {member.payment_screenshot_url && (
+                                                    <TouchableOpacity
+                                                        style={s.receiptPreviewBtn}
+                                                        onPress={() => setPreviewImage({
+                                                            url: member.payment_screenshot_url!,
+                                                            title: `${member.name} - Payment Screenshot (₹50)`
+                                                        })}
+                                                    >
+                                                        <Eye color="#db2777" size={12} />
+                                                        <Text style={s.receiptPreviewBtnText}>{tr('रसीद देखें', 'رسید دیکھیں', 'View Receipt')}</Text>
+                                                    </TouchableOpacity>
+                                                )}
+                                            </View>
+
+                                            {member.payment_utr ? (
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(219,39,119,0.15)' }}>
+                                                    <Text style={{ fontSize: 11, color: theme.textSub, fontWeight: '500' }}>
+                                                        UTR: <Text style={{ fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontWeight: '700', color: theme.textMain }}>{member.payment_utr}</Text>
+                                                    </Text>
+                                                    <TouchableOpacity
+                                                        onPress={async () => {
+                                                            await copyToClipboard(member.payment_utr || '');
+                                                            showToast('UTR copied to clipboard', 'info');
+                                                        }}
+                                                        style={{ padding: 4 }}
+                                                    >
+                                                        <Copy color="#db2777" size={13} />
+                                                    </TouchableOpacity>
+                                                </View>
+                                            ) : null}
+                                        </View>
+
+                                        {/* Rejection Reason notice if rejected */}
+                                        {isRejected && member.rejection_reason ? (
+                                            <View style={[s.rejectionReasonBanner, { backgroundColor: isDark ? '#451a1a' : '#fef2f2', borderColor: '#ef444435' }]}>
+                                                <AlertCircle color="#ef4444" size={13} />
+                                                <Text style={s.rejectionReasonText}>
+                                                    <Text style={{ fontWeight: '700' }}>{tr('अस्वीकृति कारण:', 'وجہ:', 'Reason:')} </Text>
+                                                    {member.rejection_reason}
+                                                </Text>
+                                            </View>
+                                        ) : null}
+
+                                        {/* Action Buttons */}
+                                        {canPerformKycAction && (
+                                            <View style={[s.cardActionsRow, { marginTop: 10 }]}>
+                                                {isApproved && (
+                                                    <TouchableOpacity
+                                                        style={[s.declineBtn, { flex: 1 }]}
+                                                        onPress={() => openRejectFemaleModal(member)}
+                                                        disabled={isProcessing}
+                                                    >
+                                                        <X color="#ef4444" size={14} />
+                                                        <Text style={s.declineBtnText}>{tr('सत्यापन हटाएं', 'منسوخ کریں', 'Revoke Approval')}</Text>
+                                                    </TouchableOpacity>
+                                                )}
+
+                                                {isRejected && (
+                                                    <>
+                                                        <TouchableOpacity
+                                                            style={[s.declineBtn, { flex: 1 }]}
+                                                            onPress={() => openRejectFemaleModal(member)}
+                                                            disabled={isProcessing}
+                                                        >
+                                                            <Text style={s.declineBtnText}>{tr('कारण बदलें', 'وجہ تبدیل', 'Edit Reason')}</Text>
+                                                        </TouchableOpacity>
+
+                                                        <TouchableOpacity
+                                                            style={[s.approveBtn, { flex: 1.3 }]}
+                                                            onPress={() => handleApproveFemaleMember(member)}
+                                                            disabled={isProcessing}
+                                                        >
+                                                            {isProcessing && femaleProcessingAction === 'approve' ? (
+                                                                <ActivityIndicator color="#fff" size="small" />
+                                                            ) : (
+                                                                <>
+                                                                    <Check color="#fff" size={15} />
+                                                                    <Text style={s.approveBtnText}>{tr('पुनः स्वीकृत', 'دوبارہ منظور', 'Re-Approve')}</Text>
+                                                                </>
+                                                            )}
+                                                        </TouchableOpacity>
+                                                    </>
+                                                )}
+
+                                                {isPending && (
+                                                    <>
+                                                        <TouchableOpacity
+                                                            style={[s.declineBtn, { flex: 1 }]}
+                                                            onPress={() => openRejectFemaleModal(member)}
+                                                            disabled={isProcessing}
+                                                        >
+                                                            <X color="#ef4444" size={14} />
+                                                            <Text style={s.declineBtnText}>{t('btn.reject', 'Reject')}</Text>
+                                                        </TouchableOpacity>
+
+                                                        <TouchableOpacity
+                                                            style={[s.approveBtn, { flex: 1.3, backgroundColor: '#10b981' }]}
+                                                            onPress={() => handleApproveFemaleMember(member)}
+                                                            disabled={isProcessing}
+                                                        >
+                                                            {isProcessing && femaleProcessingAction === 'approve' ? (
+                                                                <ActivityIndicator color="#fff" size="small" />
+                                                            ) : (
+                                                                <>
+                                                                    <Check color="#fff" size={15} />
+                                                                    <Text style={s.approveBtnText}>{tr('स्वीकृत करें', 'منظور کریں', 'Approve')}</Text>
+                                                                </>
+                                                            )}
+                                                        </TouchableOpacity>
+                                                    </>
+                                                )}
+                                            </View>
+                                        )}
+                                    </View>
+                                );
+                            })
+                        )}
+
+                        {/* Female Pagination Controls */}
+                        <PaginationControl
+                            currentPage={validFemaleCurrentPage}
+                            totalPages={totalFemalePages}
+                            totalItems={filteredFemaleMembers.length}
+                            pageSize={PAGE_SIZE}
+                            onPageChange={setCurrentPage}
+                            lang={lang}
+                        />
+                    </>
+                )}
             </ScrollView>
 
             {/* User KYC Detail Modal */}
@@ -1516,6 +2032,138 @@ export default function KycApprovalScreen() {
                                     disabled={processingId === rejectModalUser.id}
                                 >
                                     {processingId === rejectModalUser.id ? (
+                                        <ActivityIndicator color="#fff" size="small" />
+                                    ) : (
+                                        <Text style={s.rejectConfirmBtnText}>
+                                            {t('btn.confirm_reject', 'Confirm Rejection')}
+                                        </Text>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
+            )}
+
+            {/* Female Member Rejection Reason Dialog */}
+            {rejectModalFemaleMember && (
+                <Modal
+                    visible={!!rejectModalFemaleMember}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => {
+                        if (!femaleProcessingId) setRejectModalFemaleMember(null);
+                    }}
+                >
+                    <View style={[s.modalBackdrop, { backgroundColor: theme.modalBg, justifyContent: 'center', padding: 20 }]}>
+                        <View style={[s.rejectModalCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+                            <View style={s.rejectModalHeader}>
+                                <View style={s.rejectIconCircle}>
+                                    <XCircle color="#ef4444" size={22} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[s.modalTitle, { color: theme.textMain }]}>
+                                        {tr('महिला सदस्य अस्वीकृति कारण', 'خواتین رکن مسترد کرنے کی وجہ', 'Reason for Female Member Rejection')}
+                                    </Text>
+                                    <Text style={[s.modalSubTitle, { color: theme.textSub }]} numberOfLines={1}>
+                                        {rejectModalFemaleMember.name} ({rejectModalFemaleMember.relation})
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <Text style={[s.rejectSuggestLabel, { color: theme.textSub }]}>
+                                {t('admin.select_quick_reason', 'Select quick reason or write below:')}
+                            </Text>
+
+                            {/* Suggestion Chips */}
+                            <View style={s.suggestChipsRow}>
+                                {[
+                                    'Invalid UTR Number / Payment not received',
+                                    'Payment receipt screenshot unclear',
+                                    'Incorrect or mismatched Aadhaar details',
+                                    'Age or relation criteria not met',
+                                ].map(reason => (
+                                    <TouchableOpacity
+                                        key={reason}
+                                        style={[
+                                            s.suggestChip,
+                                            {
+                                                backgroundColor:
+                                                    rejectionReasonInput === reason
+                                                        ? (isDark ? '#451a1a' : '#fef2f2')
+                                                        : theme.chipIdle,
+                                                borderColor:
+                                                    rejectionReasonInput === reason
+                                                        ? '#ef4444'
+                                                        : theme.cardBorder,
+                                            },
+                                        ]}
+                                        onPress={() => {
+                                            setRejectionReasonInput(reason);
+                                            setRejectionReasonError('');
+                                        }}
+                                    >
+                                        <Text
+                                            style={[
+                                                s.suggestChipText,
+                                                {
+                                                    color:
+                                                        rejectionReasonInput === reason
+                                                            ? '#ef4444'
+                                                            : theme.textSub,
+                                                },
+                                            ]}
+                                        >
+                                            {reason}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            <TextInput
+                                style={[
+                                    s.rejectionInput,
+                                    {
+                                        backgroundColor: isDark ? '#131d2e' : '#f8fafc',
+                                        borderColor: rejectionReasonError ? '#ef4444' : theme.cardBorder,
+                                        color: theme.textMain,
+                                    },
+                                ]}
+                                placeholder={tr('अस्वीकृति का कारण दर्ज करें (अनिवार्य)...', 'مسترد کرنے کی وجہ درج کریں (لازمی)...', 'Please specify why enrollment is rejected (Mandatory)...')}
+                                placeholderTextColor="#94a3b8"
+                                multiline
+                                numberOfLines={3}
+                                textAlignVertical="top"
+                                value={rejectionReasonInput}
+                                onChangeText={text => {
+                                    setRejectionReasonInput(text);
+                                    if (text.trim()) setRejectionReasonError('');
+                                }}
+                            />
+
+                            {rejectionReasonError ? (
+                                <Text style={s.rejectionErrorText}>{rejectionReasonError}</Text>
+                            ) : null}
+
+                            <View style={s.rejectModalBtnRow}>
+                                <TouchableOpacity
+                                    style={[s.rejectCancelBtn, { backgroundColor: theme.chipIdle }]}
+                                    onPress={() => {
+                                        if (!femaleProcessingId) setRejectModalFemaleMember(null);
+                                    }}
+                                    disabled={!!femaleProcessingId}
+                                >
+                                    <Text style={[s.rejectCancelBtnText, { color: theme.textMain }]}>
+                                        {t('btn.cancel', 'Cancel')}
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={s.rejectConfirmBtn}
+                                    onPress={handleConfirmRejectFemaleMember}
+                                    disabled={femaleProcessingId === rejectModalFemaleMember.id}
+                                >
+                                    {femaleProcessingId === rejectModalFemaleMember.id ? (
                                         <ActivityIndicator color="#fff" size="small" />
                                     ) : (
                                         <Text style={s.rejectConfirmBtnText}>
@@ -2399,4 +3047,98 @@ const s = StyleSheet.create({
     toastError: { backgroundColor: '#dc2626' },
     toastInfo: { backgroundColor: '#0284c7' },
     toastText: { color: '#fff', fontSize: 13, fontWeight: '700', flex: 1 },
+    sectionToggleWrap: {
+        flexDirection: 'row',
+        borderRadius: 14,
+        borderWidth: 1,
+        padding: 4,
+        marginBottom: 14,
+        gap: 6,
+    },
+    sectionToggleBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+        borderRadius: 10,
+        gap: 6,
+    },
+    sectionToggleText: {
+        fontSize: 12,
+    },
+    sectionBadgePending: {
+        backgroundColor: '#f59e0b',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 10,
+    },
+    sectionBadgePendingText: {
+        color: '#fff',
+        fontSize: 10,
+        fontWeight: '800',
+    },
+    detailGrid: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: 12,
+        borderWidth: 1,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+        marginBottom: 10,
+    },
+    detailGridCol: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    detailGridDivider: {
+        width: 1,
+        height: 24,
+        backgroundColor: '#cbd5e140',
+    },
+    detailGridLabel: {
+        fontSize: 10,
+        fontWeight: '600',
+        marginBottom: 2,
+    },
+    detailGridVal: {
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    femalePaymentBox: {
+        padding: 10,
+        borderRadius: 12,
+        borderWidth: 1,
+        marginBottom: 10,
+    },
+    receiptPreviewBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6,
+        backgroundColor: '#fce7f3',
+    },
+    receiptPreviewBtnText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#db2777',
+    },
+    rejectionReasonBanner: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 6,
+        padding: 8,
+        borderRadius: 8,
+        borderWidth: 1,
+        marginBottom: 10,
+    },
+    rejectionReasonText: {
+        flex: 1,
+        fontSize: 11,
+        color: '#ef4444',
+        lineHeight: 16,
+    },
 });
