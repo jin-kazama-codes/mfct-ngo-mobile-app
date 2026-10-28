@@ -1,5 +1,5 @@
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     AppState,
@@ -21,16 +21,6 @@ type VersionInfo = {
 type UpdateStatus = "checking" | "current" | "update" | "error";
 
 function getInstalledVersion(): string {
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const Application = require("expo-application");
-        if (Application?.nativeApplicationVersion) {
-            return String(Application.nativeApplicationVersion);
-        }
-    } catch {
-        // Native module may not be present in current runtime
-    }
-
     const version =
         Constants.expoConfig?.version ??
         (Constants as any).nativeAppVersion ??
@@ -62,13 +52,19 @@ export default function AppUpdateGate({
 }) {
     const [status, setStatus] = useState<UpdateStatus>("checking");
     const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
+    const hasCheckedInitial = useRef(false);
+    const lastCheckTime = useRef<number>(0);
 
-    const checkVersion = useCallback(async () => {
-        setStatus("checking");
+    const checkVersion = useCallback(async (isSilent = false) => {
+        // Never unmount children or reset to "checking" if app is already active/current
+        if (!isSilent && !hasCheckedInitial.current) {
+            setStatus("checking");
+        }
 
         try {
             if (Platform.OS !== "android") {
                 setStatus("current");
+                hasCheckedInitial.current = true;
                 return;
             }
 
@@ -85,15 +81,10 @@ export default function AppUpdateGate({
 
             const { data, error } = (await Promise.race([fetchPromise, timeoutPromise])) as any;
 
-            if (error) {
-                console.warn("[AppUpdateGate] Update check query warning:", error?.message || error);
-                // Fail open: let the user into the app if network or server check fails
-                setStatus("current");
-                return;
-            }
-
-            if (!data || data.length === 0) {
-                setStatus("current");
+            if (error || !data || data.length === 0) {
+                if (!hasCheckedInitial.current) {
+                    setStatus("current");
+                }
                 return;
             }
 
@@ -126,7 +117,9 @@ export default function AppUpdateGate({
                 targetRow?.link;
 
             if (!latestVersion || !playStoreUrl) {
-                setStatus("current");
+                if (!hasCheckedInitial.current) {
+                    setStatus("current");
+                }
                 return;
             }
 
@@ -138,23 +131,33 @@ export default function AppUpdateGate({
             if (isNewerVersion(info.latest_version, installedVersion)) {
                 setVersionInfo(info);
                 setStatus("update");
-            } else {
+            } else if (!hasCheckedInitial.current || status !== "update") {
                 setVersionInfo(null);
                 setStatus("current");
             }
         } catch (error) {
             console.warn("[AppUpdateGate] Update check failed gracefully:", error);
-            // Fail open: Never block users on Google Play Store due to check errors
-            setStatus("current");
+            if (!hasCheckedInitial.current) {
+                setStatus("current");
+            }
+        } finally {
+            hasCheckedInitial.current = true;
+            lastCheckTime.current = Date.now();
         }
-    }, []);
+    }, [status]);
 
     useEffect(() => {
-        void checkVersion();
+        // Initial check on app startup
+        void checkVersion(false);
 
         const subscription = AppState.addEventListener("change", (state) => {
+            // Only re-check in background if app comes to foreground AND at least 30 minutes elapsed.
+            // This prevents image-picker, crop, camera, or permissions modals from re-triggering checks.
             if (state === "active") {
-                void checkVersion();
+                const now = Date.now();
+                if (now - lastCheckTime.current > 30 * 60 * 1000) {
+                    void checkVersion(true);
+                }
             }
         });
 
