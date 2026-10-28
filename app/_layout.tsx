@@ -12,14 +12,14 @@ import { AppStateProvider, useAppState } from '../src/context/AppStateProvider';
 import { useColorScheme } from 'nativewind';
 import '../src/i18n';
 import { useTranslation } from 'react-i18next';
-
+import AppUpdateGate from '../src/components/AppUpdateGate';
 export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
   initialRouteName: '(tabs)',
 };
 
-SplashScreen.preventAutoHideAsync().catch(() => {});
+SplashScreen.preventAutoHideAsync().catch(() => { });
 
 // Restores saved theme & language before rendering anything
 function AppInit() {
@@ -107,7 +107,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loaded) {
-      SplashScreen.hideAsync().catch(() => {});
+      SplashScreen.hideAsync().catch(() => { });
     }
   }, [loaded]);
 
@@ -119,14 +119,16 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AppStateProvider>
-          <AppInit />
-          <AuthRouteGuard />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
-            <Stack.Screen name="(stacks)" options={{ headerShown: false }} />
-          </Stack>
+          <AppUpdateGate>
+            <AppInit />
+            <AuthRouteGuard />
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
+              <Stack.Screen name="(stacks)" options={{ headerShown: false }} />
+            </Stack>
+          </AppUpdateGate>
         </AppStateProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

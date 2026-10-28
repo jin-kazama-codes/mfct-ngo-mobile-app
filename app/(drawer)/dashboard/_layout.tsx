@@ -13,7 +13,7 @@ import {
 import {
   LayoutDashboard, CreditCard, PlusCircle, Users,
   ShieldCheck, TrendingUp, Image as ImageIcon, MessageSquare,
-  Building2, Building, IdCardLanyard, UserCheck, LogOut, Calendar, Network, Award
+  Building2, Building, IdCardLanyard, UserCheck, LogOut, Calendar, Network, Award, Heart
 } from 'lucide-react-native';
 import { UserRole, DistrictRoleKey } from '@/src/types';
 
@@ -169,6 +169,7 @@ function CustomDrawerContent(props: any) {
           { name: 'account-details', label: t('admin.tabAccountDetails', 'Account Details'), icon: Building2, show: true },
           { name: 'nominee-details', label: t('admin.tabNominee', 'Nominee Details'), icon: UserCheck, show: true },
           { name: 'member-bank-details', label: t('admin.tabMemberBank', 'Bank Account Details'), icon: Building, show: true },
+          { name: 'female-members', label: t('admin.tabFemaleMembers', 'Female Family Members'), icon: Heart, show: true },
         );
         break;
 
@@ -180,6 +181,7 @@ function CustomDrawerContent(props: any) {
           { name: 'myDonation', label: t('admin.tabDonations', 'My Donations Receipts'), icon: CreditCard, show: true },
           { name: 'nominee-details', label: t('admin.tabNominee', 'Nominee Details'), icon: UserCheck, show: true },
           { name: 'member-bank-details', label: t('admin.tabMemberBank', 'Bank Account Details'), icon: Building, show: true },
+          { name: 'female-members', label: t('admin.tabFemaleMembers', 'Female Family Members'), icon: Heart, show: true },
           { name: 'district-committee', label: t('admin.tabDistrictCommittee', 'District Committee'), icon: Award, show: true },
           { name: 'kyc-aproved', label: t('admin.tabKycQueue', 'KYC Approvals'), icon: UserCheck, show: true },
           { name: 'utr-aproved', label: t('admin.tabUtrAudit', 'UTR Payment Desk'), icon: ShieldCheck, show: true },
@@ -199,6 +201,7 @@ function CustomDrawerContent(props: any) {
           { name: 'myDonation', label: t('admin.tabDonations', 'My Donations Receipts'), icon: CreditCard, show: true },
           { name: 'nominee-details', label: t('admin.tabNominee', 'Nominee Details'), icon: UserCheck, show: true },
           { name: 'member-bank-details', label: t('admin.tabMemberBank', 'Bank Account Details'), icon: Building, show: true },
+          { name: 'female-members', label: t('admin.tabFemaleMembers', 'Female Family Members'), icon: Heart, show: true },
           { name: 'district-committee', label: t('admin.tabDistrictCommittee', 'District Committee'), icon: Award, show: true },
           { name: 'kyc-aproved', label: t('admin.tabKycQueue', 'KYC Approvals'), icon: UserCheck, show: true },
           { name: 'community-members', label: t('admin.tabMembers', 'District Members'), icon: Users, show: true },
@@ -213,6 +216,7 @@ function CustomDrawerContent(props: any) {
           { name: 'myDonation', label: t('admin.tabDonations', 'My Donations Receipts'), icon: CreditCard, show: true },
           { name: 'nominee-details', label: t('admin.tabNominee', 'Nominee Details'), icon: UserCheck, show: true },
           { name: 'member-bank-details', label: t('admin.tabMemberBank', 'Bank Account Details'), icon: Building, show: true },
+          { name: 'female-members', label: t('admin.tabFemaleMembers', 'Female Family Members'), icon: Heart, show: true },
           { name: 'district-committee', label: t('admin.tabDistrictCommittee', 'District Committee'), icon: Award, show: true },
           { name: 'teams', label: t('admin.tabTeams', 'Block & City Teams'), icon: Network, show: true },
           { name: 'community-members', label: t('admin.tabMembers', 'District Members'), icon: Users, show: true },
@@ -227,6 +231,7 @@ function CustomDrawerContent(props: any) {
           { name: 'myDonation', label: t('admin.tabDonations', 'My Donations Receipts'), icon: CreditCard, show: true },
           { name: 'nominee-details', label: t('admin.tabNominee', 'Nominee Details'), icon: UserCheck, show: true },
           { name: 'member-bank-details', label: t('admin.tabMemberBank', 'Bank Account Details'), icon: Building, show: true },
+          { name: 'female-members', label: t('admin.tabFemaleMembers', 'Female Family Members'), icon: Heart, show: true },
           { name: 'district-committee', label: t('admin.tabDistrictCommittee', 'District Committee'), icon: Award, show: true },
           { name: 'meetings', label: t('admin.tabMeetings', 'Meetings & Minutes'), icon: Calendar, show: true },
           { name: 'community-members', label: t('admin.tabMembers', 'District Members'), icon: Users, show: true },
@@ -241,6 +246,7 @@ function CustomDrawerContent(props: any) {
           { name: 'myDonation', label: t('admin.tabDonations', 'My Donations Receipts'), icon: CreditCard, show: true },
           { name: 'nominee-details', label: t('admin.tabNominee', 'Nominee Details'), icon: UserCheck, show: true },
           { name: 'member-bank-details', label: t('admin.tabMemberBank', 'Bank Account Details'), icon: Building, show: true },
+          { name: 'female-members', label: t('admin.tabFemaleMembers', 'Female Family Members'), icon: Heart, show: true },
           { name: 'district-committee', label: t('admin.tabDistrictCommittee', 'District Committee'), icon: Award, show: true },
           { name: 'financial-analytics', label: t('admin.tabFinancialAnalytics', 'Financial Analytics'), icon: TrendingUp, show: true },
           { name: 'utr-aproved', label: t('admin.tabUtrAudit', 'UTR Payment Desk'), icon: ShieldCheck, show: true },
@@ -256,11 +262,11 @@ function CustomDrawerContent(props: any) {
           { name: 'myDonation', label: t('admin.tabDonations', 'My Donations Receipts'), icon: CreditCard, show: true },
           { name: 'nominee-details', label: t('admin.tabNominee', 'Nominee Details'), icon: UserCheck, show: true },
           { name: 'member-bank-details', label: t('admin.tabMemberBank', 'Bank Account Details'), icon: Building, show: true },
+          { name: 'female-members', label: t('admin.tabFemaleMembers', 'Female Family Members'), icon: Heart, show: true },
           { name: 'community-members', label: t('admin.tabMembers', 'Community Members'), icon: Users, show: true },
           { name: 'campaigns', label: t('admin.tabCampaigns', 'Manage Campaigns'), icon: PlusCircle, show: true },
           { name: 'impact-stories', label: t('admin.tabTestimonialsManage', 'Impact Stories'), icon: MessageSquare, show: true },
           { name: 'gallery', label: t('admin.tabGalleryManage', 'Manage Gallery'), icon: ImageIcon, show: true },
-
         );
         break;
 
@@ -272,6 +278,7 @@ function CustomDrawerContent(props: any) {
           { name: 'myDonation', label: t('admin.tabDonations', 'My Donations Receipts'), icon: CreditCard, show: true },
           { name: 'nominee-details', label: t('admin.tabNominee', 'Nominee Details'), icon: UserCheck, show: true },
           { name: 'member-bank-details', label: t('admin.tabMemberBank', 'Bank Account Details'), icon: Building, show: true },
+          { name: 'female-members', label: t('admin.tabFemaleMembers', 'Female Family Members'), icon: Heart, show: true },
           { name: 'my-community', label: t('admin.tabCommunityHub', 'My Community'), icon: Building2, show: true },
           { name: 'community-members', label: t('admin.tabMembers', 'Community Members'), icon: Users, show: true },
         );
@@ -454,6 +461,7 @@ export default function DashboardDrawerLayout() {
       <Drawer.Screen name="account-details" options={{ title: t('admin.tabAccountDetails', 'Account Details') }} />
       <Drawer.Screen name="nominee-details" options={{ title: t('admin.tabNominee', 'Nominee Details') }} />
       <Drawer.Screen name="member-bank-details" options={{ title: t('admin.tabMemberBank', 'Bank Account Details') }} />
+      <Drawer.Screen name="female-members" options={{ title: t('admin.tabFemaleMembers', 'Female Family Members') }} />
     </Drawer>
   );
 }

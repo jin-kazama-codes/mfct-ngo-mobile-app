@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabase';
-import { MemberNominee, MemberBankDetails } from '../types';
+import { supabase, supabaseAdmin } from '../lib/supabase';
+import { MemberNominee, MemberBankDetails, FemaleFamilyMember } from '../types';
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL || 'https://faeem-charitable-trust.vercel.app';
@@ -278,3 +278,248 @@ export async function deleteMemberBankDetails(id: string): Promise<void> {
     throw new Error(error.message || 'Failed to delete member bank details');
   }
 }
+
+// ─── FEMALE FAMILY MEMBER SERVICE (MOBILE DIRECT API / DB) ───────────────────
+
+export async function getFemaleFamilyMembers(userId?: string): Promise<FemaleFamilyMember[]> {
+  const client = supabaseAdmin || supabase;
+  let results: FemaleFamilyMember[] = [];
+
+  // 1. Try query from current schema (dev or configured)
+  try {
+    let query = client
+      .from('member_female_family')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query;
+    if (!error && Array.isArray(data) && data.length > 0) {
+      results = data as FemaleFamilyMember[];
+    }
+  } catch (e) {
+    console.warn('[getFemaleFamilyMembers] primary schema query error:', e);
+  }
+
+  // 2. Also check public schema if empty or to ensure sync across environments
+  if (results.length === 0) {
+    try {
+      const pubClient = typeof client.schema === 'function' ? client.schema('public') : supabase;
+      let pubQuery = pubClient
+        .from('member_female_family')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (userId) {
+        pubQuery = pubQuery.eq('user_id', userId);
+      }
+
+      const { data: pubData, error: pubError } = await pubQuery;
+      if (!pubError && Array.isArray(pubData) && pubData.length > 0) {
+        results = pubData as FemaleFamilyMember[];
+      }
+    } catch {}
+  }
+
+  if (results.length > 0) {
+    return results;
+  }
+
+  // 3. Fallback to Next.js API route
+  try {
+    const url = userId
+      ? `${API_BASE_URL}/api/female-members?userId=${encodeURIComponent(userId)}`
+      : `${API_BASE_URL}/api/female-members`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        return json.data as FemaleFamilyMember[];
+      }
+    }
+  } catch { }
+
+  return results;
+}
+
+export async function saveFemaleFamilyMember(
+  data: Omit<FemaleFamilyMember, 'id' | 'created_at' | 'updated_at'> & { id?: string }
+): Promise<FemaleFamilyMember> {
+  const payload: any = {
+    ...data,
+    fee_amount: data.fee_amount || 50,
+    status: data.status || 'pending',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  if (data.id && /^\d+$/.test(String(data.id))) {
+    payload.id = Number(data.id);
+  } else {
+    delete payload.id;
+  }
+
+  const client = supabaseAdmin || supabase;
+  let lastError: any = null;
+
+  // 1. First try with primary client (dev schema)
+  try {
+    const { data: inserted, error } = await client
+      .from('member_female_family')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (!error && inserted) {
+      return inserted as FemaleFamilyMember;
+    }
+    if (error) lastError = error;
+  } catch (err: any) {
+    lastError = err;
+  }
+
+  // 2. Try with public schema directly (fallback)
+  try {
+    const pubClient = typeof client.schema === 'function' ? client.schema('public') : supabase;
+    const { data: pubInserted, error: pubErr } = await pubClient
+      .from('member_female_family')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (!pubErr && pubInserted) {
+      return pubInserted as FemaleFamilyMember;
+    }
+    if (pubErr) lastError = pubErr;
+  } catch (err: any) {
+    lastError = err;
+  }
+
+  // 3. Fallback to API route
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/female-members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        return json.data as FemaleFamilyMember;
+      }
+      if (json.error) {
+        throw new Error(json.error);
+      }
+    }
+  } catch (apiErr: any) {
+    if (apiErr.message) {
+      throw apiErr;
+    }
+  }
+
+  if (lastError) throw new Error(lastError.message || 'Failed to save female family member');
+  return payload as FemaleFamilyMember;
+}
+
+export async function updateFemaleFamilyMember(
+  id: string,
+  updates: Partial<FemaleFamilyMember>
+): Promise<FemaleFamilyMember> {
+  const payload = { ...updates, updated_at: new Date().toISOString() };
+  const client = supabaseAdmin || supabase;
+  let lastError: any = null;
+
+  try {
+    const { data, error } = await client
+      .from('member_female_family')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (!error && data) {
+      return data as FemaleFamilyMember;
+    }
+    if (error) lastError = error;
+  } catch (err: any) {
+    lastError = err;
+  }
+
+  // Public schema fallback
+  try {
+    const pubClient = typeof client.schema === 'function' ? client.schema('public') : supabase;
+    const { data: pubData, error: pubErr } = await pubClient
+      .from('member_female_family')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (!pubErr && pubData) {
+      return pubData as FemaleFamilyMember;
+    }
+    if (pubErr) lastError = pubErr;
+  } catch (err: any) {
+    lastError = err;
+  }
+
+  // Fallback to API route
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/female-members`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, ...updates }),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data) {
+        return json.data as FemaleFamilyMember;
+      }
+    }
+  } catch { }
+
+  if (lastError) throw new Error(lastError.message || 'Failed to update female member');
+  return { id, ...updates } as FemaleFamilyMember;
+}
+
+export async function deleteFemaleFamilyMember(id: string): Promise<void> {
+  const client = supabaseAdmin || supabase;
+  let deleted = false;
+
+  try {
+    const { error } = await client
+      .from('member_female_family')
+      .delete()
+      .eq('id', id);
+    if (!error) deleted = true;
+  } catch {}
+
+  if (!deleted) {
+    try {
+      const pubClient = typeof client.schema === 'function' ? client.schema('public') : supabase;
+      const { error: pubErr } = await pubClient
+        .from('member_female_family')
+        .delete()
+        .eq('id', id);
+      if (!pubErr) deleted = true;
+    } catch {}
+  }
+
+  if (!deleted) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/female-members?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const json = await res.json();
+      if (json.success) deleted = true;
+    } catch { }
+  }
+
+  if (!deleted) {
+    throw new Error('Failed to delete female family member');
+  }
+}
+

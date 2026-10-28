@@ -4,6 +4,8 @@ const supabaseUrl =
   process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseSecretKey =
+  process.env.EXPO_PUBLIC_SUPABASE_STORAGE_KEY || '';
 const supabaseSchema = process.env.EXPO_PUBLIC_SUPABASE_SCHEMA || '';
 
 if (!process.env.EXPO_PUBLIC_SUPABASE_URL || !process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY) {
@@ -15,3 +17,10 @@ if (!process.env.EXPO_PUBLIC_SUPABASE_URL || !process.env.EXPO_PUBLIC_SUPABASE_A
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   db: { schema: supabaseSchema },
 });
+
+export const supabaseAdmin = supabaseSecretKey
+  ? createClient(supabaseUrl, supabaseSecretKey, {
+    db: { schema: supabaseSchema },
+    auth: { persistSession: false },
+  })
+  : supabase;

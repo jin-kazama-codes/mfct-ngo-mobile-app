@@ -2,7 +2,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform, Share, Alert } from 'react-native';
-import { Donation, User, Language } from '../types';
+import { Donation, User, Language, FemaleFamilyMember } from '../types';
 import {
   getLanguageCode,
   translateCampaignTitle,
@@ -1085,5 +1085,107 @@ export async function shareDonationPaymentSlipPdf(donation: Donation): Promise<v
       dialogTitle: `Share ${result.filename}`,
     });
   }
+}
+
+/**
+ * Generates and downloads the Official PDF slip for Female Family Member Registration (₹50)
+ */
+export async function downloadFemaleMemberSlipPdf(
+  user: User,
+  member: FemaleFamilyMember
+): Promise<GeneratePdfResult> {
+  const slipNo = `MFCT-FFM-${(member.id || 'FFM').replace('ffm_', '').slice(-8).toUpperCase()}`;
+  const paymentDate = member.created_at
+    ? new Date(member.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : new Date().toLocaleDateString('en-IN');
+
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MFCT Family Female Member Registration Slip</title>
+  <style>
+    @page { size: A4 portrait; margin: 15mm; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #fff; color: #17211c; padding: 20px; font-size: 13px; line-height: 1.5; }
+    .slip {
+      max-width: 650px;
+      margin: 0 auto;
+      border: 2px dashed #0c4a2b;
+      padding: 30px;
+      background: #fafaf8;
+      border-radius: 12px;
+    }
+    .header { text-align: center; border-bottom: 2px solid #c8a84b; padding-bottom: 14px; margin-bottom: 18px; }
+    .logo { width: 75px; height: 75px; object-fit: contain; margin-bottom: 8px; }
+    .trust-name { font-size: 20px; font-weight: 800; color: #0c4a2b; margin: 0; }
+    .trust-sub { font-size: 11px; color: #666; margin-top: 2px; }
+    .badge { display: inline-block; background: #c8a84b; color: #0c2016; font-size: 11px; font-weight: 800; padding: 4px 14px; border-radius: 20px; margin-top: 8px; }
+    .details-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    .details-table th, .details-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0dfd5; font-size: 12px; }
+    .details-table th { width: 45%; color: #444; font-weight: 600; background: rgba(200,168,75,0.08); }
+    .details-table td { font-weight: 700; color: #111; }
+    .amount { font-size: 16px; color: #0c4a2b; font-weight: 900; }
+    .footer { margin-top: 25px; text-align: center; font-size: 11px; color: #777; border-top: 1px solid #e0dfd5; padding-top: 12px; }
+    .stamp { margin-top: 15px; display: flex; justify-content: space-between; align-items: flex-end; padding: 0 10px; }
+    .seal-box { border: 1.5px solid #0c4a2b; padding: 6px 12px; border-radius: 8px; font-weight: 800; font-size: 11px; color: #0c4a2b; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="slip">
+    <div class="header">
+      <img src="${MFCT_LOGO_BASE64}" class="logo" alt="MFCT Logo" />
+      <h1 class="trust-name">Mohammad Faeem Charitable Trust (MFCT)</h1>
+      <p class="trust-sub">Regd. Public Charitable Trust • Supporting Community & Empowering Families</p>
+      <div class="badge">महिला पारिवारिक सदस्य पंजीकरण रसीद • FEMALE FAMILY MEMBER SLIP</div>
+    </div>
+    
+    <table class="details-table">
+      <tr><th>रसीद संख्या (Receipt No.)</th><td>${slipNo}</td></tr>
+      <tr><th>मुख्य सदस्य (Primary Member)</th><td>${user.name} (${user.membershipId || user.id})</td></tr>
+      <tr><th>महिला सदस्य (Female Member Name)</th><td>${member.name}</td></tr>
+      <tr><th>संबंध (Relationship)</th><td>${member.relation}</td></tr>
+      <tr><th>आयु / जन्म तिथि (Age / DOB)</th><td>${member.age ? `${member.age} वर्ष (Years)` : member.date_of_birth || 'N/A'}</td></tr>
+      <tr><th>मोबाइल नंबर (Phone)</th><td>${member.phone || 'N/A'}</td></tr>
+      <tr><th>आधार संख्या (Aadhaar No.)</th><td>${member.aadhaar_number || 'N/A'}</td></tr>
+      <tr><th>पंजीकरण शुल्क (Fee Amount)</th><td class="amount">₹50.00 (Fifty Rupees Only)</td></tr>
+      <tr><th>भुगतान माध्यम (Payment Mode)</th><td>${member.payment_method || 'UPI'}</td></tr>
+      <tr><th>बैंक UTR संदर्भ (UTR No.)</th><td style="font-family: monospace;">${member.payment_utr || 'Pending'}</td></tr>
+      <tr><th>पंजीकरण तिथि (Registration Date)</th><td>${paymentDate}</td></tr>
+      <tr><th>सत्यापन स्थिति (Status)</th><td>${member.status === 'approved' ? '✓ VERIFIED & ACTIVE' : '⏳ PENDING EXECUTIVE AUDIT'}</td></tr>
+    </table>
+
+    <div class="stamp">
+      <div class="seal-box">
+        MOHAMMAD FAEEM CHARITABLE TRUST<br/>
+        <span style="font-size: 9px; font-weight: 500;">OFFICIAL WELFARE ENROLLMENT</span>
+      </div>
+      <div style="text-align: right;">
+        <p style="font-size: 11px; font-weight: 700; margin: 0; color: #0c4a2b;">Authorized Signatory</p>
+        <p style="font-size: 10px; color: #666; margin: 2px 0 0 0;">MFCT Welfare Desk</p>
+      </div>
+    </div>
+
+    <div class="footer">
+      This is an official computer-generated fee receipt of Mohammad Faeem Charitable Trust for family female member welfare enrollment.
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const filename = `MFCT-Female-Member-${member.name.replace(/\s+/g, '_')}-${slipNo}.pdf`;
+  const result = await Print.printToFileAsync({ html });
+
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(result.uri, {
+      UTI: '.pdf',
+      mimeType: 'application/pdf',
+      dialogTitle: `Save / Share ${filename}`,
+    });
+  } else {
+    await Print.printAsync({ html });
+  }
+
+  return { uri: result.uri, filename };
 }
 
