@@ -6,7 +6,12 @@ const supabaseAnonKey =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabaseSecretKey =
   process.env.EXPO_PUBLIC_SUPABASE_STORAGE_KEY || '';
-const supabaseSchema = process.env.EXPO_PUBLIC_SUPABASE_SCHEMA || '';
+const supabaseSchema =
+  process.env.EXPO_PUBLIC_SUPABASE_SCHEMA?.trim() ||
+  process.env.NEXT_PUBLIC_SUPABASE_SCHEMA?.trim() ||
+  'public';
+
+console.log('[Supabase] Schema:', JSON.stringify(supabaseSchema));
 
 if (!process.env.EXPO_PUBLIC_SUPABASE_URL || !process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY) {
   console.warn(
@@ -15,12 +20,12 @@ if (!process.env.EXPO_PUBLIC_SUPABASE_URL || !process.env.EXPO_PUBLIC_SUPABASE_A
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  db: { schema: supabaseSchema },
+  db: { schema: supabaseSchema || 'public' },
 });
 
 export const supabaseAdmin = supabaseSecretKey
   ? createClient(supabaseUrl, supabaseSecretKey, {
-    db: { schema: supabaseSchema },
+    db: { schema: supabaseSchema || 'public' },
     auth: { persistSession: false },
   })
   : supabase;

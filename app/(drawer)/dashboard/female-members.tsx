@@ -28,6 +28,7 @@ import {
 import { uploadImageToSupabase } from '../../../src/services/storageService';
 import { getAccountDetails } from '../../../src/services/adminService';
 import { downloadFemaleMemberSlipPdf } from '../../../src/services/receiptPdfService';
+import { FemaleMemberCardSkeleton } from '../../../src/components/SkeletonLoader';
 import { getLanguageCode } from '../../../src/lib/translateEntity';
 import {
   Heart,
@@ -432,17 +433,29 @@ export default function FemaleMembersScreen() {
         <View style={s.statsRow}>
           <View style={[s.statCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
             <Text style={s.statLabel}>{tr('कुल महिला सदस्य', 'کل ارکان', 'Total Members')}</Text>
-            <Text style={[s.statVal, { color: textPri }]}>{members.length}</Text>
+            {loading ? (
+              <View style={{ height: 26, width: 36, backgroundColor: isDark ? '#334155' : '#e2e8f0', borderRadius: 6, marginTop: 4 }} />
+            ) : (
+              <Text style={[s.statVal, { color: textPri }]}>{members.length}</Text>
+            )}
           </View>
           <View style={[s.statCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
             <Text style={s.statLabel}>{tr('सत्यापित', 'تصدیق شدہ', 'Verified')}</Text>
-            <Text style={[s.statVal, { color: '#10b981' }]}>
-              {members.filter((m) => m.status === 'approved').length}
-            </Text>
+            {loading ? (
+              <View style={{ height: 26, width: 36, backgroundColor: isDark ? '#334155' : '#e2e8f0', borderRadius: 6, marginTop: 4 }} />
+            ) : (
+              <Text style={[s.statVal, { color: '#10b981' }]}>
+                {members.filter((m) => m.status === 'approved').length}
+              </Text>
+            )}
           </View>
           <View style={[s.statCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
             <Text style={s.statLabel}>{tr('शुल्क (₹50/सदस्य)', 'کل فیس', 'Total Fees')}</Text>
-            <Text style={[s.statVal, { color: '#c8a84b' }]}>₹{members.length * 50}</Text>
+            {loading ? (
+              <View style={{ height: 26, width: 50, backgroundColor: isDark ? '#334155' : '#e2e8f0', borderRadius: 6, marginTop: 4 }} />
+            ) : (
+              <Text style={[s.statVal, { color: '#c8a84b' }]}>₹{members.length * 50}</Text>
+            )}
           </View>
         </View>
 
@@ -456,11 +469,9 @@ export default function FemaleMembersScreen() {
 
         {/* Members List */}
         {loading ? (
-          <View style={s.centerBox}>
-            <ActivityIndicator size="large" color="#10b981" />
-            <Text style={[s.loadingText, { color: textSec }]}>
-              {tr('महिला सदस्यों की सूची लोड हो रही है...', 'لوڈ ہو رہا ہے...', 'Loading members...')}
-            </Text>
+          <View style={{ marginTop: 4 }}>
+            <FemaleMemberCardSkeleton isDark={isDark} />
+            <FemaleMemberCardSkeleton isDark={isDark} />
           </View>
         ) : members.length === 0 ? (
           <View style={[s.emptyCard, { backgroundColor: cardBg, borderColor: borderCol }]}>

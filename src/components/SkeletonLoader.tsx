@@ -2003,3 +2003,77 @@ export function MemberBankCardSkeleton({ isDark = false }: { isDark?: boolean })
   );
 }
 
+// ─── Female Member Card Skeleton ─────────────────────────────────────────────
+export function FemaleMemberCardSkeleton({ isDark = false }: { isDark?: boolean }) {
+  const Block = isDark ? ShimmerBlockDark : ShimmerBlock;
+  return (
+    <View
+      style={{
+        backgroundColor: isDark ? '#1e293b' : '#ffffff',
+        borderColor: isDark ? '#334155' : '#e2e8f0',
+        borderRadius: 20,
+        borderWidth: 1,
+        marginBottom: 16,
+        padding: 16,
+        gap: 14,
+      }}
+    >
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Block width={48} height={48} borderRadius={16} />
+          <View style={{ gap: 6 }}>
+            <Block width={130} height={16} borderRadius={4} />
+            <Block width={70} height={12} borderRadius={10} />
+          </View>
+        </View>
+        <Block width={64} height={22} borderRadius={12} />
+      </View>
+
+      {/* Details Box */}
+      <View
+        style={{
+          padding: 12,
+          borderRadius: 14,
+          backgroundColor: isDark ? '#0f172a' : '#f1f5f9',
+          gap: 10,
+        }}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Block width={50} height={12} borderRadius={3} />
+          <Block width={80} height={12} borderRadius={3} />
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Block width={60} height={12} borderRadius={3} />
+          <Block width={100} height={12} borderRadius={3} />
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Block width={70} height={12} borderRadius={3} />
+          <Block width={90} height={12} borderRadius={3} />
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Block width={80} height={12} borderRadius={3} />
+          <Block width={70} height={12} borderRadius={3} />
+        </View>
+      </View>
+
+      {/* Footer Actions */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingTop: 10,
+          borderTopWidth: 1,
+          borderTopColor: isDark ? '#334155' : '#f1f5f9',
+        }}
+      >
+        <Block width={110} height={32} borderRadius={10} />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Block width={32} height={32} borderRadius={8} />
+          <Block width={32} height={32} borderRadius={8} />
+        </View>
+      </View>
+    </View>
+  );
+}
