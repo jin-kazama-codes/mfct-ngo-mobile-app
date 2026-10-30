@@ -1456,14 +1456,14 @@ export default function SignUpScreen() {
                         {/* UPI Panel */}
                         {paymentMethod === 'UPI' && (
                             <View className="items-center gap-3 rounded-[20px] border border-amber-500/30 bg-[#0f3322] p-5">
-                                <View className="w-[260px] h-[260px] max-w-[90%] items-center justify-center rounded-2xl bg-white p-1 overflow-hidden shadow-md">
+                                <View className="w-[240px] h-[240px] max-w-[90%] items-center justify-center rounded-3xl bg-white overflow-hidden shadow-md border-4 border-white">
                                     {accountDetailsLoading ? (
                                         <ActivityIndicator color="#059669" />
                                     ) : accountDetails?.qr_code_url ? (
                                         <Image
                                             source={{ uri: accountDetails.qr_code_url }}
-                                            className="h-full w-full rounded-xl"
-                                            resizeMode="contain"
+                                            style={{ width: '100%', height: '100%', transform: [{ scale: 1.46 }] }}
+                                            resizeMode="cover"
                                         />
                                     ) : (
                                         <Text className="text-center text-xs font-medium text-slate-600">

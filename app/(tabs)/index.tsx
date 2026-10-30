@@ -1324,9 +1324,13 @@ export default function HomeScreen() {
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-            <View style={{ backgroundColor: C.white, padding: 8, borderRadius: 12 }}>
+            <View style={{ backgroundColor: C.white, borderRadius: 12, overflow: 'hidden', width: 72, height: 72, alignItems: 'center', justifyContent: 'center' }}>
               {accountDetails?.qr_code_url ? (
-                <Image source={{ uri: accountDetails.qr_code_url }} style={{ width: 72, height: 72 }} resizeMode="contain" />
+                <Image
+                  source={{ uri: accountDetails.qr_code_url }}
+                  style={{ width: '100%', height: '100%', transform: [{ scale: 1.46 }] }}
+                  resizeMode="cover"
+                />
               ) : (
                 <QrCode color={C.darkGreen} size={72} />
               )}

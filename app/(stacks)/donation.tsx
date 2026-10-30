@@ -1369,14 +1369,14 @@ export default function DonationScreen() {
                   </Text> */}
 
                   {/* QR Code Container */}
-                  <View className="w-[260px] h-[260px] max-w-[90%] items-center justify-center rounded-2xl bg-white p-1 shadow-md overflow-hidden">
+                  <View className="w-[240px] h-[240px] max-w-[90%] items-center justify-center rounded-3xl bg-white overflow-hidden shadow-md border-4 border-white">
                     {loading ? (
                       <ActivityIndicator color="#059669" />
                     ) : accountDetails?.qr_code_url ? (
                       <Image
                         source={{ uri: accountDetails.qr_code_url }}
-                        className="h-full w-full rounded-xl"
-                        resizeMode="contain"
+                        style={{ width: '100%', height: '100%', transform: [{ scale: 1.46 }] }}
+                        resizeMode="cover"
                       />
                     ) : (
                       <Text className="text-center text-xs font-medium text-slate-600">
