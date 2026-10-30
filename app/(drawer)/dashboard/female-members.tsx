@@ -802,7 +802,13 @@ export default function FemaleMembersScreen() {
               {paymentMethod === 'UPI' ? (
                 <View style={s.qrBox}>
                   {accountDetails?.qr_code_url ? (
-                    <Image source={{ uri: accountDetails.qr_code_url }} style={s.qrImg} resizeMode="contain" />
+                    <View style={{ width: 140, height: 140, backgroundColor: '#ffffff', borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                      <Image
+                        source={{ uri: accountDetails.qr_code_url }}
+                        style={{ width: '100%', height: '100%', transform: [{ scale: 1.46 }] }}
+                        resizeMode="cover"
+                      />
+                    </View>
                   ) : (
                     <QrCode color="#ffffff" size={100} />
                   )}
