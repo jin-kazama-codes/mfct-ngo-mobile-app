@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,13 +18,14 @@ import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
 import * as ImagePicker from 'expo-image-picker';
 import { useAppState } from '../../../src/context/AppStateProvider';
-import { MemberNominee } from '../../../src/types';
+import { MemberNominee, User } from '../../../src/types';
 import {
   getMemberNominees,
   saveMemberNominee,
   updateMemberNominee,
   deleteMemberNominee,
 } from '../../../src/services/memberService';
+import { getUsers } from '../../../src/services/userService';
 import { uploadImageToSupabase } from '../../../src/services/storageService';
 import { getLanguageCode } from '../../../src/lib/translateEntity';
 import { NomineeCardSkeleton } from '../../../src/components/SkeletonLoader';
@@ -45,6 +46,8 @@ import {
   FileText,
   Percent,
   CheckCircle2,
+  Search,
+  Users,
 } from 'lucide-react-native';
 
 interface ToastInfo {
@@ -64,11 +67,17 @@ const RELATION_OPTIONS = [
 ];
 
 export default function NomineeDetailsScreen() {
-  const { activeUser } = useAppState();
+  const { activeUser, currentRole } = useAppState();
   const { i18n } = useTranslation();
   const lang = getLanguageCode(i18n.language);
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
+
+  const isSuperOrExecutive =
+    currentRole === 'super_admin' ||
+    currentRole === 'executive_admin' ||
+    activeUser?.role === 'super_admin' ||
+    activeUser?.role === 'executive_admin';
 
   const tr = (hi: string, ur: string, en: string) => {
     if (lang === 'hi') return hi;
@@ -77,8 +86,13 @@ export default function NomineeDetailsScreen() {
   };
 
   const [nominees, setNominees] = useState<MemberNominee[]>([]);
+  const [usersList, setUsersList] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [viewScope, setViewScope] = useState<'all' | 'mine'>(isSuperOrExecutive ? 'all' : 'mine');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [relationFilter, setRelationFilter] = useState('all');
+
   const [modalVisible, setModalVisible] = useState(false);
   const [editingNominee, setEditingNominee] = useState<MemberNominee | null>(null);
   const [saving, setSaving] = useState(false);
@@ -119,7 +133,17 @@ export default function NomineeDetailsScreen() {
     setTimeout(() => setToast(null), 3500);
   };
 
+  // User Map for quick lookup
+  const userMap = useMemo(() => {
+    const map = new Map<string, User>();
+    usersList.forEach((u) => {
+      if (u.id) map.set(u.id, u);
+    });
+    return map;
+  }, [usersList]);
+
   // Form states
+  const [targetUserId, setTargetUserId] = useState('');
   const [nomineeName, setNomineeName] = useState('');
   const [relation, setRelation] = useState('Spouse');
   const [phone, setPhone] = useState('');
@@ -138,15 +162,24 @@ export default function NomineeDetailsScreen() {
       return;
     }
     try {
-      const data = await getMemberNominees(activeUser.id);
-      setNominees(data || []);
+      if (isSuperOrExecutive) {
+        const [nomData, usrData] = await Promise.all([
+          getMemberNominees(), // all nominees
+          getUsers().catch(() => []),
+        ]);
+        setNominees(nomData || []);
+        setUsersList(usrData || []);
+      } else {
+        const data = await getMemberNominees(activeUser.id);
+        setNominees(data || []);
+      }
     } catch (err) {
       console.warn('Error loading member nominees in mobile:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [activeUser?.id]);
+  }, [activeUser?.id, isSuperOrExecutive]);
 
   useEffect(() => {
     loadData();
@@ -158,7 +191,9 @@ export default function NomineeDetailsScreen() {
   };
 
   const openAddModal = () => {
+    if (isSuperOrExecutive) return;
     setEditingNominee(null);
+    setTargetUserId(activeUser?.id || '');
     setNomineeName('');
     setRelation('Spouse');
     setPhone('');
@@ -175,6 +210,7 @@ export default function NomineeDetailsScreen() {
 
   const openEditModal = (nom: MemberNominee) => {
     setEditingNominee(nom);
+    setTargetUserId(nom.user_id || activeUser?.id || '');
     setNomineeName(nom.nominee_name);
     setRelation(nom.relation);
     setPhone(nom.phone);
@@ -255,8 +291,9 @@ export default function NomineeDetailsScreen() {
         }
       }
 
+      const resolvedUserId = isSuperOrExecutive ? (targetUserId || activeUser!.id) : activeUser!.id;
       const payload: Partial<MemberNominee> = {
-        user_id: activeUser!.id,
+        user_id: resolvedUserId,
         nominee_name: nomineeName.trim(),
         relation,
         phone: phone.trim(),
@@ -298,24 +335,62 @@ export default function NomineeDetailsScreen() {
     setDeletingId(deleteConfirmId);
     try {
       await deleteMemberNominee(deleteConfirmId);
-      showToast(tr('नॉमिनी हटा दिया गया', 'نامزد ہٹا دیا گیا', 'Nominee removed successfully'), 'success');
+      showToast(tr('नॉमिनी हटा दिया गया', 'نامزد حذف ہو گیا', 'Nominee removed successfully'), 'info');
       setDeleteConfirmId(null);
       await loadData();
     } catch (err: any) {
-      showToast(err.message || tr('हटाने में विफल', 'حذف کرنے میں ناکام', 'Failed to remove nominee'), 'error');
+      showToast(err.message || 'Failed to delete', 'error');
     } finally {
       setDeletingId(null);
     }
   };
 
+  // Filter nominees
+  const filteredNominees = useMemo(() => {
+    return nominees.filter((nom) => {
+      // 1. Scope filter
+      if (!isSuperOrExecutive && nom.user_id !== activeUser?.id) {
+        return false;
+      }
+
+      // 2. Relation filter
+      if (relationFilter !== 'all' && nom.relation.toLowerCase() !== relationFilter.toLowerCase()) {
+        return false;
+      }
+
+      // 3. Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const member = userMap.get(nom.user_id);
+        const matchesNominee =
+          (nom.nominee_name && nom.nominee_name.toLowerCase().includes(q)) ||
+          (nom.phone && nom.phone.includes(q)) ||
+          (nom.aadhaar_number && nom.aadhaar_number.includes(q));
+
+        const matchesMember =
+          member &&
+          ((member.name && member.name.toLowerCase().includes(q)) ||
+            (member.membershipId && member.membershipId.toLowerCase().includes(q)) ||
+            (member.phone && member.phone.includes(q)) ||
+            (member.city && member.city.toLowerCase().includes(q)));
+
+        if (!matchesNominee && !matchesMember) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [nominees, viewScope, relationFilter, searchQuery, activeUser?.id, userMap]);
+
+  const totalCount = nominees.length;
+  const myCount = nominees.filter((n) => n.user_id === activeUser?.id).length;
+
   const renderToast = () => {
     if (!toast) return null;
-    const bgClass =
-      toast.type === 'success'
-        ? 'bg-emerald-600'
-        : toast.type === 'error'
-        ? 'bg-rose-600'
-        : 'bg-sky-600';
+    let bgClass = 'bg-slate-900 dark:bg-slate-800';
+    if (toast.type === 'success') bgClass = 'bg-emerald-600';
+    if (toast.type === 'error') bgClass = 'bg-rose-600';
 
     return (
       <View
@@ -344,7 +419,7 @@ export default function NomineeDetailsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#10b981']} />}
       >
         {/* Header Hero Banner */}
-        <View className="bg-emerald-700 dark:bg-emerald-900 rounded-3xl p-5 mb-5 shadow-sm">
+        <View className="bg-emerald-700 dark:bg-emerald-900 rounded-3xl p-5 mb-4 shadow-sm">
           <View className="flex-row items-center gap-1.5 mb-2">
             <View className="bg-emerald-500/20 px-2 py-1 rounded-lg">
               <Text className="text-emerald-200 text-[11px] font-bold">
@@ -353,7 +428,7 @@ export default function NomineeDetailsScreen() {
             </View>
           </View>
           <Text className="text-white text-xl font-black mb-1.5">
-            {tr('सदस्य नॉमिनी विवरण', 'ممبر نامزد تفصیلات', 'Member Nominee Details')}
+            {isSuperOrExecutive ? tr('सभी सदस्य नॉमिनी विवरण (प्रशासक)', 'تمام ممبر نامزد تفصیلات (ایڈمن)', 'Member Nominees Central Registry') : tr('सदस्य नॉमिनी विवरण', 'ممبر نامزد تفصیلات', 'Member Nominee Details')}
           </Text>
           <Text className="text-emerald-100 text-xs leading-relaxed">
             {tr(
@@ -364,19 +439,101 @@ export default function NomineeDetailsScreen() {
           </Text>
         </View>
 
-        {/* Add Button */}
-        <TouchableOpacity
-          onPress={openAddModal}
-          activeOpacity={0.8}
-          className="bg-emerald-500 active:bg-emerald-600 rounded-2xl py-3.5 px-5 flex-row items-center justify-center gap-2 mb-5 shadow-sm"
-        >
-          <Plus size={18} color="#ffffff" strokeWidth={3} />
-          <Text className="text-white text-sm font-extrabold">
-            {nominees.length > 0
-              ? tr('दूसरा नॉमिनी जोड़ें', 'دوسرا نامزد شامل کریں', 'Add Co-Nominee')
-              : tr('नॉमिनी पंजीकृत करें', 'نامزد شامل کریں', 'Add Nominee')}
-          </Text>
-        </TouchableOpacity>
+        {/* Create / Add Nominee Button - Only for Member and District roles */}
+        {!isSuperOrExecutive && (
+          <TouchableOpacity
+            onPress={openAddModal}
+            activeOpacity={0.8}
+            className="bg-emerald-500 active:bg-emerald-600 rounded-2xl py-3.5 px-5 flex-row items-center justify-center gap-2 mb-4 shadow-sm"
+          >
+            <Plus size={18} color="#ffffff" strokeWidth={3} />
+            <Text className="text-white text-sm font-extrabold">
+              {tr('नॉमिनी पंजीकृत करें', 'نامزد شامل کریں', '+ Add Nominee')}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Super / Executive Admin Scope Switcher & Filters */}
+        {isSuperOrExecutive && (
+          <View className="bg-white dark:bg-slate-900 rounded-2xl p-3.5 mb-4 border border-slate-200 dark:border-slate-800 shadow-xs">
+            {/* Registry Info Header */}
+            <View className="flex-row items-center justify-between pb-3 mb-3 border-b border-slate-100 dark:border-slate-800">
+              <View className="flex-row items-center gap-2">
+                <View className="w-7 h-7 rounded-lg bg-emerald-500/10 items-center justify-center">
+                  <Users size={16} color="#10b981" />
+                </View>
+                <Text className="text-slate-900 dark:text-white text-xs font-black">
+                  {tr('सभी सदस्यों के पंजीकृत नॉमिनी', 'تمام ممبران کے رجسٹرڈ نامزد', 'All Registered Members’ Nominees')}
+                </Text>
+              </View>
+              <View className="bg-emerald-500/10 px-2.5 py-0.5 rounded-full">
+                <Text className="text-emerald-600 dark:text-emerald-400 text-xs font-black">
+                  {totalCount}
+                </Text>
+              </View>
+            </View>
+
+            {/* Search Input */}
+            <View className="flex-row items-center bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 mb-2.5">
+              <Search size={16} color={isDark ? '#94a3b8' : '#64748b'} />
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder={tr('नॉमिनी, फ़ोन, आधार, या सदस्य से खोजें...', 'تلاش نامزد یا ممبر...', 'Search nominee, phone, Aadhaar, member...')}
+                placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
+                className="flex-1 ml-2 text-xs text-slate-900 dark:text-white font-medium p-0"
+              />
+              {searchQuery ? (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <X size={14} color={isDark ? '#94a3b8' : '#64748b'} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* Relation Filter Chips */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+              <TouchableOpacity
+                onPress={() => setRelationFilter('all')}
+                className={`px-3 py-1.5 rounded-full border ${
+                  relationFilter === 'all'
+                    ? 'bg-emerald-500 border-emerald-500'
+                    : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                <Text
+                  className={`text-[11px] font-bold ${
+                    relationFilter === 'all' ? 'text-white' : 'text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  {tr('सभी रिश्ते', 'تمام', 'All')}
+                </Text>
+              </TouchableOpacity>
+              {RELATION_OPTIONS.map((opt) => {
+                const isSelected = relationFilter.toLowerCase() === opt.value.toLowerCase();
+                const label = lang === 'hi' ? opt.labelHi.split(' ')[0] : lang === 'ur' ? opt.labelUr : opt.labelEn.split(' ')[0];
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    onPress={() => setRelationFilter(opt.value)}
+                    className={`px-3 py-1.5 rounded-full border ${
+                      isSelected
+                        ? 'bg-emerald-500 border-emerald-500'
+                        : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    <Text
+                      className={`text-[11px] font-bold ${
+                        isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
         {/* List of Nominees */}
         {loading ? (
@@ -384,32 +541,38 @@ export default function NomineeDetailsScreen() {
             <NomineeCardSkeleton isDark={isDark} />
             <NomineeCardSkeleton isDark={isDark} />
           </View>
-        ) : nominees.length === 0 ? (
+        ) : filteredNominees.length === 0 ? (
           <View className="bg-white dark:bg-slate-900 rounded-3xl p-7 items-center border border-dashed border-slate-300 dark:border-slate-800">
             <View className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800 items-center justify-center mb-3.5">
               <Heart size={28} color="#10b981" />
             </View>
             <Text className="text-slate-900 dark:text-white text-base font-extrabold mb-1">
-              {tr('कोई नॉमिनी दर्ज नहीं है', 'کوئی نامزد درج نہیں ہے', 'No Nominee Registered Yet')}
+              {searchQuery || relationFilter !== 'all'
+                ? tr('कोई परिणाम नहीं मिला', 'کوئی نتیجہ نہیں ملا', 'No Nominees Matched')
+                : tr('कोई नॉमिनी दर्ज नहीं है', 'کوئی نامزد درج نہیں ہے', 'No Nominee Registered Yet')}
             </Text>
             <Text className="text-slate-500 dark:text-slate-400 text-xs text-center leading-relaxed mb-4">
-              {tr(
-                'नियमावली के तहत सहायता के लिए नॉमिनी का विवरण अनिवार्य है। कृपया अपने परिवार की सुरक्षा हेतु नॉमिनी जोड़ें।',
-                'قواعد کے مطابق نامزد کی تفصیلات لازمی ہیں۔ براہ کرم نامزد شامل کریں۔',
-                'Designating a verified nominee is required so mutual relief can be smoothly granted.'
-              )}
+              {searchQuery || relationFilter !== 'all'
+                ? tr('फ़िल्टर या खोज शब्द बदलकर पुनः प्रयास करें।', 'براہ کرم تلاش تبدیل کریں۔', 'Try clearing your search query or relation filter to see all results.')
+                : tr(
+                    'नियमावली के तहत सहायता के लिए नॉमिनी का विवरण अनिवार्य है। कृपया अपने परिवार की सुरक्षा हेतु नॉमिनी जोड़ें।',
+                    'قواعد کے مطابق نامزد کی تفصیلات لازمی ہیں۔ براہ کرم نامزد شامل کریں۔',
+                    'Designating a verified nominee is required so mutual relief can be smoothly granted.'
+                  )}
             </Text>
-            <TouchableOpacity
-              onPress={openAddModal}
-              className="bg-emerald-500 active:bg-emerald-600 px-5 py-2.5 rounded-xl shadow-xs"
-            >
-              <Text className="text-white text-xs font-bold">
-                {tr('अभी जोड़ें', 'ابھی شامل کریں', 'Add Nominee Now')}
-              </Text>
-            </TouchableOpacity>
+            {!isSuperOrExecutive && (
+              <TouchableOpacity
+                onPress={openAddModal}
+                className="bg-emerald-500 active:bg-emerald-600 px-5 py-2.5 rounded-xl shadow-xs"
+              >
+                <Text className="text-white text-xs font-bold">
+                  {tr('अभी जोड़ें', 'ابھی شامل کریں', 'Add Nominee Now')}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
-          nominees.map((nom, idx) => {
+          filteredNominees.map((nom, idx) => {
             const relObj = RELATION_OPTIONS.find((r) => r.value.toLowerCase() === nom.relation.toLowerCase());
             const displayRelation = relObj
               ? lang === 'hi'
@@ -419,11 +582,32 @@ export default function NomineeDetailsScreen() {
                 : relObj.labelEn
               : nom.relation;
 
+            const memberObj = userMap.get(nom.user_id);
+            const isOwner = nom.user_id === activeUser?.id;
+            const canManage = !isSuperOrExecutive && isOwner;
+
             return (
               <View
                 key={nom.id}
                 className="bg-white dark:bg-slate-900 rounded-3xl p-4 mb-4 border border-slate-200 dark:border-slate-800 shadow-xs"
               >
+                {/* Associated Member Header (When Super / Exec Admin views all) */}
+                {isSuperOrExecutive && viewScope === 'all' && (
+                  <View className="flex-row items-center justify-between bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 rounded-xl mb-3 border border-slate-200 dark:border-slate-700/60">
+                    <View className="flex-row items-center gap-1.5 flex-1">
+                      <Users size={12} color="#10b981" />
+                      <Text className="text-xs font-extrabold text-slate-800 dark:text-slate-200 shrink" numberOfLines={1}>
+                        {memberObj ? memberObj.name : tr('सदस्य', 'ممبر', 'Member')} {memberObj?.membershipId ? `(${memberObj.membershipId})` : ''}
+                      </Text>
+                    </View>
+                    {memberObj?.city && (
+                      <Text className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                        {memberObj.city}
+                      </Text>
+                    )}
+                  </View>
+                )}
+
                 {/* Header row */}
                 <View className="flex-row justify-between items-start mb-3.5">
                   <View className="flex-row items-center gap-3 flex-1">
@@ -440,20 +624,22 @@ export default function NomineeDetailsScreen() {
                     </View>
                   </View>
 
-                  <View className="flex-row gap-1.5">
-                    <TouchableOpacity
-                      onPress={() => openEditModal(nom)}
-                      className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800"
-                    >
-                      <Edit2 size={16} color={isDark ? '#94a3b8' : '#64748b'} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setDeleteConfirmId(nom.id)}
-                      className="p-2 rounded-xl bg-rose-500/10"
-                    >
-                      <Trash2 size={16} color="#ef4444" />
-                    </TouchableOpacity>
-                  </View>
+                  {canManage && (
+                    <View className="flex-row gap-1.5">
+                      <TouchableOpacity
+                        onPress={() => openEditModal(nom)}
+                        className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800"
+                      >
+                        <Edit2 size={16} color={isDark ? '#94a3b8' : '#64748b'} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => setDeleteConfirmId(nom.id)}
+                        className="p-2 rounded-xl bg-rose-500/10"
+                      >
+                        <Trash2 size={16} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
 
                 {/* Details grid */}
@@ -545,7 +731,6 @@ export default function NomineeDetailsScreen() {
         }}
       >
         <View className="flex-1 bg-black/60 justify-end">
-          {/* Backdrop tap to dismiss keyboard */}
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View className="absolute inset-0" />
           </TouchableWithoutFeedback>
@@ -597,6 +782,47 @@ export default function NomineeDetailsScreen() {
                   paddingBottom: keyboardVisible ? (Platform.OS === 'ios' ? 260 : 320) : 40,
                 }}
               >
+                {/* If Super / Executive Admin: Option to select Member */}
+                {isSuperOrExecutive && !editingNominee && usersList.length > 0 && (
+                  <View className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl mb-3">
+                    <Text className="text-amber-900 dark:text-amber-200 text-[11px] font-bold uppercase mb-1.5">
+                      {tr('सदस्य चुनें (वैकल्पिक - आपके खाते में स्वतः)', 'ممبر منتخب کریں', 'Assign to Member (Optional - Defaults to You)')}
+                    </Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                      <TouchableOpacity
+                        onPress={() => setTargetUserId(activeUser!.id)}
+                        className={`px-3 py-1.5 rounded-lg border ${
+                          targetUserId === activeUser?.id
+                            ? 'bg-amber-600 border-amber-600'
+                            : 'bg-white dark:bg-slate-900 border-amber-200 dark:border-amber-800'
+                        }`}
+                      >
+                        <Text className={`text-xs font-bold ${targetUserId === activeUser?.id ? 'text-white' : 'text-slate-800 dark:text-slate-200'}`}>
+                          {activeUser?.name} (Admin Self)
+                        </Text>
+                      </TouchableOpacity>
+                      {usersList
+                        .filter((u) => u.id !== activeUser?.id)
+                        .slice(0, 15)
+                        .map((u) => (
+                          <TouchableOpacity
+                            key={u.id}
+                            onPress={() => setTargetUserId(u.id)}
+                            className={`px-3 py-1.5 rounded-lg border ${
+                              targetUserId === u.id
+                                ? 'bg-amber-600 border-amber-600'
+                                : 'bg-white dark:bg-slate-900 border-amber-200 dark:border-amber-800'
+                            }`}
+                          >
+                            <Text className={`text-xs font-bold ${targetUserId === u.id ? 'text-white' : 'text-slate-800 dark:text-slate-200'}`}>
+                              {u.name} {u.membershipId ? `(${u.membershipId})` : ''}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                  </View>
+                )}
+
                 {/* Full Name */}
                 <View className="mb-3">
                   <Text className="text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase mb-1.5">
@@ -712,7 +938,7 @@ export default function NomineeDetailsScreen() {
                   </View>
                 </View>
 
-                {/* Address (LAST TEXT FIELD - FIXED WITH onFocus AND AMPLE PADDING) */}
+                {/* Address */}
                 <View className="mb-3">
                   <Text className="text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase mb-1.5">
                     {tr('नॉमिनी का पता', 'پتہ', 'Nominee Address')}
@@ -723,7 +949,7 @@ export default function NomineeDetailsScreen() {
                     onFocus={() => scrollToField(340)}
                     multiline
                     numberOfLines={3}
-                    placeholder={tr('पता दर्ज करें...', 'پتہ درج करें...', 'Enter house, street, city...')}
+                    placeholder={tr('पता दर्ज करें...', 'پتہ درج کریں...', 'Enter house, street, city...')}
                     placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
                     className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 text-slate-900 dark:text-white text-xs min-h-[60px]"
                     textAlignVertical="top"
@@ -844,7 +1070,7 @@ export default function NomineeDetailsScreen() {
               {tr('नॉमिनी हटाएं?', 'نامزد حذف کریں؟', 'Delete Nominee?')}
             </Text>
             <Text className="text-xs text-center leading-relaxed mb-5 text-slate-500 dark:text-slate-400">
-              {tr('क्या आप वाकई इस नॉमिनी को हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।', 'کیا آپ वाकई اس نامزد کو ہٹانا چاہتے ہیں؟ یہ عمل واپس نہیں ہو सकता।', 'Are you sure you want to remove this nominee? This action cannot be undone.')}
+              {tr('क्या आप वाकई इस नॉमिनी को हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।', 'کیا آپ वाकई اس نامزد کو ہٹانا چاہتے ہیں؟ یہ عمل واپس نہیں ہو सकता۔', 'Are you sure you want to remove this nominee? This action cannot be undone.')}
             </Text>
             <View className="flex-row gap-3 w-full border-t border-slate-200 dark:border-slate-800 pt-4">
               <TouchableOpacity
