@@ -398,48 +398,71 @@ export default function ManageCampaignsScreen() {
           className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700"
           contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 8 }}
         >
-          {/* All */}
           {([
-            { key: 'all' as const, label: t('admin.all_campaigns', 'All'), count: counts.all, color: '#64748b', active: '#0f172a' },
-            { key: 'zakat' as const, label: t('campaign.zakat', 'Zakat'), count: counts.zakat, color: '#d97706', active: '#d97706' },
-            { key: 'sadqa' as const, label: t('campaign.sadqa', 'Sadqa'), count: counts.sadqa, color: '#0d9488', active: '#0d9488' },
-            { key: 'fitrah' as const, label: t('campaign.fitrah', 'Fitrah'), count: counts.fitrah, color: '#6366f1', active: '#6366f1' },
-            { key: 'urgent' as const, label: t('campaign.urgent', 'Urgent'), count: counts.urgent, color: '#ef4444', active: '#ef4444' },
-            { key: 'pending' as const, label: t('admin.pending', 'Pending'), count: counts.pending, color: '#f59e0b', active: '#f59e0b' },
-          ] as { key: FilterType; label: string; count: number; color: string; active: string }[]).map(f => (
-            <TouchableOpacity
-              key={f.key}
-              onPress={() => setActiveFilter(f.key)}
-              style={[
-                {
-                  flexDirection: 'row', alignItems: 'center', gap: 5,
-                  paddingHorizontal: 12, paddingVertical: 6,
+            { key: 'all' as const, label: translateCategory('All', lang) || t('admin.all_campaigns', 'All'), count: counts.all, color: '#10b981', active: '#10b981' },
+            { key: 'zakat' as const, label: translateCategory('Zakat', lang) || 'Zakat', count: counts.zakat, color: '#d97706', active: '#d97706' },
+            { key: 'sadqa' as const, label: translateCategory('Sadqa', lang) || 'Sadqa', count: counts.sadqa, color: '#0d9488', active: '#0d9488' },
+            { key: 'fitrah' as const, label: translateCategory('Fitrah', lang) || 'Fitrah', count: counts.fitrah, color: '#6366f1', active: '#6366f1' },
+            { key: 'urgent' as const, label: translateCategory('Urgent', lang) || 'Urgent', count: counts.urgent, color: '#ef4444', active: '#ef4444' },
+            { key: 'pending' as const, label: t('admin.pending', translateStatus('pending', lang) || 'Pending'), count: counts.pending, color: '#f59e0b', active: '#f59e0b' },
+          ] as { key: FilterType; label: string; count: number; color: string; active: string }[]).map(f => {
+            const isSelected = activeFilter === f.key;
+            return (
+              <TouchableOpacity
+                key={f.key}
+                onPress={() => setActiveFilter(f.key)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
                   borderRadius: 20,
-                  backgroundColor: activeFilter === f.key ? f.active : (isDark ? '#1e293b' : '#f1f5f9'),
+                  backgroundColor: isSelected ? f.active : (isDark ? '#1e293b' : '#f1f5f9'),
                   borderWidth: 1,
-                  borderColor: activeFilter === f.key ? f.active : (isDark ? '#334155' : '#e2e8f0'),
-                },
-              ]}
-            >
-              <Text style={[
-                { fontSize: 11, fontWeight: '700' },
-                { color: activeFilter === f.key ? '#fff' : (isDark ? '#94a3b8' : '#475569') },
-              ]}>
-                {f.label}
-              </Text>
-              <View style={[
-                { paddingHorizontal: 5, paddingVertical: 1, borderRadius: 10 },
-                { backgroundColor: activeFilter === f.key ? 'rgba(255,255,255,0.25)' : (isDark ? '#334155' : '#e2e8f0') },
-              ]}>
-                <Text style={[
-                  { fontSize: 10, fontWeight: '800' },
-                  { color: activeFilter === f.key ? '#fff' : (isDark ? '#94a3b8' : '#475569') },
-                ]}>
-                  {f.count}
+                  borderColor: isSelected ? f.active : (isDark ? '#475569' : '#cbd5e1'),
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12.5,
+                    fontWeight: '800',
+                    includeFontPadding: false,
+                    color: isSelected ? '#ffffff' : (isDark ? '#ffffff' : '#0f172a'),
+                  }}
+                >
+                  {f.label}
                 </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+                <View
+                  style={{
+                    minWidth: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingHorizontal: 5,
+                    backgroundColor: isSelected
+                      ? 'rgba(255, 255, 255, 0.3)'
+                      : (isDark ? '#334155' : '#e2e8f0'),
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '800',
+                      includeFontPadding: false,
+                      textAlign: 'center',
+                      color: isSelected
+                        ? '#ffffff'
+                        : (isDark ? '#ffffff' : '#0f172a'),
+                    }}
+                  >
+                    {f.count}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       )}
 
@@ -558,7 +581,7 @@ export default function ManageCampaignsScreen() {
                         <Text className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                           {translateCommunityName(c.communityName || 'Bareilly Central', lang)} {c.city ? `• ${translateCity(c.city, lang)}` : ''}
                         </Text>
-                        <Text className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                        <Text className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
                           {c.daysLeft || 30} {t('campaigns.days_left', 'days left')}
                         </Text>
                       </View>
@@ -589,7 +612,7 @@ export default function ManageCampaignsScreen() {
                           <Text className="text-sm font-extrabold text-emerald-500">
                             ₹{(c.raisedINR || 0).toLocaleString('en-IN')}
                           </Text>
-                          <Text className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          <Text className="text-xs font-semibold text-slate-600 dark:text-slate-300">
                             {t('campaign_details.goal', 'Goal')}: ₹{c.goalINR.toLocaleString('en-IN')} ({pct}%)
                           </Text>
                         </View>
@@ -602,7 +625,7 @@ export default function ManageCampaignsScreen() {
                       {c.documents && c.documents.length > 0 && (
                         <View className="flex-row items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 mt-2 bg-slate-50 dark:bg-slate-900">
                           <FileText color="#10b981" size={14} />
-                          <Text className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                          <Text className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                             {c.documents.length} {t('campaign_details.verified_docs', 'verified estimate/document(s) attached')}
                           </Text>
                         </View>

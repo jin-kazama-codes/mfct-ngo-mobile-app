@@ -6,12 +6,17 @@ const API_BASE_URL =
 
 // ─── MEMBER NOMINEE SERVICE (MOBILE DIRECT API / DB) ──────────────────────────
 
-export async function getMemberNominees(userId: string): Promise<MemberNominee[]> {
-  const { data, error } = await supabase
+export async function getMemberNominees(userId?: string): Promise<MemberNominee[]> {
+  let query = supabase
     .from('member_nominees')
     .select('*')
-    .eq('user_id', userId)
     .order('created_at', { ascending: false });
+
+  if (userId) {
+    query = query.eq('user_id', userId);
+  }
+
+  const { data, error } = await query;
 
   if (!error && data) {
     return data as MemberNominee[];
@@ -19,7 +24,10 @@ export async function getMemberNominees(userId: string): Promise<MemberNominee[]
 
   // Fallback to Next.js API route if Supabase direct client encounters network constraint
   try {
-    const res = await fetch(`${API_BASE_URL}/api/member-nominee?userId=${encodeURIComponent(userId)}`);
+    const url = userId
+      ? `${API_BASE_URL}/api/member-nominee?userId=${encodeURIComponent(userId)}`
+      : `${API_BASE_URL}/api/member-nominee`;
+    const res = await fetch(url);
     if (res.ok) {
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
