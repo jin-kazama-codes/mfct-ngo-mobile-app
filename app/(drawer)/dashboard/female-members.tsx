@@ -50,6 +50,7 @@ import {
   Copy,
   Check,
   Users,
+  Eye,
 } from 'lucide-react-native';
 
 const FEMALE_RELATION_OPTIONS = [
@@ -91,6 +92,14 @@ export default function FemaleMembersScreen() {
   const [aadhaarNumber, setAadhaarNumber] = useState('');
   const [address, setAddress] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [aadhaarFrontUri, setAadhaarFrontUri] = useState<string | null>(null);
+  const [aadhaarBackUri, setAadhaarBackUri] = useState<string | null>(null);
+
+  // Lightbox / Image Preview Modal
+  const [previewModal, setPreviewModal] = useState<{ url: string; title: string } | null>(null);
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+
+  const isSuperOrExec = activeUser?.role === 'super_admin' || activeUser?.role === 'executive_admin';
 
   // Fee payment state (₹50)
   const feeAmount = 50;
@@ -157,6 +166,8 @@ export default function FemaleMembersScreen() {
     setAadhaarNumber('');
     setAddress(activeUser?.city || '');
     setPhotoUri(null);
+    setAadhaarFrontUri(null);
+    setAadhaarBackUri(null);
     setPaymentMethod('UPI');
     setPaymentUtr('');
     setScreenshotUri(null);
@@ -174,6 +185,8 @@ export default function FemaleMembersScreen() {
     setAadhaarNumber(item.aadhaar_number || '');
     setAddress(item.address || '');
     setPhotoUri(item.photo_url || null);
+    setAadhaarFrontUri(item.aadhaar_front_url || null);
+    setAadhaarBackUri(item.aadhaar_back_url || null);
     setPaymentMethod((item.payment_method as any) || 'UPI');
     setPaymentUtr(item.payment_utr || '');
     setScreenshotUri(item.payment_screenshot_url || null);
@@ -181,7 +194,7 @@ export default function FemaleMembersScreen() {
     setModalVisible(true);
   };
 
-  const pickImage = async (isReceipt: boolean) => {
+  const pickImage = async (field: 'photo' | 'front' | 'back' | 'receipt') => {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
@@ -200,14 +213,38 @@ export default function FemaleMembersScreen() {
 
       if (!res.canceled && res.assets && res.assets.length > 0) {
         const uri = res.assets[0].uri;
-        if (isReceipt) {
+        if (field === 'receipt') {
           setScreenshotUri(uri);
-        } else {
+        } else if (field === 'photo') {
           setPhotoUri(uri);
+        } else if (field === 'front') {
+          setAadhaarFrontUri(uri);
+        } else if (field === 'back') {
+          setAadhaarBackUri(uri);
         }
       }
     } catch (err: any) {
       console.warn('Image picker error:', err);
+    }
+  };
+
+  const handleUpdateStatus = async (id: string, newStatus: 'approved' | 'rejected' | 'pending') => {
+    setUpdatingStatusId(id);
+    try {
+      await updateFemaleFamilyMember(id, { status: newStatus });
+      Alert.alert(
+        tr('सफलता', 'کامیابی', 'Success'),
+        newStatus === 'approved'
+          ? tr('महिला सदस्य सत्यापित हो गई', 'خاتون ممبر کی تصدیق ہو گئی', 'Female member verified successfully')
+          : newStatus === 'rejected'
+          ? tr('महिला सदस्य अस्वीकृत कर दी गई', 'خاتون ممبر مسترد کر دی گئی', 'Female member marked as rejected')
+          : tr('स्थिति समीक्षाधीन पर सेट की गई', 'حیثیت زیر جائزہ پر سیٹ کی گئی', 'Status set back to pending review')
+      );
+      await loadData();
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to update member status');
+    } finally {
+      setUpdatingStatusId(null);
     }
   };
 
@@ -238,6 +275,26 @@ export default function FemaleMembersScreen() {
       return;
     }
 
+    // MANDATORY PHOTO & AADHAAR CARD VALIDATIONS
+    if (!photoUri) {
+      setErrorMsg(
+        tr('महिला सदस्य की फोटो अपलोड करना अनिवार्य है।', 'خاتون رکن کی تصویر اپلوڈ کرنا لازمی ہے۔', 'Photo of female member is mandatory.')
+      );
+      return;
+    }
+    if (!aadhaarFrontUri) {
+      setErrorMsg(
+        tr('आधार कार्ड (सामने का भाग) अपलोड करना अनिवार्य है।', 'آدھار کارڈ سامنے کا حصہ اپلوڈ کرنا لازمی ہے۔', 'Aadhaar Card (Front Side) is mandatory.')
+      );
+      return;
+    }
+    if (!aadhaarBackUri) {
+      setErrorMsg(
+        tr('आधार कार्ड (पीछे का भाग) अपलोड करना अनिवार्य है।', 'آدھار کارڈ پیچھے کا حصہ اپلوڈ کرنا لازمی ہے۔', 'Aadhaar Card (Back Side) is mandatory.')
+      );
+      return;
+    }
+
     if (!editingMember && !paymentUtr.trim()) {
       setErrorMsg(
         tr('कृपया ₹50 शुल्क का 12-अंकों का बैंक UTR नंबर दर्ज करें', '₹50 فیس کا UTR نمبر درج کریں', 'Please enter 12-digit UTR reference for ₹50 fee')
@@ -261,15 +318,24 @@ export default function FemaleMembersScreen() {
 
     try {
       let finalPhotoUrl = photoUri || '';
+      let finalAadhaarFrontUrl = aadhaarFrontUri || '';
+      let finalAadhaarBackUrl = aadhaarBackUri || '';
       let finalScreenshotUrl = screenshotUri || '';
 
+      setUploadingImage(true);
       if (photoUri && !photoUri.startsWith('http')) {
-        setUploadingImage(true);
         finalPhotoUrl = await uploadImageToSupabase(photoUri, 'users');
       }
 
+      if (aadhaarFrontUri && !aadhaarFrontUri.startsWith('http')) {
+        finalAadhaarFrontUrl = await uploadImageToSupabase(aadhaarFrontUri, 'users');
+      }
+
+      if (aadhaarBackUri && !aadhaarBackUri.startsWith('http')) {
+        finalAadhaarBackUrl = await uploadImageToSupabase(aadhaarBackUri, 'users');
+      }
+
       if (screenshotUri && !screenshotUri.startsWith('http')) {
-        setUploadingImage(true);
         finalScreenshotUrl = await uploadImageToSupabase(screenshotUri, 'receipts');
       }
 
@@ -283,6 +349,8 @@ export default function FemaleMembersScreen() {
           aadhaar_number: aadhaarNumber.trim(),
           address: address.trim(),
           photo_url: finalPhotoUrl,
+          aadhaar_front_url: finalAadhaarFrontUrl,
+          aadhaar_back_url: finalAadhaarBackUrl,
           payment_method: paymentMethod,
           payment_utr: paymentUtr.trim(),
           payment_screenshot_url: finalScreenshotUrl,
@@ -298,6 +366,8 @@ export default function FemaleMembersScreen() {
           aadhaar_number: aadhaarNumber.trim(),
           address: address.trim(),
           photo_url: finalPhotoUrl,
+          aadhaar_front_url: finalAadhaarFrontUrl,
+          aadhaar_back_url: finalAadhaarBackUrl,
           fee_amount: feeAmount,
           payment_method: paymentMethod,
           payment_utr: paymentUtr.trim(),
@@ -498,12 +568,17 @@ export default function FemaleMembersScreen() {
             const relObj = FEMALE_RELATION_OPTIONS.find((r) => r.value === member.relation);
             const relLabel = relObj ? (lang === 'hi' ? relObj.labelHi : lang === 'ur' ? relObj.labelUr : relObj.labelEn) : member.relation;
             const isApproved = member.status === 'approved';
+            const isRejected = member.status === 'rejected';
 
             return (
               <View key={member.id} style={[s.memberCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
                 {/* Member Top Row */}
                 <View style={s.cardTopRow}>
-                  <View style={s.avatarContainer}>
+                  <TouchableOpacity
+                    style={s.avatarContainer}
+                    activeOpacity={0.8}
+                    onPress={() => member.photo_url && setPreviewModal({ url: member.photo_url, title: `${member.name} (${relLabel})` })}
+                  >
                     {member.photo_url ? (
                       <Image source={{ uri: member.photo_url }} style={s.avatarImg} />
                     ) : (
@@ -511,7 +586,7 @@ export default function FemaleMembersScreen() {
                         <Text style={s.avatarInitial}>{member.name.charAt(0).toUpperCase()}</Text>
                       </View>
                     )}
-                  </View>
+                  </TouchableOpacity>
 
                   <View style={s.infoCol}>
                     <Text style={[s.nameText, { color: textPri }]}>{member.name}</Text>
@@ -524,13 +599,22 @@ export default function FemaleMembersScreen() {
                     style={[
                       s.statusBadge,
                       {
-                        backgroundColor: isApproved ? '#10b98120' : '#f59e0b20',
-                        borderColor: isApproved ? '#10b98150' : '#f59e0b50',
+                        backgroundColor: isApproved ? '#10b98120' : isRejected ? '#ef444420' : '#f59e0b20',
+                        borderColor: isApproved ? '#10b98150' : isRejected ? '#ef444450' : '#f59e0b50',
                       },
                     ]}
                   >
-                    <Text style={[s.statusText, { color: isApproved ? '#10b981' : '#f59e0b' }]}>
-                      {isApproved ? tr('सत्यापित', 'تصدیق شدہ', 'Verified') : tr('प्रक्रियाधीन', 'زیر جائزہ', 'Pending')}
+                    <Text
+                      style={[
+                        s.statusText,
+                        { color: isApproved ? '#10b981' : isRejected ? '#ef4444' : '#f59e0b' },
+                      ]}
+                    >
+                      {isApproved
+                        ? tr('सत्यापित', 'تصدیق شدہ', 'Verified')
+                        : isRejected
+                        ? tr('अस्वीकृत', 'مسترد', 'Rejected')
+                        : tr('प्रक्रियाधीन', 'زیر جائزہ', 'Pending')}
                     </Text>
                   </View>
                 </View>
@@ -573,7 +657,87 @@ export default function FemaleMembersScreen() {
                       </Text>
                     </View>
                   ) : null}
+
+                  {/* Aadhaar Documents Section */}
+                  {(member.aadhaar_front_url || member.aadhaar_back_url) && (
+                    <View style={[s.docBox, { borderTopColor: isDark ? '#334155' : '#e2e8f0' }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 }}>
+                        <ShieldCheck size={13} color="#10b981" />
+                        <Text style={[s.docBoxTitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                          {tr('आधार कार्ड दस्तावेज', 'آدھار کارڈ دستاویز', 'Aadhaar Documents')}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {member.aadhaar_front_url ? (
+                          <TouchableOpacity
+                            style={[s.docBtn, { backgroundColor: isDark ? '#064e3b30' : '#ecfdf5', borderColor: '#10b981' }]}
+                            onPress={() => setPreviewModal({ url: member.aadhaar_front_url!, title: `${member.name} - ${tr('आधार (सामने)', 'آدھار سامنے', 'Aadhaar Front')}` })}
+                          >
+                            <Eye size={13} color="#10b981" />
+                            <Text style={[s.docBtnText, { color: '#10b981' }]}>
+                              {tr('सामने का भाग', 'سامنے', 'Front Side')}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {member.aadhaar_back_url ? (
+                          <TouchableOpacity
+                            style={[s.docBtn, { backgroundColor: isDark ? '#78350f30' : '#fffbeb', borderColor: '#f59e0b' }]}
+                            onPress={() => setPreviewModal({ url: member.aadhaar_back_url!, title: `${member.name} - ${tr('आधार (पीछे)', 'آدھار پیچھے', 'Aadhaar Back')}` })}
+                          >
+                            <Eye size={13} color="#f59e0b" />
+                            <Text style={[s.docBtnText, { color: '#f59e0b' }]}>
+                              {tr('पीछे का भाग', 'پیچھے', 'Back Side')}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    </View>
+                  )}
                 </View>
+
+                {/* Admin Verification Action Bar for Super / Executive Admin */}
+                {isSuperOrExec && (
+                  <View style={[s.adminActionBox, { backgroundColor: isDark ? '#064e3b20' : '#ecfdf5', borderColor: isDark ? '#065f46' : '#a7f3d0' }]}>
+                    <Text style={[s.adminActionTitle, { color: isDark ? '#6ee7b7' : '#047857' }]}>
+                      {tr('व्यवस्थापक सत्यापन कार्यवाई:', 'ایڈمن تصدیقی کارروائی:', 'Admin Verification Action:')}
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                      {member.status !== 'approved' && (
+                        <TouchableOpacity
+                          style={[s.approveBtn, updatingStatusId === member.id && { opacity: 0.6 }]}
+                          disabled={updatingStatusId === member.id}
+                          onPress={() => handleUpdateStatus(member.id, 'approved')}
+                        >
+                          {updatingStatusId === member.id ? (
+                            <ActivityIndicator size="small" color="#ffffff" />
+                          ) : (
+                            <CheckCircle2 size={14} color="#ffffff" />
+                          )}
+                          <Text style={s.approveBtnText}>{tr('सत्यापित करें', 'تصدیق کریں', 'Approve / Verify')}</Text>
+                        </TouchableOpacity>
+                      )}
+                      {member.status !== 'rejected' && (
+                        <TouchableOpacity
+                          style={[s.rejectBtn, updatingStatusId === member.id && { opacity: 0.6 }]}
+                          disabled={updatingStatusId === member.id}
+                          onPress={() => handleUpdateStatus(member.id, 'rejected')}
+                        >
+                          <X size={14} color="#ef4444" />
+                          <Text style={s.rejectBtnText}>{tr('अस्वीकृत', 'مسترد', 'Reject')}</Text>
+                        </TouchableOpacity>
+                      )}
+                      {member.status === 'approved' && (
+                        <TouchableOpacity
+                          style={[s.pendingBtn, updatingStatusId === member.id && { opacity: 0.6 }]}
+                          disabled={updatingStatusId === member.id}
+                          onPress={() => handleUpdateStatus(member.id, 'pending')}
+                        >
+                          <Text style={s.pendingBtnText}>{tr('पुनः समीक्षा', 'دوبارہ جائزہ', 'Set Pending')}</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                )}
 
                 {/* Card Actions */}
                 <View style={[s.cardActionsRow, { borderTopColor: borderCol }]}>
@@ -744,11 +908,11 @@ export default function FemaleMembersScreen() {
 
               {/* Photo Upload */}
               <Text style={[s.inputLabel, { color: textPri }]}>
-                {tr('फोटो / पहचान प्रमाण (वैकल्पिक)', 'تصویر / شناختی ثبوت (اختیاری)', 'Photo / ID Proof (Optional)')}
+                {tr('महिला सदस्य की फोटो (अनिवार्य) *', 'خاتون رکن کی تصویر (لازمی) *', 'Photo of Female Member (Required) *')}
               </Text>
               <TouchableOpacity
                 style={[s.uploadBox, { borderColor: borderCol, backgroundColor: isDark ? '#0f172a' : '#f8fafc' }]}
-                onPress={() => pickImage(false)}
+                onPress={() => pickImage('photo')}
               >
                 {photoUri ? (
                   <View style={s.uploadedRow}>
@@ -761,7 +925,70 @@ export default function FemaleMembersScreen() {
                   <View style={s.uploadPrompt}>
                     <Camera color="#10b981" size={20} />
                     <Text style={[s.uploadText, { color: textSec }]}>
-                      {tr('फोटो चुनने के लिए टैप करें', 'تصویر منتخب کرنے کے لیے ٹیپ کریں', 'Tap to select photo')}
+                      {tr('फोटो चुनने के लिए टैप करें', 'تصویر منتخب کرنے के लिए ٹیپ کریں', 'Tap to select photo')}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              {/* Aadhaar Front & Back Upload (Required) */}
+              <View style={{ marginTop: 6, marginBottom: 12, padding: 10, borderRadius: 12, backgroundColor: isDark ? '#064e3b20' : '#ecfdf5', borderWidth: 1, borderColor: isDark ? '#065f46' : '#a7f3d0' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <ShieldCheck size={16} color="#10b981" />
+                  <Text style={[s.formSectionTitle, { color: '#10b981', marginBottom: 0 }]}>
+                    {tr('आधार कार्ड छवियाँ (अनिवार्य) *', 'آدھار کارڈ دستاویزات (لازمی) *', 'Aadhaar Card Images (Required) *')}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 10, color: textSec, marginTop: 4 }}>
+                  {tr('सत्यापन हेतु आधार कार्ड के दोनों तरफ (सामने व पीछे) की स्पष्ट फोटो अपलोड करें।', 'آدھار کارڈ کے دونوں اطراف کی تصویر لگائیں۔', 'Upload clear photos of both Front & Back of Aadhaar card.')}
+                </Text>
+              </View>
+
+              {/* Aadhaar Front */}
+              <Text style={[s.inputLabel, { color: textPri }]}>
+                {tr('आधार कार्ड - सामने का भाग (अनिवार्य) *', 'آدھار کارڈ - سامنے کا حصہ (لازمی) *', 'Aadhaar Card - Front Side (Required) *')}
+              </Text>
+              <TouchableOpacity
+                style={[s.uploadBox, { borderColor: borderCol, backgroundColor: isDark ? '#0f172a' : '#f8fafc' }]}
+                onPress={() => pickImage('front')}
+              >
+                {aadhaarFrontUri ? (
+                  <View style={s.uploadedRow}>
+                    <Image source={{ uri: aadhaarFrontUri }} style={s.previewImg} />
+                    <Text style={[s.uploadedText, { color: '#10b981' }]}>
+                      {tr('सामने का भाग चुना गया (बदलने के लिए टैप करें)', 'سامنے کا حصہ منتخب ہو گیا', 'Front side selected (Tap to change)')}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={s.uploadPrompt}>
+                    <Camera color="#10b981" size={20} />
+                    <Text style={[s.uploadText, { color: textSec }]}>
+                      {tr('सामने का भाग अपलोड करें', 'سامنے کا حصہ اپلوڈ کریں', 'Upload Front Side')}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              {/* Aadhaar Back */}
+              <Text style={[s.inputLabel, { color: textPri }]}>
+                {tr('आधार कार्ड - पीछे का भाग (अनिवार्य) *', 'آدھار کارڈ - پیچھے کا حصہ (لازمی) *', 'Aadhaar Card - Back Side (Required) *')}
+              </Text>
+              <TouchableOpacity
+                style={[s.uploadBox, { borderColor: borderCol, backgroundColor: isDark ? '#0f172a' : '#f8fafc' }]}
+                onPress={() => pickImage('back')}
+              >
+                {aadhaarBackUri ? (
+                  <View style={s.uploadedRow}>
+                    <Image source={{ uri: aadhaarBackUri }} style={s.previewImg} />
+                    <Text style={[s.uploadedText, { color: '#f59e0b' }]}>
+                      {tr('पीछे का भाग चुना गया (बदलने के लिए टैप करें)', 'پیچھے کا حصہ منتخب ہو گیا', 'Back side selected (Tap to change)')}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={s.uploadPrompt}>
+                    <Camera color="#f59e0b" size={20} />
+                    <Text style={[s.uploadText, { color: textSec }]}>
+                      {tr('पीछे का भाग अपलोड करें', 'پیچھے کا حصہ اپلوڈ کریں', 'Upload Back Side')}
                     </Text>
                   </View>
                 )}
@@ -845,7 +1072,7 @@ export default function FemaleMembersScreen() {
               </Text>
               <TouchableOpacity
                 style={[s.uploadBox, { borderColor: borderCol, backgroundColor: isDark ? '#0f172a' : '#f8fafc' }]}
-                onPress={() => pickImage(true)}
+                onPress={() => pickImage('receipt')}
               >
                 {screenshotUri ? (
                   <View style={s.uploadedRow}>
@@ -930,6 +1157,25 @@ export default function FemaleMembersScreen() {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Lightbox Image Preview Modal */}
+      <Modal visible={Boolean(previewModal)} animationType="fade" transparent onRequestClose={() => setPreviewModal(null)}>
+        <View style={s.previewOverlay}>
+          <View style={s.previewHeader}>
+            <Text style={s.previewTitle} numberOfLines={1}>
+              {previewModal?.title || 'Preview'}
+            </Text>
+            <TouchableOpacity onPress={() => setPreviewModal(null)} style={s.previewCloseBtn}>
+              <X color="#ffffff" size={22} />
+            </TouchableOpacity>
+          </View>
+          <View style={s.previewBody}>
+            {previewModal?.url ? (
+              <Image source={{ uri: previewModal.url }} style={s.previewFullImg} resizeMode="contain" />
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -1486,5 +1732,124 @@ const s = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#be185d',
+  },
+  docBox: {
+    paddingTop: 8,
+    marginTop: 8,
+    borderTopWidth: 1,
+  },
+  docBoxTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  docBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  docBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  adminActionBox: {
+    padding: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  adminActionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  approveBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#10b981',
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  approveBtnText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  rejectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#fee2e2',
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  rejectBtnText: {
+    color: '#ef4444',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  pendingBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fcd34d',
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  pendingBtnText: {
+    color: '#b45309',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    justifyContent: 'space-between',
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 50 : 20,
+    paddingBottom: 12,
+  },
+  previewTitle: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
+    flex: 1,
+  },
+  previewCloseBtn: {
+    padding: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  previewBody: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+  },
+  previewFullImg: {
+    width: '100%',
+    height: '100%',
   },
 });

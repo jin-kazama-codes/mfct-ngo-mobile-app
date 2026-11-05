@@ -48,6 +48,7 @@ import {
   CheckCircle2,
   Search,
   Users,
+  Eye,
 } from 'lucide-react-native';
 
 interface ToastInfo {
@@ -153,8 +154,16 @@ export default function NomineeDetailsScreen() {
   const [aadhaarNumber, setAadhaarNumber] = useState('');
   const [address, setAddress] = useState('');
   const [sharePercentage, setSharePercentage] = useState('100');
-  const [idProofUri, setIdProofUri] = useState('');
+
+  // Photo & Aadhaar Documents states
+  const [photoUri, setPhotoUri] = useState('');
+  const [aadhaarFrontUri, setAadhaarFrontUri] = useState('');
+  const [aadhaarBackUri, setAadhaarBackUri] = useState('');
   const [showMediaPicker, setShowMediaPicker] = useState(false);
+  const [activePickerField, setActivePickerField] = useState<'photo' | 'front' | 'back'>('photo');
+
+  // Lightbox Preview Modal state
+  const [previewModal, setPreviewModal] = useState<{ url: string; title: string } | null>(null);
 
   const loadData = useCallback(async () => {
     if (!activeUser?.id) {
@@ -203,7 +212,9 @@ export default function NomineeDetailsScreen() {
     setAadhaarNumber('');
     setAddress(activeUser?.address || '');
     setSharePercentage('100');
-    setIdProofUri('');
+    setPhotoUri('');
+    setAadhaarFrontUri('');
+    setAadhaarBackUri('');
     setErrorMsg('');
     setModalVisible(true);
   };
@@ -220,7 +231,9 @@ export default function NomineeDetailsScreen() {
     setAadhaarNumber(nom.aadhaar_number || '');
     setAddress(nom.address || '');
     setSharePercentage(nom.share_percentage ? nom.share_percentage.toString() : '100');
-    setIdProofUri(nom.id_proof_url || '');
+    setPhotoUri(nom.photo_url || '');
+    setAadhaarFrontUri(nom.aadhaar_front_url || '');
+    setAadhaarBackUri(nom.aadhaar_back_url || '');
     setErrorMsg('');
     setModalVisible(true);
   };
@@ -239,8 +252,17 @@ export default function NomineeDetailsScreen() {
           quality: 0.8,
         });
         if (!result.canceled && result.assets && result.assets.length > 0) {
-          setIdProofUri(result.assets[0].uri);
-          showToast(tr('फोटो कैप्चर हो गई', 'تصویر حاصل ہو گئی', 'Photo captured successfully'), 'info');
+          const uri = result.assets[0].uri;
+          if (activePickerField === 'photo') {
+            setPhotoUri(uri);
+            showToast(tr('नॉमिनी फोटो कैप्चर हो गई', 'نامزد تصویر حاصل ہو گئی', 'Nominee photo captured'), 'info');
+          } else if (activePickerField === 'front') {
+            setAadhaarFrontUri(uri);
+            showToast(tr('आधार कार्ड (सामने) कैप्चर हो गया', 'آدھار سامنے حاصل ہو گیا', 'Aadhaar front captured'), 'info');
+          } else if (activePickerField === 'back') {
+            setAadhaarBackUri(uri);
+            showToast(tr('आधार कार्ड (पीछे) कैप्चर हो गया', 'آدھار پیچھے حاصل ہو گیا', 'Aadhaar back captured'), 'info');
+          }
         }
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -254,8 +276,17 @@ export default function NomineeDetailsScreen() {
           quality: 0.8,
         });
         if (!result.canceled && result.assets && result.assets.length > 0) {
-          setIdProofUri(result.assets[0].uri);
-          showToast(tr('दस्तावेज़ चुना गया', 'دستاویز منتخب', 'Document selected'), 'info');
+          const uri = result.assets[0].uri;
+          if (activePickerField === 'photo') {
+            setPhotoUri(uri);
+            showToast(tr('नॉमिनी फोटो चुनी गई', 'نامزد تصویر منتخب ہو گئی', 'Nominee photo selected'), 'info');
+          } else if (activePickerField === 'front') {
+            setAadhaarFrontUri(uri);
+            showToast(tr('आधार कार्ड (सामने) चुना गया', 'آدھار کارڈ سامنے منتخب ہو گیا', 'Aadhaar front selected'), 'info');
+          } else if (activePickerField === 'back') {
+            setAadhaarBackUri(uri);
+            showToast(tr('आधार कार्ड (पीछे) चुना गया', 'آدھار کارڈ پیچھے منتخب ہو گیا', 'Aadhaar back selected'), 'info');
+          }
         }
       }
     } catch (e) {
@@ -278,16 +309,55 @@ export default function NomineeDetailsScreen() {
       return;
     }
 
+    // MANDATORY PHOTO & AADHAAR CARD VALIDATIONS
+    if (!photoUri) {
+      const err = tr('नॉमिनी की फोटो अपलोड करना अनिवार्य है।', 'نامزد کی تصویر اپلوڈ کرنا لازمی ہے۔', 'Nominee photo is mandatory.');
+      setErrorMsg(err);
+      showToast(err, 'error');
+      return;
+    }
+    if (!aadhaarFrontUri) {
+      const err = tr('आधार कार्ड (सामने का भाग) अपलोड करना अनिवार्य है।', 'آدھار کارڈ سامنے کا حصہ لازمی ہے۔', 'Aadhaar front image is mandatory.');
+      setErrorMsg(err);
+      showToast(err, 'error');
+      return;
+    }
+    if (!aadhaarBackUri) {
+      const err = tr('आधार कार्ड (पीछे का भाग) अपलोड करना अनिवार्य है।', 'آدھار کارڈ پیچھے کا حصہ لازمی ہے۔', 'Aadhaar back image is mandatory.');
+      setErrorMsg(err);
+      showToast(err, 'error');
+      return;
+    }
+
     setSaving(true);
     setErrorMsg('');
 
     try {
-      let uploadedDocUrl = idProofUri;
-      if (idProofUri && (idProofUri.startsWith('file://') || idProofUri.startsWith('content://'))) {
+      let finalPhotoUrl = photoUri;
+      let finalAadhaarFrontUrl = aadhaarFrontUri;
+      let finalAadhaarBackUrl = aadhaarBackUri;
+
+      if (photoUri && !photoUri.startsWith('http')) {
         try {
-          uploadedDocUrl = await uploadImageToSupabase(idProofUri, 'kyc');
+          finalPhotoUrl = await uploadImageToSupabase(photoUri, 'users');
         } catch (e) {
-          console.warn('Doc upload error:', e);
+          console.warn('Nominee photo upload error:', e);
+        }
+      }
+
+      if (aadhaarFrontUri && !aadhaarFrontUri.startsWith('http')) {
+        try {
+          finalAadhaarFrontUrl = await uploadImageToSupabase(aadhaarFrontUri, 'kyc');
+        } catch (e) {
+          console.warn('Aadhaar front upload error:', e);
+        }
+      }
+
+      if (aadhaarBackUri && !aadhaarBackUri.startsWith('http')) {
+        try {
+          finalAadhaarBackUrl = await uploadImageToSupabase(aadhaarBackUri, 'kyc');
+        } catch (e) {
+          console.warn('Aadhaar back upload error:', e);
         }
       }
 
@@ -303,7 +373,9 @@ export default function NomineeDetailsScreen() {
         aadhaar_number: aadhaarNumber.trim(),
         address: address.trim(),
         share_percentage: sharePercentage ? parseInt(sharePercentage, 10) : 100,
-        id_proof_url: uploadedDocUrl,
+        photo_url: finalPhotoUrl,
+        aadhaar_front_url: finalAadhaarFrontUrl,
+        aadhaar_back_url: finalAadhaarBackUrl,
       };
 
       if (editingNominee) {
@@ -611,9 +683,17 @@ export default function NomineeDetailsScreen() {
                 {/* Header row */}
                 <View className="flex-row justify-between items-start mb-3.5">
                   <View className="flex-row items-center gap-3 flex-1">
-                    <View className="w-11 h-11 rounded-2xl bg-emerald-500/10 items-center justify-center">
-                      <UserCheck size={22} color="#10b981" />
-                    </View>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => nom.photo_url && setPreviewModal({ url: nom.photo_url, title: nom.nominee_name })}
+                      className="w-12 h-12 rounded-2xl overflow-hidden bg-emerald-500/10 items-center justify-center border border-emerald-500/20"
+                    >
+                      {nom.photo_url ? (
+                        <Image source={{ uri: nom.photo_url }} className="w-full h-full" resizeMode="cover" />
+                      ) : (
+                        <UserCheck size={22} color="#10b981" />
+                      )}
+                    </TouchableOpacity>
                     <View className="flex-1">
                       <Text className="text-slate-900 dark:text-white text-base font-extrabold capitalize">
                         {nom.nominee_name}
@@ -694,17 +774,51 @@ export default function NomineeDetailsScreen() {
                     </View>
                   ) : null}
 
-                  {nom.id_proof_url ? (
-                    <View className="flex-row items-center justify-between bg-emerald-500/10 p-2.5 rounded-xl">
-                      <View className="flex-row items-center gap-1.5">
-                        <FileText size={14} color="#10b981" />
-                        <Text className="text-emerald-700 dark:text-emerald-300 text-xs font-bold">
-                          {tr('पहचान पत्र संलग्न है', 'دستاویز منسلک ہے', 'ID Proof Attached')}
+                  {(nom.aadhaar_front_url || nom.aadhaar_back_url || nom.id_proof_url) && (
+                    <View className="bg-slate-50 dark:bg-slate-950/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                      <View className="flex-row items-center gap-1.5 mb-2">
+                        <ShieldCheck size={13} color="#10b981" />
+                        <Text className="text-[10px] font-extrabold uppercase text-slate-500 dark:text-slate-400">
+                          {tr('आधार कार्ड दस्तावेज', 'آدھار کارڈ دستاویز', 'Aadhaar Documents')}
                         </Text>
                       </View>
-                      <Image source={{ uri: nom.id_proof_url }} className="w-7 h-7 rounded-md" />
+                      <View className="flex-row gap-2">
+                        {nom.aadhaar_front_url ? (
+                          <TouchableOpacity
+                            onPress={() => setPreviewModal({ url: nom.aadhaar_front_url!, title: `${nom.nominee_name} - ${tr('आधार सामने', 'آدھار سامنے', 'Aadhaar Front')}` })}
+                            className="flex-1 py-1.5 px-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex-row items-center justify-center gap-1.5"
+                          >
+                            <Eye size={12} color="#10b981" />
+                            <Text className="text-emerald-700 dark:text-emerald-300 text-xs font-bold">
+                              {tr('सामने का भाग', 'سامنے', 'Front Side')}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {nom.aadhaar_back_url ? (
+                          <TouchableOpacity
+                            onPress={() => setPreviewModal({ url: nom.aadhaar_back_url!, title: `${nom.nominee_name} - ${tr('आधार पीछे', 'آدھار پیچھے', 'Aadhaar Back')}` })}
+                            className="flex-1 py-1.5 px-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex-row items-center justify-center gap-1.5"
+                          >
+                            <Eye size={12} color="#f59e0b" />
+                            <Text className="text-amber-700 dark:text-amber-300 text-xs font-bold">
+                              {tr('पीछे का भाग', 'پیچھے', 'Back Side')}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {!nom.aadhaar_front_url && !nom.aadhaar_back_url && nom.id_proof_url ? (
+                          <TouchableOpacity
+                            onPress={() => setPreviewModal({ url: nom.id_proof_url!, title: `${nom.nominee_name} - ${tr('पहचान पत्र', 'شناختی ثبوت', 'ID Proof')}` })}
+                            className="flex-1 py-1.5 px-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex-row items-center justify-center gap-1.5"
+                          >
+                            <FileText size={12} color="#10b981" />
+                            <Text className="text-emerald-700 dark:text-emerald-300 text-xs font-bold">
+                              {tr('पहचान पत्र', 'شناختی ثبوت', 'View Document')}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
                     </View>
-                  ) : null}
+                  )}
                 </View>
 
                 {/* Status footer */}
@@ -956,34 +1070,118 @@ export default function NomineeDetailsScreen() {
                   />
                 </View>
 
-                {/* Photo / ID proof picker */}
-                <View className="mb-5">
+                {/* Photo of Nominee (Required) */}
+                <View className="mb-4">
                   <Text className="text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase mb-1.5">
-                    {tr('पहचान पत्र की फोटो (वैकल्पिक)', 'شناختی ثبوت کی تصویر', 'ID Proof Photo (Optional)')}
+                    {tr('नॉमिनी की फोटो (अनिवार्य) *', 'نامزد کی تصویر (لازمی) *', 'Photo of Nominee (Required) *')}
                   </Text>
                   <TouchableOpacity
                     onPress={() => {
                       Keyboard.dismiss();
+                      setActivePickerField('photo');
                       setShowMediaPicker(true);
                     }}
-                    className={`border border-dashed rounded-xl p-3.5 items-center justify-center ${
-                      idProofUri
+                    className={`border border-dashed rounded-xl p-3 items-center justify-center ${
+                      photoUri
                         ? 'border-emerald-500 bg-emerald-500/5'
                         : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950'
                     }`}
                   >
-                    {idProofUri ? (
+                    {photoUri ? (
                       <View className="flex-row items-center gap-2.5">
-                        <Image source={{ uri: idProofUri }} className="w-10 h-10 rounded-lg" />
+                        <Image source={{ uri: photoUri }} className="w-10 h-10 rounded-lg" />
                         <Text className="text-emerald-600 dark:text-emerald-400 text-xs font-bold">
-                          {tr('दस्तावेज़ चुना गया (बदलने के लिए क्लिक करें)', 'دستاویز منتخب', 'Document Selected (Tap to change)')}
+                          {tr('फोटो चुनी गई (बदलने के लिए टैप करें)', 'تصویر منتخب', 'Photo Selected (Tap to change)')}
                         </Text>
                       </View>
                     ) : (
                       <View className="flex-row items-center gap-2">
                         <Camera size={18} color="#10b981" />
                         <Text className="text-slate-600 dark:text-slate-400 text-xs font-semibold">
-                          {tr('आधार या पहचान पत्र चुनें', 'تصویر منتخب کریں', 'Choose Aadhaar / Photo ID')}
+                          {tr('नॉमिनी की फोटो चुनें', 'تصویر منتخب کریں', 'Upload Nominee Photo')}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                {/* Aadhaar Images Section Header (Required) */}
+                <View className="mb-3 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                  <View className="flex-row items-center gap-1.5">
+                    <ShieldCheck size={15} color="#10b981" />
+                    <Text className="text-xs font-extrabold text-emerald-800 dark:text-emerald-200">
+                      {tr('आधार कार्ड छवियाँ (अनिवार्य) *', 'آدھار کارڈ دستاویزات (لازمی) *', 'Aadhaar Card Images (Required) *')}
+                    </Text>
+                  </View>
+                  <Text className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                    {tr('सत्यापन हेतु आधार कार्ड के सामने और पीछे दोनों तरफ की फोटो अपलोड करें।', 'آدھار کے دونوں اطراف کی تصویر لگائیں۔', 'Upload clear photos of both Front & Back of Aadhaar.')}
+                  </Text>
+                </View>
+
+                {/* Aadhaar Front */}
+                <View className="mb-3">
+                  <Text className="text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase mb-1.5">
+                    {tr('आधार कार्ड - सामने का भाग (अनिवार्य) *', 'آدھار کارڈ - سامنے کا حصہ (لازمی) *', 'Aadhaar Card - Front Side (Required) *')}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setActivePickerField('front');
+                      setShowMediaPicker(true);
+                    }}
+                    className={`border border-dashed rounded-xl p-3 items-center justify-center ${
+                      aadhaarFrontUri
+                        ? 'border-emerald-500 bg-emerald-500/5'
+                        : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950'
+                    }`}
+                  >
+                    {aadhaarFrontUri ? (
+                      <View className="flex-row items-center gap-2.5">
+                        <Image source={{ uri: aadhaarFrontUri }} className="w-10 h-10 rounded-lg" />
+                        <Text className="text-emerald-600 dark:text-emerald-400 text-xs font-bold">
+                          {tr('सामने का भाग चुना गया', 'سامنے کا حصہ منتخب', 'Front side selected (Tap to change)')}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View className="flex-row items-center gap-2">
+                        <Camera size={18} color="#10b981" />
+                        <Text className="text-slate-600 dark:text-slate-400 text-xs font-semibold">
+                          {tr('सामने का भाग अपलोड करें', 'سامنے کا حصہ اپلوڈ کریں', 'Upload Front Side')}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                {/* Aadhaar Back */}
+                <View className="mb-5">
+                  <Text className="text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase mb-1.5">
+                    {tr('आधार कार्ड - पीछे का भाग (अनिवार्य) *', 'آدھار کارڈ - پیچھے کا حصہ (لازمی) *', 'Aadhaar Card - Back Side (Required) *')}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setActivePickerField('back');
+                      setShowMediaPicker(true);
+                    }}
+                    className={`border border-dashed rounded-xl p-3 items-center justify-center ${
+                      aadhaarBackUri
+                        ? 'border-amber-500 bg-amber-500/5'
+                        : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950'
+                    }`}
+                  >
+                    {aadhaarBackUri ? (
+                      <View className="flex-row items-center gap-2.5">
+                        <Image source={{ uri: aadhaarBackUri }} className="w-10 h-10 rounded-lg" />
+                        <Text className="text-amber-600 dark:text-amber-400 text-xs font-bold">
+                          {tr('पीछे का भाग चुना गया', 'پیچھے کا حصہ منتخب', 'Back side selected (Tap to change)')}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View className="flex-row items-center gap-2">
+                        <Camera size={18} color="#f59e0b" />
+                        <Text className="text-slate-600 dark:text-slate-400 text-xs font-semibold">
+                          {tr('पीछे का भाग अपलोड करें', 'پیچھے کا حصہ اپلوڈ کریں', 'Upload Back Side')}
                         </Text>
                       </View>
                     )}
@@ -1036,7 +1234,11 @@ export default function NomineeDetailsScreen() {
         >
           <View className="w-[85%] bg-white dark:bg-slate-900 rounded-3xl p-5 gap-3.5 border border-slate-200 dark:border-slate-800 shadow-2xl">
             <Text className="text-slate-900 dark:text-white text-base font-extrabold text-center">
-              {tr('दस्तावेज़ अपलोड करें', 'دستاویز اپ لوڈ کریں', 'Upload ID Document')}
+              {activePickerField === 'photo'
+                ? tr('नॉमिनी की फोटो चुनें', 'نامزد کی تصویر منتخب کریں', 'Select Nominee Photo')
+                : activePickerField === 'front'
+                ? tr('आधार कार्ड (सामने का भाग)', 'آدھار کارڈ (سامنے کا حصہ)', 'Aadhaar Card (Front Side)')
+                : tr('आधार कार्ड (पीछे का भाग)', 'آدھار کارڈ (پیچھے کا حصہ)', 'Aadhaar Card (Back Side)')}
             </Text>
             <TouchableOpacity
               onPress={() => handlePickMedia('camera')}
@@ -1099,6 +1301,25 @@ export default function NomineeDetailsScreen() {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Lightbox Image Preview Modal */}
+      <Modal visible={Boolean(previewModal)} animationType="fade" transparent onRequestClose={() => setPreviewModal(null)}>
+        <View className="flex-1 bg-black/90 justify-between">
+          <View className="flex-row items-center justify-between px-4 pt-12 pb-3">
+            <Text className="text-white text-sm font-extrabold flex-1 mr-3" numberOfLines={1}>
+              {previewModal?.title || 'Preview'}
+            </Text>
+            <TouchableOpacity onPress={() => setPreviewModal(null)} className="p-1.5 rounded-full bg-white/20">
+              <X color="#ffffff" size={20} />
+            </TouchableOpacity>
+          </View>
+          <View className="flex-1 items-center justify-center p-3">
+            {previewModal?.url ? (
+              <Image source={{ uri: previewModal.url }} className="w-full h-full" resizeMode="contain" />
+            ) : null}
           </View>
         </View>
       </Modal>

@@ -77,11 +77,11 @@ export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Do
   if (!Number.isFinite(donation.amountINR) || donation.amountINR <= 0) {
     throw new Error('Donation amount must be greater than zero');
   }
-  if (!/^\d{12}$/.test(donation.utrNumber.trim())) {
-    throw new Error('A valid 12-digit UTR is required');
+  if (donation.utrNumber && donation.utrNumber.trim() && !/^\d{12}$/.test(donation.utrNumber.trim())) {
+    throw new Error('If provided, a valid 12-digit UTR is required');
   }
-  if (!donation.paymentScreenshotUrl?.trim().startsWith('https://')) {
-    throw new Error('Payment screenshot is required');
+  if (donation.paymentScreenshotUrl && donation.paymentScreenshotUrl.trim() && !donation.paymentScreenshotUrl.trim().startsWith('http')) {
+    throw new Error('Payment screenshot must be a valid URL');
   }
 
   const campaignId = (!donation.campaignId || donation.campaignId === 'general') ? null : donation.campaignId;
@@ -90,7 +90,7 @@ export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Do
   const payload: Record<string, any> = {
     id: `don_${Date.now()}`,
     transaction_id: donation.transactionId || `TXN${Math.floor(100000000 + Math.random() * 900000000)}`,
-    utr_number: donation.utrNumber,
+    utr_number: donation.utrNumber?.trim() || null,
     donor_name: donation.donorName.trim(),
     donor_id: donorId,
     donor_role: donation.donorRole || 'member',
@@ -101,7 +101,7 @@ export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Do
     category: donation.category || 'General',
     is_outside_community: Boolean(donation.isOutsideCommunity),
     payment_method: donation.paymentMethod || 'UPI',
-    payment_screenshot_url: donation.paymentScreenshotUrl,
+    payment_screenshot_url: donation.paymentScreenshotUrl || null,
     status: donation.status || 'pending_verification',
     date: donation.date || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
     receipt_number: donation.receiptNumber || `RCP-${Date.now().toString().slice(-6)}`,
@@ -132,6 +132,18 @@ export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Do
       // If foreign key violation on donor_id, retry with null
       if (error && (error.message?.includes('donations_donor_id_fkey') || error.message?.includes('donor_id'))) {
         payload.donor_id = null;
+        const retry = await supabase.from('donations').insert(payload).select().single();
+        if (!retry.error) {
+          data = retry.data;
+          error = null;
+        } else {
+          error = retry.error;
+        }
+      }
+
+      // If utr_number cannot be null, retry with empty string
+      if (error && (error.message?.includes('utr_number') || error.message?.includes('null value in column "utr_number"'))) {
+        payload.utr_number = '';
         const retry = await supabase.from('donations').insert(payload).select().single();
         if (!retry.error) {
           data = retry.data;

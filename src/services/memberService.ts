@@ -4,6 +4,61 @@ import { MemberNominee, MemberBankDetails, FemaleFamilyMember } from '../types';
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL || 'https://faeem-charitable-trust.vercel.app';
 
+// ─── PARSING HELPERS FOR NOMINEE & FEMALE MEMBERS ─────────────────────────────
+
+function parseNomineeRow(row: any): MemberNominee {
+  if (!row) return row;
+  let photo_url = row.photo_url || '';
+  let aadhaar_front_url = row.aadhaar_front_url || '';
+  let aadhaar_back_url = row.aadhaar_back_url || '';
+  const idProof = row.id_proof_url || '';
+
+  if (idProof && typeof idProof === 'string' && idProof.startsWith('{') && idProof.includes('photo_url')) {
+    try {
+      const bundle = JSON.parse(idProof);
+      if (!photo_url && bundle.photo_url) photo_url = bundle.photo_url;
+      if (!aadhaar_front_url && bundle.aadhaar_front_url) aadhaar_front_url = bundle.aadhaar_front_url;
+      if (!aadhaar_back_url && bundle.aadhaar_back_url) aadhaar_back_url = bundle.aadhaar_back_url;
+    } catch {}
+  }
+
+  return {
+    ...row,
+    id: String(row.id),
+    photo_url,
+    aadhaar_front_url,
+    aadhaar_back_url,
+  };
+}
+
+function parseFemaleMemberRow(row: any): FemaleFamilyMember {
+  if (!row) return row;
+  let photo_url = row.photo_url || '';
+  let aadhaar_front_url = row.aadhaar_front_url || '';
+  let aadhaar_back_url = row.aadhaar_back_url || '';
+
+  if (photo_url && typeof photo_url === 'string' && photo_url.startsWith('{') && photo_url.includes('aadhaar_front_url')) {
+    try {
+      const bundle = JSON.parse(photo_url);
+      photo_url = bundle.photo_url || '';
+      if (!aadhaar_front_url && bundle.aadhaar_front_url) {
+        aadhaar_front_url = bundle.aadhaar_front_url;
+      }
+      if (!aadhaar_back_url && bundle.aadhaar_back_url) {
+        aadhaar_back_url = bundle.aadhaar_back_url;
+      }
+    } catch {}
+  }
+
+  return {
+    ...row,
+    id: String(row.id),
+    photo_url,
+    aadhaar_front_url,
+    aadhaar_back_url,
+  };
+}
+
 // ─── MEMBER NOMINEE SERVICE (MOBILE DIRECT API / DB) ──────────────────────────
 
 export async function getMemberNominees(userId?: string): Promise<MemberNominee[]> {
@@ -19,7 +74,7 @@ export async function getMemberNominees(userId?: string): Promise<MemberNominee[
   const { data, error } = await query;
 
   if (!error && data) {
-    return data as MemberNominee[];
+    return (data as any[]).map(parseNomineeRow);
   }
 
   // Fallback to Next.js API route if Supabase direct client encounters network constraint
@@ -31,7 +86,7 @@ export async function getMemberNominees(userId?: string): Promise<MemberNominee[
     if (res.ok) {
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        return json.data as MemberNominee[];
+        return (json.data as any[]).map(parseNomineeRow);
       }
     }
   } catch { }
@@ -43,8 +98,20 @@ export async function getMemberNominees(userId?: string): Promise<MemberNominee[
 export async function saveMemberNominee(
   data: Omit<MemberNominee, 'id' | 'created_at' | 'updated_at'> & { id?: string }
 ): Promise<MemberNominee> {
+  const pUrl = (data as any).photo_url || '';
+  const fUrl = (data as any).aadhaar_front_url || '';
+  const bUrl = (data as any).aadhaar_back_url || '';
+  const fallbackBundle = (fUrl || bUrl || pUrl)
+    ? JSON.stringify({
+        photo_url: pUrl,
+        aadhaar_front_url: fUrl,
+        aadhaar_back_url: bUrl,
+      })
+    : '';
+
   const payload: any = {
     ...data,
+    id_proof_url: data.id_proof_url || fallbackBundle,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -55,14 +122,32 @@ export async function saveMemberNominee(
     delete payload.id;
   }
 
-  const { data: inserted, error } = await supabase
+  let { data: inserted, error } = await supabase
     .from('member_nominees')
     .insert(payload)
     .select()
     .single();
 
+  if (error && (error.code === '42703' || error.message.includes('column'))) {
+    delete payload.photo_url;
+    delete payload.aadhaar_front_url;
+    delete payload.aadhaar_back_url;
+    if (fallbackBundle) {
+      payload.id_proof_url = fallbackBundle;
+    }
+    const retry = await supabase
+      .from('member_nominees')
+      .insert(payload)
+      .select()
+      .single();
+    if (!retry.error) {
+      inserted = retry.data;
+      error = null;
+    }
+  }
+
   if (!error && inserted) {
-    return inserted as MemberNominee;
+    return parseNomineeRow(inserted);
   }
 
   // Fallback to API route
@@ -74,29 +159,62 @@ export async function saveMemberNominee(
     });
     const json = await res.json();
     if (json.success && json.data) {
-      return json.data as MemberNominee;
+      return parseNomineeRow(json.data);
     }
   } catch { }
 
   if (error) throw new Error(error.message || 'Failed to save nominee');
-  return payload as MemberNominee;
+  return parseNomineeRow(payload);
 }
 
 export async function updateMemberNominee(
   id: string,
   updates: Partial<MemberNominee>
 ): Promise<MemberNominee> {
-  const payload = { ...updates, updated_at: new Date().toISOString() };
+  const pUrl = (updates as any).photo_url !== undefined ? (updates as any).photo_url : '';
+  const fUrl = (updates as any).aadhaar_front_url !== undefined ? (updates as any).aadhaar_front_url : '';
+  const bUrl = (updates as any).aadhaar_back_url !== undefined ? (updates as any).aadhaar_back_url : '';
+  const fallbackBundle = (fUrl || bUrl || pUrl)
+    ? JSON.stringify({
+        photo_url: pUrl,
+        aadhaar_front_url: fUrl,
+        aadhaar_back_url: bUrl,
+      })
+    : undefined;
 
-  const { data, error } = await supabase
+  const payload: any = { ...updates, updated_at: new Date().toISOString() };
+  if (fallbackBundle && !updates.id_proof_url) {
+    payload.id_proof_url = fallbackBundle;
+  }
+
+  let { data, error } = await supabase
     .from('member_nominees')
     .update(payload)
     .eq('id', id)
     .select()
     .single();
 
+  if (error && (error.code === '42703' || error.message.includes('column'))) {
+    delete payload.photo_url;
+    delete payload.aadhaar_front_url;
+    delete payload.aadhaar_back_url;
+    if (fallbackBundle) {
+      payload.id_proof_url = fallbackBundle;
+    }
+    const retry = await supabase
+      .from('member_nominees')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+    if (!retry.error) {
+      data = retry.data;
+      error = null;
+    }
+  }
+
   if (!error && data) {
-    return data as MemberNominee;
+    return parseNomineeRow(data);
   }
 
   // Fallback to API route
@@ -108,12 +226,12 @@ export async function updateMemberNominee(
     });
     const json = await res.json();
     if (json.success && json.data) {
-      return json.data as MemberNominee;
+      return parseNomineeRow(json.data);
     }
   } catch { }
 
   if (error) throw new Error(error.message || 'Failed to update nominee');
-  return { id, ...updates } as MemberNominee;
+  return parseNomineeRow({ id, ...updates });
 }
 
 export async function deleteMemberNominee(id: string): Promise<void> {
@@ -306,7 +424,7 @@ export async function getFemaleFamilyMembers(userId?: string): Promise<FemaleFam
 
     const { data, error } = await query;
     if (!error && Array.isArray(data) && data.length > 0) {
-      results = data as FemaleFamilyMember[];
+      results = (data as any[]).map(parseFemaleMemberRow);
     }
   } catch (e) {
     console.warn('[getFemaleFamilyMembers] primary schema query error:', e);
@@ -327,7 +445,7 @@ export async function getFemaleFamilyMembers(userId?: string): Promise<FemaleFam
 
       const { data: pubData, error: pubError } = await pubQuery;
       if (!pubError && Array.isArray(pubData) && pubData.length > 0) {
-        results = pubData as FemaleFamilyMember[];
+        results = (pubData as any[]).map(parseFemaleMemberRow);
       }
     } catch {}
   }
@@ -345,7 +463,7 @@ export async function getFemaleFamilyMembers(userId?: string): Promise<FemaleFam
     if (res.ok) {
       const json = await res.json();
       if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-        return json.data as FemaleFamilyMember[];
+        return (json.data as any[]).map(parseFemaleMemberRow);
       }
     }
   } catch { }
@@ -356,6 +474,17 @@ export async function getFemaleFamilyMembers(userId?: string): Promise<FemaleFam
 export async function saveFemaleFamilyMember(
   data: Omit<FemaleFamilyMember, 'id' | 'created_at' | 'updated_at'> & { id?: string }
 ): Promise<FemaleFamilyMember> {
+  const pUrl = (data as any).photo_url || '';
+  const fUrl = (data as any).aadhaar_front_url || '';
+  const bUrl = (data as any).aadhaar_back_url || '';
+  const fallbackBundle = (fUrl || bUrl)
+    ? JSON.stringify({
+        photo_url: pUrl,
+        aadhaar_front_url: fUrl,
+        aadhaar_back_url: bUrl,
+      })
+    : pUrl;
+
   const payload: any = {
     ...data,
     fee_amount: data.fee_amount || 50,
@@ -375,14 +504,29 @@ export async function saveFemaleFamilyMember(
 
   // 1. First try with primary client (dev schema)
   try {
-    const { data: inserted, error } = await client
+    let { data: inserted, error } = await client
       .from('member_female_family')
       .insert(payload)
       .select()
       .single();
 
+    if (error && (error.code === '42703' || error.message.includes('column'))) {
+      delete payload.aadhaar_front_url;
+      delete payload.aadhaar_back_url;
+      payload.photo_url = fallbackBundle;
+      const retry = await client
+        .from('member_female_family')
+        .insert(payload)
+        .select()
+        .single();
+      if (!retry.error) {
+        inserted = retry.data;
+        error = null;
+      }
+    }
+
     if (!error && inserted) {
-      return inserted as FemaleFamilyMember;
+      return parseFemaleMemberRow(inserted);
     }
     if (error) lastError = error;
   } catch (err: any) {
@@ -392,14 +536,29 @@ export async function saveFemaleFamilyMember(
   // 2. Try with public schema directly (fallback)
   try {
     const pubClient = typeof client.schema === 'function' ? client.schema('public') : supabase;
-    const { data: pubInserted, error: pubErr } = await pubClient
+    let { data: pubInserted, error: pubErr } = await pubClient
       .from('member_female_family')
       .insert(payload)
       .select()
       .single();
 
+    if (pubErr && (pubErr.code === '42703' || pubErr.message.includes('column'))) {
+      delete payload.aadhaar_front_url;
+      delete payload.aadhaar_back_url;
+      payload.photo_url = fallbackBundle;
+      const retry = await pubClient
+        .from('member_female_family')
+        .insert(payload)
+        .select()
+        .single();
+      if (!retry.error) {
+        pubInserted = retry.data;
+        pubErr = null;
+      }
+    }
+
     if (!pubErr && pubInserted) {
-      return pubInserted as FemaleFamilyMember;
+      return parseFemaleMemberRow(pubInserted);
     }
     if (pubErr) lastError = pubErr;
   } catch (err: any) {
@@ -416,7 +575,7 @@ export async function saveFemaleFamilyMember(
     if (res.ok) {
       const json = await res.json();
       if (json.success && json.data) {
-        return json.data as FemaleFamilyMember;
+        return parseFemaleMemberRow(json.data);
       }
       if (json.error) {
         throw new Error(json.error);
@@ -429,27 +588,60 @@ export async function saveFemaleFamilyMember(
   }
 
   if (lastError) throw new Error(lastError.message || 'Failed to save female family member');
-  return payload as FemaleFamilyMember;
+  return parseFemaleMemberRow(payload);
 }
 
 export async function updateFemaleFamilyMember(
   id: string,
   updates: Partial<FemaleFamilyMember>
 ): Promise<FemaleFamilyMember> {
-  const payload = { ...updates, updated_at: new Date().toISOString() };
+  const pUrl = (updates as any).photo_url !== undefined ? (updates as any).photo_url : '';
+  const fUrl = (updates as any).aadhaar_front_url !== undefined ? (updates as any).aadhaar_front_url : '';
+  const bUrl = (updates as any).aadhaar_back_url !== undefined ? (updates as any).aadhaar_back_url : '';
+  const fallbackBundle = (fUrl || bUrl)
+    ? JSON.stringify({
+        photo_url: pUrl,
+        aadhaar_front_url: fUrl,
+        aadhaar_back_url: bUrl,
+      })
+    : undefined;
+
+  const payload: any = { ...updates, updated_at: new Date().toISOString() };
+  if (fallbackBundle && updates.photo_url !== undefined) {
+    payload.photo_url = fallbackBundle;
+  }
+
   const client = supabaseAdmin || supabase;
   let lastError: any = null;
 
   try {
-    const { data, error } = await client
+    let { data, error } = await client
       .from('member_female_family')
       .update(payload)
       .eq('id', id)
       .select()
       .single();
 
+    if (error && (error.code === '42703' || error.message.includes('column'))) {
+      delete payload.aadhaar_front_url;
+      delete payload.aadhaar_back_url;
+      if (fallbackBundle) {
+        payload.photo_url = fallbackBundle;
+      }
+      const retry = await client
+        .from('member_female_family')
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single();
+      if (!retry.error) {
+        data = retry.data;
+        error = null;
+      }
+    }
+
     if (!error && data) {
-      return data as FemaleFamilyMember;
+      return parseFemaleMemberRow(data);
     }
     if (error) lastError = error;
   } catch (err: any) {
@@ -459,15 +651,33 @@ export async function updateFemaleFamilyMember(
   // Public schema fallback
   try {
     const pubClient = typeof client.schema === 'function' ? client.schema('public') : supabase;
-    const { data: pubData, error: pubErr } = await pubClient
+    let { data: pubData, error: pubErr } = await pubClient
       .from('member_female_family')
       .update(payload)
       .eq('id', id)
       .select()
       .single();
 
+    if (pubErr && (pubErr.code === '42703' || pubErr.message.includes('column'))) {
+      delete payload.aadhaar_front_url;
+      delete payload.aadhaar_back_url;
+      if (fallbackBundle) {
+        payload.photo_url = fallbackBundle;
+      }
+      const retry = await pubClient
+        .from('member_female_family')
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single();
+      if (!retry.error) {
+        pubData = retry.data;
+        pubErr = null;
+      }
+    }
+
     if (!pubErr && pubData) {
-      return pubData as FemaleFamilyMember;
+      return parseFemaleMemberRow(pubData);
     }
     if (pubErr) lastError = pubErr;
   } catch (err: any) {
@@ -484,13 +694,13 @@ export async function updateFemaleFamilyMember(
     if (res.ok) {
       const json = await res.json();
       if (json.success && json.data) {
-        return json.data as FemaleFamilyMember;
+        return parseFemaleMemberRow(json.data);
       }
     }
   } catch { }
 
   if (lastError) throw new Error(lastError.message || 'Failed to update female member');
-  return { id, ...updates } as FemaleFamilyMember;
+  return parseFemaleMemberRow({ id, ...updates });
 }
 
 export async function deleteFemaleFamilyMember(id: string): Promise<void> {

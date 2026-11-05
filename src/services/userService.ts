@@ -127,6 +127,12 @@ function mapRow(row: Record<string, unknown>): User {
     isMalikENisab: (row.is_malik_e_nisab ?? row.isMalikENisab) as boolean | undefined,
     helpType: (row.help_type || row.helpType) as string | undefined,
     helpDetails: (row.help_details || row.helpDetails) as string | undefined,
+    monthlyPayment: (row.monthly_payment ?? row.monthlyPayment) as string | undefined,
+    monthly_payment: (row.monthly_payment ?? row.monthlyPayment) as string | undefined,
+    monthlyPaymentDate: (row.monthly_payment_date ?? row.monthlyPaymentDate) as string | undefined,
+    monthly_payment_date: (row.monthly_payment_date ?? row.monthlyPaymentDate) as string | undefined,
+    monthlyPaymentAmount: (row.monthly_payment_amount ?? row.monthlyPaymentAmount) as number | undefined,
+    monthly_payment_amount: (row.monthly_payment_amount ?? row.monthlyPaymentAmount) as number | undefined,
   };
 }
 
@@ -410,6 +416,16 @@ export async function updateUser(
   if (updates.isMalikENisab !== undefined) payload.is_malik_e_nisab = updates.isMalikENisab;
   if (updates.helpType !== undefined) payload.help_type = updates.helpType;
   if (updates.helpDetails !== undefined) payload.help_details = updates.helpDetails;
+  if (updates.monthlyPayment !== undefined || updates.monthly_payment !== undefined) {
+    const mv = updates.monthlyPayment ?? updates.monthly_payment;
+    payload.monthly_payment = typeof mv === 'boolean' ? (mv ? 'yes' : 'no') : String(mv);
+  }
+  if (updates.monthlyPaymentDate !== undefined || updates.monthly_payment_date !== undefined) {
+    payload.monthly_payment_date = updates.monthlyPaymentDate ?? updates.monthly_payment_date;
+  }
+  if (updates.monthlyPaymentAmount !== undefined || updates.monthly_payment_amount !== undefined) {
+    payload.monthly_payment_amount = updates.monthlyPaymentAmount ?? updates.monthly_payment_amount;
+  }
 
   if (updates.password || updates.plainPassword) {
     const p = updates.password || updates.plainPassword;

@@ -454,16 +454,13 @@ export default function DonationScreen() {
       );
       return;
     }
-    if (!/^\d{12}$/.test(utrNumber.trim()) || !screenshotUri) {
+    if (utrNumber.trim() && !/^\d{12}$/.test(utrNumber.trim())) {
       Alert.alert(
         t('donation.verification_needed', tr('सत्यापन आवश्यक', 'تصدیق درکار ہے', 'Verification Needed')),
-        t(
-          'donation.enter_utr_or_screenshot',
-          tr(
-            'कृपया सही 12 अंकों का UTR दर्ज करें और भुगतान स्क्रीनशॉट अपलोड करें।',
-            'براہ کرم درست 12 ہندسوں کا UTR درج کریں اور ادائیگی کی رسید اپلوڈ کریں۔',
-            'Please enter the actual 12-digit UTR and upload the payment screenshot.'
-          )
+        tr(
+          'कृपया सही 12 अंकों का UTR नंबर दर्ज करें।',
+          'براہ کرم درست 12 ہندسوں کا UTR نمبر درج کریں۔',
+          'Please enter the actual 12-digit UTR number.'
         )
       );
       return;
@@ -497,11 +494,11 @@ export default function DonationScreen() {
         category: selectedCategory,
         isOutsideCommunity: isOutside,
         paymentMethod,
-        paymentScreenshotUrl: uploadedScreenshotUrl || screenshotUri || undefined,
+        paymentScreenshotUrl: uploadedScreenshotUrl || undefined,
         status: 'pending_verification',
         date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
         receiptNumber: `RCP-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
-        district: (isLoggedIn ? (activeUser?.district || activeUser?.city) : donorCity.trim()) || campaign?.district || campaign?.city || 'General',
+        district: (isLoggedIn ? (activeUser?.district || activeUser?.city) : donorCity.trim()) || (campaign as any)?.district || campaign?.city || 'General',
         wakalahInformation: selectedCategory === 'Zakat' ? [
           {
             donorName: finalDonorName,
@@ -550,7 +547,7 @@ export default function DonationScreen() {
         `Amount: ₹${createdDonation.amountINR.toLocaleString('en-IN')}\n` +
         `Category: ${createdDonation.category}\n` +
         `Campaign: ${createdDonation.campaignTitle}\n` +
-        `UTR Ref: ${createdDonation.utrNumber}\n` +
+        (createdDonation.utrNumber ? `UTR Ref: ${createdDonation.utrNumber}\n` : '') +
         `Date: ${createdDonation.date}\n` +
         `Status: ${createdDonation.status}\n` +
         `JazakAllah Khair for your generous support!`;
@@ -1600,7 +1597,7 @@ export default function DonationScreen() {
                     </Text>
                     <View className="flex-row items-center gap-2">
                       <Text className="text-[10px] font-bold text-slate-400">
-                        {utrNumber.length}/12
+                        {tr('वैकल्पिक', 'اختیاری', 'Optional')}{utrNumber.length > 0 ? ` • ${utrNumber.length}/12` : ''}
                       </Text>
                       {isUtrFocused && (
                         <TouchableOpacity
@@ -1636,7 +1633,7 @@ export default function DonationScreen() {
                         }, 200);
                       }}
                       onBlur={() => setIsUtrFocused(false)}
-                      placeholder={t('donation.utr_placeholder', tr('उदा. 420199381029', 'مثال: 420199381029', 'e.g. 420199381029'))}
+                      placeholder={t('donation.utr_placeholder', tr('उदा. 420199381029 (वैकल्पिक)', 'مثال: 420199381029 (اختیاری)', 'e.g. 420199381029 (Optional)'))}
                       placeholderTextColor="#94a3b8"
                       keyboardType="number-pad"
                       returnKeyType="done"
@@ -1676,12 +1673,17 @@ export default function DonationScreen() {
 
                 {/* Upload Screenshot */}
                 <View>
-                  <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-1.5">
-                    {t('donation.or_upload_screenshot', tr('या भुगतान स्क्रीनशॉट अपलोड करें', 'یا ادائیگی کی رسید اپلوڈ کریں', 'Or Upload Payment Screenshot'))}
-                  </Text>
+                  <View className="flex-row items-center justify-between mb-1.5">
+                    <Text className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                      {tr('भुगतान स्क्रीनशॉट अपलोड करें', 'ادائیگی کی رسید اپلوڈ کریں', 'Upload Payment Screenshot')}
+                    </Text>
+                    <Text className="text-[10px] font-bold text-slate-400">
+                      {tr('वैकल्पिक', 'اختیاری', 'Optional')}
+                    </Text>
+                  </View>
                   <TouchableOpacity
                     onPress={handlePickImage}
-                    className="border-2 border-dashed border-slate-300 dark:border-slate-700 p-4 rounded-xl items-center justify-center bg-slate-50 dark:bg-slate-800/40"
+                    className="border-2 border-dashed border-slate-300 dark:border-slate-700 p-4 rounded-xl items-center justify-center bg-slate-50 dark:bg-slate-800/40 relative"
                   >
                     {screenshotUri ? (
                       <View className="items-center">
@@ -1689,12 +1691,21 @@ export default function DonationScreen() {
                         <Text className="text-emerald-600 dark:text-emerald-400 text-xs font-bold">
                           {t('donation.screenshot_attached', tr('✓ स्क्रीनशॉट संलग्न है (बदलने के लिए टैप करें)', '✓ رسید منسلک ہے (تبدیل کرنے کے لیے ٹیپ کریں)', '✓ Screenshot Attached (Tap to change)'))}
                         </Text>
+                        <TouchableOpacity
+                          onPress={() => setScreenshotUri(null)}
+                          className="mt-2 px-3 py-1 bg-red-100 dark:bg-red-950/50 rounded-lg flex-row items-center"
+                        >
+                          <X color="#ef4444" size={12} />
+                          <Text className="text-red-600 dark:text-red-400 text-[11px] font-bold ml-1">
+                            {tr('स्क्रीनशॉट हटाएं', 'رسید ہٹائیں', 'Remove')}
+                          </Text>
+                        </TouchableOpacity>
                       </View>
                     ) : (
                       <View className="items-center">
                         <Upload color="#64748b" size={22} />
                         <Text className="text-slate-700 dark:text-slate-300 text-xs font-bold mt-1">
-                          {t('donation.upload_screenshot_optional', tr('भुगतान स्क्रीनशॉट अपलोड करें (आवश्यक)', 'ادائیگی کی رسید اپلوڈ کریں (ضروری)', 'Upload Payment Screenshot (Required)'))}
+                          {t('donation.upload_screenshot_optional', tr('भुगतान स्क्रीनशॉट अपलोड करें (वैकल्पिक)', 'ادائیگی کی رسید اپلوڈ کریں (اختیاری)', 'Upload Payment Screenshot (Optional)'))}
                         </Text>
                         <Text className="text-slate-400 text-[10px] mt-0.5">
                           {t('donation.gallery_format', tr('फ़ोन गैलरी से JPG या PNG', 'فون گیلری سے JPG یا PNG', 'JPG or PNG from phone gallery'))}
@@ -1822,14 +1833,16 @@ export default function DonationScreen() {
                 </View>
 
                 {/* Bank UTR */}
-                <View className="flex-row justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                  <Text className="text-xs text-slate-400">
-                    {t('donation.utr_number', tr('12 अंकों का बैंक UTR / संदर्भ संख्या', '12 ہندسوں کا بینک UTR / ٹرانزیکشن نمبر', 'Bank UTR'))}
-                  </Text>
-                  <Text className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
-                    {createdDonation?.utrNumber || utrNumber}
-                  </Text>
-                </View>
+                {(createdDonation?.utrNumber || utrNumber) ? (
+                  <View className="flex-row justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                    <Text className="text-xs text-slate-400">
+                      {t('donation.utr_number', tr('12 अंकों का बैंक UTR / संदर्भ संख्या', '12 ہندسوں کا بینک UTR / ٹرانزیکشن نمبر', 'Bank UTR'))}
+                    </Text>
+                    <Text className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
+                      {createdDonation?.utrNumber || utrNumber}
+                    </Text>
+                  </View>
+                ) : null}
 
                 {/* Date */}
                 <View className="flex-row justify-between border-b border-slate-100 dark:border-slate-800 pb-2">

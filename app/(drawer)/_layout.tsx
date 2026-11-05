@@ -40,7 +40,7 @@ export default function DrawerGroupLayout() {
           borderTopColor: borderCol,
           height: Platform.OS === 'ios' ? 88 : 64,
           paddingBottom: Platform.OS === 'ios' ? 28 : 10,
-          paddingTop: 8,
+          // paddingTop: 8,
         },
         tabBarLabelStyle: {
           fontSize: 10,
