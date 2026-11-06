@@ -25,17 +25,17 @@ export default function TabLayout() {
 
   const isDark = colorScheme === 'dark';
   const tabBgColor = brand.darkGreen;
-  const borderCol  = 'rgba(200,168,75,0.35)';
-  const activeColor   = brand.gold;
+  const borderCol = 'rgba(200,168,75,0.35)';
+  const activeColor = brand.gold;
   const inactiveColor = 'rgba(255,255,255,0.65)';
-  const textColor  = brand.white;
+  const textColor = brand.white;
   const headerIconColor = brand.gold;
 
   // Toggle theme and persist choice
   const handleToggleTheme = async () => {
     toggleColorScheme();
     const next = isDark ? 'light' : 'dark';
-    try { await AsyncStorage.setItem('mfct_theme', next); } catch {}
+    try { await AsyncStorage.setItem('mfct_theme', next); } catch { }
   };
 
   // Public pages: cycle between Hindi and English only (no Urdu)
@@ -43,7 +43,7 @@ export default function TabLayout() {
   const handleToggleLanguage = async () => {
     const next = isHi ? 'en' : 'hi';
     i18n.changeLanguage(next);
-    try { await AsyncStorage.setItem('mfct_language', next); } catch {}
+    try { await AsyncStorage.setItem('mfct_language', next); } catch { }
   };
 
   // Language label shown on the Globe button
@@ -59,8 +59,8 @@ export default function TabLayout() {
           borderTopColor: borderCol,
           borderTopWidth: 1.5,
           height: 60,
-          paddingBottom: 8,
-          paddingTop: 6,
+          paddingBottom: 10,
+          // paddingTop: 6,
         },
         tabBarLabelStyle: {
           fontSize: 8.5,

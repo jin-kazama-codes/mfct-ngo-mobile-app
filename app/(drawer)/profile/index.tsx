@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, Platform, Switch, ActivityIndicator } from 'react-native';
 import { useAppState } from '../../../src/context/AppStateProvider';
 import {
   UserCircle,
@@ -16,11 +16,17 @@ import {
   Award,
   KeyRound,
   ArrowLeft,
-  UserCheck,
-  Building,
+  Calendar,
+  Heart,
+  Clock,
+  AlertCircle,
 } from 'lucide-react-native';
 import { KycUpdateModal } from '../../../src/components/KycUpdateModal';
 import { ChangePasswordModal } from '../../../src/components/ChangePasswordModal';
+import { MonthlyPaymentToggle } from '../../../src/components/MonthlyPaymentToggle';
+import { Donation } from '../../../src/types';
+import { getDonations } from '../../../src/services/donationService';
+import { updateUser } from '../../../src/services/userService';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from 'nativewind';
 import { useTranslation } from 'react-i18next';
@@ -86,6 +92,119 @@ export default function ProfileScreen() {
 
   const [kycModalVisible, setKycModalVisible] = React.useState(false);
   const [passwordModalVisible, setPasswordModalVisible] = React.useState(false);
+
+  // Monthly Payment state & donation history
+  const isMonthly = Boolean(
+    activeUser?.monthlyPayment === 'yes' ||
+    activeUser?.monthly_payment === 'yes' ||
+    activeUser?.monthlyPayment === true ||
+    activeUser?.monthly_payment === true
+  );
+  const [updatingMonthly, setUpdatingMonthly] = React.useState(false);
+  const [donations, setDonations] = React.useState<Donation[]>([]);
+  const [loadingDonations, setLoadingDonations] = React.useState(false);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    if (activeUser?.id) {
+      setLoadingDonations(true);
+      getDonations(activeUser.id)
+        .then((data) => {
+          if (isMounted) setDonations(data || []);
+        })
+        .catch((err) => {
+          console.warn('Error fetching donations for mobile profile:', err);
+        })
+        .finally(() => {
+          if (isMounted) setLoadingDonations(false);
+        });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [activeUser?.id]);
+
+  const handleToggleMonthlyPayment = async (val: boolean) => {
+    if (!activeUser?.id || updatingMonthly) return;
+    const nextStr = val ? 'yes' : 'no';
+    setUpdatingMonthly(true);
+    try {
+      const updatedUser = {
+        ...activeUser,
+        monthlyPayment: nextStr,
+        monthly_payment: nextStr,
+      };
+      await handleUpdateActiveUser(updatedUser);
+      await updateUser(activeUser.id, {
+        monthlyPayment: nextStr,
+        monthly_payment: nextStr,
+      });
+    } catch (err) {
+      console.warn('Failed to update monthly payment:', err);
+    } finally {
+      setUpdatingMonthly(false);
+    }
+  };
+
+  const getMonthName = (monthIdx: number, lang: string) => {
+    const enMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const hiMonths = ['जनवरी', 'फ़रवरी', 'मार्च', 'अप्रैल', 'मई', 'जून', 'जुलाई', 'अगस्त', 'सितम्बर', 'अक्टूबर', 'नवम्बर', 'दिसम्बर'];
+    const urMonths = ['جنوری', 'فروری', 'مارچ', 'اپریل', 'مئی', 'جون', 'جولائی', 'اگست', 'ستمبر', 'اکتوبر', 'نومبر', 'دسمبر'];
+    if (lang === 'hi') return hiMonths[monthIdx];
+    if (lang === 'ur') return urMonths[monthIdx];
+    return enMonths[monthIdx];
+  };
+
+  const now = new Date();
+  const currentMonthIdx = now.getMonth();
+  const currentYear = now.getFullYear();
+  const lastMonthIdx = currentMonthIdx === 0 ? 11 : currentMonthIdx - 1;
+  const lastMonthYear = currentMonthIdx === 0 ? currentYear - 1 : currentYear;
+  const currentMonthName = getMonthName(currentMonthIdx, currentLang);
+  const lastMonthName = getMonthName(lastMonthIdx, currentLang);
+
+  const validDonations = donations.filter((d) => d.status !== 'rejected');
+  const latestDonation = validDonations.length > 0 ? validDonations[0] : null;
+
+  let latestPaymentDate: Date | null = null;
+  let latestPaymentAmount = 0;
+
+  if (latestDonation) {
+    if (latestDonation.date) {
+      const t = new Date(latestDonation.date).getTime();
+      if (!isNaN(t) && t > 0) latestPaymentDate = new Date(t);
+    }
+    latestPaymentAmount = latestDonation.amountINR || 0;
+  } else if (activeUser?.monthly_payment_date || activeUser?.monthlyPaymentDate) {
+    const dStr = (activeUser.monthly_payment_date || activeUser.monthlyPaymentDate) as string;
+    const parsed = new Date(dStr);
+    if (!isNaN(parsed.getTime())) latestPaymentDate = parsed;
+    latestPaymentAmount = activeUser.monthly_payment_amount || activeUser.monthlyPaymentAmount || 0;
+  } else if (activeUser?.paymentUtr && (activeUser?.joinDate || (activeUser as any)?.created_at)) {
+    const parsed = new Date(activeUser.joinDate || (activeUser as any)?.created_at);
+    if (!isNaN(parsed.getTime())) latestPaymentDate = parsed;
+    latestPaymentAmount = activeUser.membershipFee || 0;
+  }
+
+  const isPaidThisMonth = Boolean(
+    latestPaymentDate &&
+    latestPaymentDate.getMonth() === currentMonthIdx &&
+    latestPaymentDate.getFullYear() === currentYear
+  );
+
+  const isPaidLastMonth = Boolean(
+    latestPaymentDate &&
+    latestPaymentDate.getMonth() === lastMonthIdx &&
+    latestPaymentDate.getFullYear() === lastMonthYear
+  );
+
+  const formattedPaymentDate = latestPaymentDate
+    ? latestPaymentDate.toLocaleDateString(currentLang === 'hi' ? 'hi-IN' : 'en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    : '';
 
   const userStatus = activeUser?.status || (activeUser?.isVerified ? 'approved' : 'pending');
   const isApproved = userStatus === 'approved';
@@ -347,61 +466,10 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Nominee Details */}
-          <TouchableOpacity
-            className="flex-row items-center justify-between py-3 border-t border-slate-100 dark:border-slate-800"
-            onPress={() => router.push('/(drawer)/dashboard/nominee-details')}
-            activeOpacity={0.7}
-          >
-            <View className="flex-row items-center gap-3">
-              <UserCheck color="#10b981" size={18} />
-              <View>
-                <Text className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                  {tr('नॉमिनी विवरण', 'نامزد تفصیلات', 'Nominee Details')}
-                </Text>
-                <Text className="text-[11px] text-slate-400">
-                  {tr(
-                    'कानूनी उत्तराधिकारी का विवरण प्रबंधित करें',
-                    'قانونی وارث کی تفصیلات کا انتظام کریں',
-                    'Manage designated legal nominee'
-                  )}
-                </Text>
-              </View>
-            </View>
-            <View className="bg-emerald-50 dark:bg-emerald-950/80 px-3 py-1 rounded-full border border-emerald-200 dark:border-emerald-800">
-              <Text className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                {tr('देखें →', 'دیکھیں →', 'View →')}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Member Bank Details */}
-          <TouchableOpacity
-            className="flex-row items-center justify-between py-3 border-t border-slate-100 dark:border-slate-800"
-            onPress={() => router.push('/(drawer)/dashboard/member-bank-details')}
-            activeOpacity={0.7}
-          >
-            <View className="flex-row items-center gap-3">
-              <Building color="#10b981" size={18} />
-              <View>
-                <Text className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                  {tr('बैंक खाता विवरण', 'بینک اکاؤنٹ کی تفصیلات', 'Bank Account Details')}
-                </Text>
-                <Text className="text-[11px] text-slate-400">
-                  {tr(
-                    'सहायता अंतरण हेतु बैंक विवरण',
-                    'امداد منتقلی کے لیے بینک اکاؤنٹ',
-                    'Personal bank details for aid disbursement'
-                  )}
-                </Text>
-              </View>
-            </View>
-            <View className="bg-emerald-50 dark:bg-emerald-950/80 px-3 py-1 rounded-full border border-emerald-200 dark:border-emerald-800">
-              <Text className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                {tr('देखें →', 'دیکھیں →', 'View →')}
-              </Text>
-            </View>
-          </TouchableOpacity>
+          {/* Monthly Payment Toggle & Status */}
+          <View className="py-3 border-t border-slate-100 dark:border-slate-800">
+            <MonthlyPaymentToggle user={activeUser} />
+          </View>
         </View>
 
         {/* Actions */}

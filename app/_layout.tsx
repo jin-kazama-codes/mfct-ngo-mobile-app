@@ -13,6 +13,7 @@ import { useColorScheme } from 'nativewind';
 import '../src/i18n';
 import { useTranslation } from 'react-i18next';
 import AppUpdateGate from '../src/components/AppUpdateGate';
+import * as Updates from 'expo-updates';
 export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
@@ -51,6 +52,18 @@ function AppInit() {
           setTimeout(() => {
             router.replace(cameraOrigin as any);
           }, 150);
+        }
+
+        // In production release builds, check for EAS updates and apply seamlessly
+        if (!__DEV__) {
+          Updates.checkForUpdateAsync()
+            .then(async (update) => {
+              if (update.isAvailable) {
+                await Updates.fetchUpdateAsync();
+                await Updates.reloadAsync();
+              }
+            })
+            .catch(() => {});
         }
       } catch (e) {
         console.error('Failed to restore preferences:', e);

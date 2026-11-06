@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { Drawer, DrawerContentScrollView, DrawerItem } from 'expo-router/drawer';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppState } from '../../../src/context/AppStateProvider';
+import { MonthlyPaymentToggle } from '../../../src/components/MonthlyPaymentToggle';
 import { useColorScheme } from 'nativewind';
 import { useTranslation } from 'react-i18next';
 import {
@@ -137,6 +138,15 @@ function CustomDrawerContent(props: any) {
   };
 
   const currentBadge = roleBadges[normalizedRole] || roleBadges.member;
+
+  const isMonthlyOn = Boolean(
+    activeUser?.monthlyPayment === 'yes' ||
+    activeUser?.monthly_payment === 'yes' ||
+    activeUser?.monthlyPayment === true ||
+    activeUser?.monthly_payment === true ||
+    String(activeUser?.monthlyPayment).toLowerCase() === 'yes' ||
+    String(activeUser?.monthly_payment).toLowerCase() === 'yes'
+  );
 
   // Build menu items matching website AdminPanel.tsx getSidebarMenus()
   const getMenuItems = () => {
@@ -409,6 +419,13 @@ function CustomDrawerContent(props: any) {
               );
             })}
         </View>
+
+        {/* Monthly Payment Details in Mobile Drawer (Only shown when monthly payment is ON) */}
+        {isMonthlyOn && (
+          <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 }}>
+            <MonthlyPaymentToggle user={activeUser} showSwitch={false} />
+          </View>
+        )}
       </DrawerContentScrollView>
     </SafeAreaView>
   );

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../lib/supabase';
+import { supabase, SUPABASE_SCHEMA } from '../lib/supabase';
 
 export interface TeamMember {
   id: string;
@@ -31,8 +31,8 @@ export interface DistrictTeamUnit {
 export const STORAGE_KEY = 'mfct_mobile_district_teams';
 
 const CANDIDATE_TABLES = ['district_teams', 'teams', 'team_units', 'district_team_units'];
-const activeSchema = process.env.EXPO_PUBLIC_SUPABASE_SCHEMA || 'dev';
-const SCHEMAS_TO_TRY = activeSchema === 'public' ? ['public', 'dev'] : ['dev', 'public'];
+const activeSchema = SUPABASE_SCHEMA;
+const SCHEMAS_TO_TRY = activeSchema === 'public' ? ['public'] : ['dev', 'public'];
 
 function mapDbRowToTeam(row: any): DistrictTeamUnit {
   let members: TeamMember[] = [];

@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, SUPABASE_SCHEMA } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface DistrictMeeting {
@@ -55,8 +55,8 @@ async function updateLocalCache(meetings: DistrictMeeting[]) {
 }
 
 const CANDIDATE_MEETING_TABLES = ['district_meetings', 'meeting', 'meetings'];
-const activeSchema = process.env.EXPO_PUBLIC_SUPABASE_SCHEMA || 'dev';
-const SCHEMAS_TO_TRY = activeSchema === 'public' ? ['public', 'dev'] : ['dev', 'public'];
+const activeSchema = SUPABASE_SCHEMA;
+const SCHEMAS_TO_TRY = activeSchema === 'public' ? ['public'] : ['dev', 'public'];
 
 /**
  * Fetch meetings from Supabase with AsyncStorage cache fallback.
