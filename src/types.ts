@@ -74,6 +74,8 @@ export interface User {
   post_office?: string;
   block?: string;
   tehsil?: string;
+  pincode?: string;
+  pin_code?: string;
   role: UserRole;
   districtRole?: DistrictRole | string;
   district_role?: DistrictRole | string;

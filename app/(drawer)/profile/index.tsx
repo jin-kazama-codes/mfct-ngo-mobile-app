@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, Platform, Switch, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, Platform, Switch, ActivityIndicator, Modal } from 'react-native';
 import { useAppState } from '../../../src/context/AppStateProvider';
 import {
   UserCircle,
@@ -20,7 +20,12 @@ import {
   Heart,
   Clock,
   AlertCircle,
+  Camera,
+  ImageIcon,
+  X,
 } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadImageToSupabase } from '../../../src/services/storageService';
 import { KycUpdateModal } from '../../../src/components/KycUpdateModal';
 import { ChangePasswordModal } from '../../../src/components/ChangePasswordModal';
 import { MonthlyPaymentToggle } from '../../../src/components/MonthlyPaymentToggle';
@@ -92,6 +97,58 @@ export default function ProfileScreen() {
 
   const [kycModalVisible, setKycModalVisible] = React.useState(false);
   const [passwordModalVisible, setPasswordModalVisible] = React.useState(false);
+  const [updatingAvatar, setUpdatingAvatar] = React.useState(false);
+  const [avatarActionModal, setAvatarActionModal] = React.useState(false);
+
+  const processAvatarUpload = async (localUri: string) => {
+    if (!activeUser?.id) return;
+    setUpdatingAvatar(true);
+    try {
+      const publicUrl = await uploadImageToSupabase(localUri, 'users');
+      if (publicUrl) {
+        const updated = { ...activeUser, avatar: publicUrl };
+        await handleUpdateActiveUser(updated);
+        await updateUser(activeUser.id, { avatar: publicUrl });
+      }
+    } catch (e) {
+      console.warn('Avatar upload error:', e);
+    } finally {
+      setUpdatingAvatar(false);
+    }
+  };
+
+  const handlePickAvatar = async (source: 'camera' | 'gallery') => {
+    setAvatarActionModal(false);
+    if (!activeUser?.id) return;
+    try {
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') return;
+        const result = await ImagePicker.launchCameraAsync({
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.7,
+        });
+        if (!result.canceled && result.assets && result.assets[0]?.uri) {
+          await processAvatarUpload(result.assets[0].uri);
+        }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') return;
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.7,
+        });
+        if (!result.canceled && result.assets && result.assets[0]?.uri) {
+          await processAvatarUpload(result.assets[0].uri);
+        }
+      }
+    } catch (e) {
+      console.warn('Avatar pick error:', e);
+    }
+  };
 
   // Monthly Payment state & donation history
   const isMonthly = Boolean(
@@ -253,20 +310,39 @@ export default function ProfileScreen() {
         {/* Top Profile Card */}
         <View className="bg-white dark:bg-slate-900 p-6 rounded-3xl items-center mb-5 border border-slate-200 dark:border-slate-800 shadow-sm">
           <View className="relative mb-3">
-            {activeUser?.avatar ? (
-              <Image
-                key={activeUser.avatar}
-                source={{ uri: activeUser.avatar }}
-                className="w-24 h-24 rounded-full border-2 border-emerald-500"
-              />
-            ) : (
-              <View className="w-24 h-24 rounded-full bg-emerald-500/20 border-2 border-emerald-500 justify-center items-center">
-                <UserCircle color="#10b981" size={56} />
+            <TouchableOpacity
+              onPress={() => setAvatarActionModal(true)}
+              activeOpacity={0.8}
+              className="relative"
+            >
+              {activeUser?.avatar ? (
+                <Image
+                  key={activeUser.avatar}
+                  source={{ uri: activeUser.avatar }}
+                  className="w-24 h-24 rounded-full border-2 border-emerald-500"
+                />
+              ) : (
+                <View className="w-24 h-24 rounded-full bg-emerald-500/20 border-2 border-emerald-500 justify-center items-center">
+                  <UserCircle color="#10b981" size={56} />
+                </View>
+              )}
+
+              {/* Uploading overlay */}
+              {updatingAvatar && (
+                <View className="absolute inset-0 rounded-full bg-black/60 items-center justify-center">
+                  <ActivityIndicator color="#ffffff" size="small" />
+                </View>
+              )}
+
+              {/* Camera edit badge */}
+              <View className="absolute bottom-0 right-0 bg-[#0f3322] rounded-full p-2 border-2 border-white dark:border-slate-900 shadow">
+                <Camera color="#f0c868" size={13} />
               </View>
-            )}
+            </TouchableOpacity>
+
             {isApproved && (
-              <View className="absolute bottom-0 right-0 bg-emerald-500 rounded-full p-1 border-2 border-white dark:border-slate-900">
-                <CheckCircle2 color="#ffffff" size={16} />
+              <View className="absolute -top-1 -right-1 bg-emerald-500 rounded-full p-1 border-2 border-white dark:border-slate-900">
+                <CheckCircle2 color="#ffffff" size={14} />
               </View>
             )}
           </View>
@@ -516,6 +592,60 @@ export default function ProfileScreen() {
         visible={passwordModalVisible}
         onClose={() => setPasswordModalVisible(false)}
       />
+
+      {/* Quick Avatar Change Modal */}
+      <Modal
+        visible={avatarActionModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAvatarActionModal(false)}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setAvatarActionModal(false)}
+          className="flex-1 bg-black/60 items-center justify-end p-4"
+        >
+          <View
+            onStartShouldSetResponder={() => true}
+            className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 shadow-xl"
+          >
+            <View className="flex-row items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <Text className="text-base font-bold text-slate-900 dark:text-white">
+                {tr('प्रोफ़ाइल फ़ोटो बदलें', 'پروفائل تصویر تبدیل کریں', 'Change Profile Photo')}
+              </Text>
+              <TouchableOpacity onPress={() => setAvatarActionModal(false)} className="p-1">
+                <X color={isDark ? '#94a3b8' : '#64748b'} size={18} />
+              </TouchableOpacity>
+            </View>
+
+            <View className="flex-row gap-3 py-4">
+              <TouchableOpacity
+                onPress={() => handlePickAvatar('camera')}
+                className="flex-1 items-center justify-center py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
+              >
+                <View className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-950/80 items-center justify-center mb-2">
+                  <Camera color="#10b981" size={24} />
+                </View>
+                <Text className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  {tr('कैमरा', 'کیمرہ', 'Camera')}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => handlePickAvatar('gallery')}
+                className="flex-1 items-center justify-center py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
+              >
+                <View className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-950/80 items-center justify-center mb-2">
+                  <ImageIcon color="#d97706" size={24} />
+                </View>
+                <Text className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  {tr('गैलरी', 'گیلری', 'Gallery')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }

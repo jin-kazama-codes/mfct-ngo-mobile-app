@@ -53,6 +53,8 @@ import {
 import { getUsers, updateUser } from '../../../src/services/userService';
 import type { User } from '../../../src/types';
 
+const STORAGE_KEY = '@district_teams_cache';
+
 export default function DistrictTeamsScreen() {
   const { activeUser, currentRole } = useAppState();
   const { t, i18n } = useTranslation();

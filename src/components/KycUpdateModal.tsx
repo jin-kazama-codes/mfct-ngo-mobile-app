@@ -182,6 +182,10 @@ export const KycUpdateModal: React.FC<KycUpdateModalProps> = ({
 
   const handleSubmit = async () => {
     setErrorMsg('');
+    if (!currentUser?.id) {
+      setErrorMsg(tr('उपयोगकर्ता नहीं मिला।', 'صارف نہیں ملا۔', 'User not found.'));
+      return;
+    }
     if (!fullName.trim()) {
       setErrorMsg(tr('कृपया पूरा नाम दर्ज करें।', 'براہ کرم پورا نام درج کریں۔', 'Please enter full name.'));
       return;
@@ -1056,13 +1060,13 @@ const styles = StyleSheet.create({
   },
   // Media Picker Bottom Sheet (matching sign-up)
   sheetOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...(StyleSheet.absoluteFill as any),
     justifyContent: 'flex-end',
     zIndex: 9999,
     elevation: 20,
   },
   sheetBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...(StyleSheet.absoluteFill as any),
     backgroundColor: 'rgba(15, 23, 42, 0.65)',
   },
   modalSheet: {

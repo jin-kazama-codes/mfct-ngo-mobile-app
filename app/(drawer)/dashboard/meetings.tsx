@@ -41,6 +41,8 @@ import {
   type DistrictMeeting,
 } from '../../../src/services/meetingService';
 
+const STORAGE_KEY = '@district_meetings_cache';
+
 export default function DistrictMeetingsScreen() {
   const { activeUser, currentRole } = useAppState();
   const { t, i18n } = useTranslation();

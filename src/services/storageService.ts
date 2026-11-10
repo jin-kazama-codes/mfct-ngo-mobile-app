@@ -3,7 +3,9 @@ import * as FileSystem from 'expo-file-system/legacy';
 const SUPABASE_URL =
   process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://tyiecstaywsocmqsabhg.supabase.co';
 const STORAGE_KEY =
-  process.env.EXPO_PUBLIC_SUPABASE_STORAGE_KEY || '';
+  process.env.EXPO_PUBLIC_SUPABASE_STORAGE_KEY ||
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  '';
 const BUCKET_NAME = 'IMAGES';
 
 export type StorageFolder = 'users' | 'receipts' | 'kyc' | 'campaigns' | 'gallery' | 'communities';
@@ -89,10 +91,17 @@ export async function uploadImageToSupabase(
     }
 
     console.error('[Storage] Fallback upload failed with status:', fallbackRes.status);
-    return trimmed;
+    return `data:${mimeType};base64,${base64Data}`;
   } catch (err: any) {
     console.error('[Storage] Upload exception for URI:', localUri, err?.message || err);
-    return trimmed;
+    try {
+      const base64Data = await FileSystem.readAsStringAsync(trimmed, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      return `data:image/jpeg;base64,${base64Data}`;
+    } catch {
+      return trimmed;
+    }
   }
 }
 

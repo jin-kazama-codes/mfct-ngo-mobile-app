@@ -192,6 +192,15 @@ export default function UnderReviewScreen() {
     }, [checkStatus])
   );
 
+  // Determine current status state
+  const effectiveStatus = currentUser?.status;
+  const isApproved =
+    !isTerminated &&
+    (effectiveStatus === 'approved' ||
+      (currentUser?.isVerified && effectiveStatus !== 'reject' && effectiveStatus !== 'rejected'));
+  const isRejected = !isTerminated && (effectiveStatus === 'reject' || effectiveStatus === 'rejected');
+  const isPending = !isTerminated && !isApproved && !isRejected;
+
   // Prevent back navigation to common website or admin while pending
   useEffect(() => {
     const onBackPress = () => {
@@ -225,15 +234,6 @@ export default function UnderReviewScreen() {
     } catch { }
     router.replace('/(auth)/sign-up');
   };
-
-  // Determine current status state
-  const effectiveStatus = currentUser?.status;
-  const isApproved =
-    !isTerminated &&
-    (effectiveStatus === 'approved' ||
-      (currentUser?.isVerified && effectiveStatus !== 'reject' && effectiveStatus !== 'rejected'));
-  const isRejected = !isTerminated && (effectiveStatus === 'reject' || effectiveStatus === 'rejected');
-  const isPending = !isTerminated && !isApproved && !isRejected;
 
   const rejectionReason =
     currentUser?.rejectionReason ||

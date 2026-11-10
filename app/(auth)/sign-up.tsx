@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { router } from 'expo-router';
 import { useAppState } from '../../src/context/AppStateProvider';
 import { AccountDetails, Community, User } from '../../src/types';
@@ -52,6 +53,7 @@ export default function SignUpScreen() {
     const [postOffice, setPostOffice] = useState('');
     const [block, setBlock] = useState('');
     const [tehsil, setTehsil] = useState('');
+    const [pincode, setPincode] = useState('');
     const [district, setDistrict] = useState('');
     const [state, setState] = useState('');
     const city = (villageTown.trim() || district.trim());
@@ -89,7 +91,7 @@ export default function SignUpScreen() {
     const [submitting, setSubmitting] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' } | null>(null);
     const [registeredUser, setRegisteredUser] = useState<User | null>(null);
-    const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const redirectTimerRef = useRef<any>(null);
 
     useEffect(() => {
         return () => {
@@ -99,7 +101,27 @@ export default function SignUpScreen() {
         };
     }, []);
 
-    const saveDraftState = async (currentTarget?: string) => {
+    // Copy image asset to permanent application cache directory to ensure persistent file:// URI
+    const persistAssetUri = async (uri: string, prefix: string): Promise<string> => {
+        try {
+            if (!uri) return '';
+            const trimmed = uri.trim();
+            if (trimmed.startsWith('file://') && trimmed.includes(`mfct_${prefix}_`)) {
+                return trimmed;
+            }
+            const extMatch = trimmed.split('?')[0].match(/\.([a-zA-Z0-9]+)$/);
+            const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
+            const cacheDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+            const targetPath = `${cacheDir}mfct_${prefix}_${Date.now()}.${ext}`;
+            await FileSystem.copyAsync({ from: trimmed, to: targetPath });
+            return targetPath;
+        } catch (e) {
+            console.warn('[SignUp] Failed to copy asset to local cache:', e);
+            return uri;
+        }
+    };
+
+    const saveDraftState = async (currentTarget?: string, overrides: Record<string, any> = {}) => {
         try {
             const draft = {
                 step,
@@ -113,6 +135,7 @@ export default function SignUpScreen() {
                 postOffice,
                 block,
                 tehsil,
+                pincode,
                 district,
                 state,
                 religion,
@@ -131,6 +154,7 @@ export default function SignUpScreen() {
                 aadhaarBackFileName,
                 screenshotUri,
                 screenshotFileName,
+                ...overrides,
             };
             await AsyncStorage.setItem('@signup_form_draft', JSON.stringify(draft));
             if (currentTarget) {
@@ -160,6 +184,7 @@ export default function SignUpScreen() {
                     if (d.postOffice) setPostOffice(d.postOffice);
                     if (d.block) setBlock(d.block);
                     if (d.tehsil) setTehsil(d.tehsil);
+                    if (d.pincode) setPincode(d.pincode);
                     if (d.district) setDistrict(d.district);
                     if (d.state) setState(d.state);
                     if (d.religion) setReligion(d.religion);
@@ -203,22 +228,27 @@ export default function SignUpScreen() {
                                     ? 'aadhaar_back.jpg'
                                     : 'payment_receipt.jpg';
                         const fname = asset.fileName || defaultName;
+                        const finalUri = await persistAssetUri(asset.uri, pendingTarget || 'media');
 
                         if (pendingTarget === 'avatar') {
-                            setAvatarUri(asset.uri);
+                            setAvatarUri(finalUri);
                             setAvatarFileName(fname);
+                            await saveDraftState(undefined, { avatarUri: finalUri, avatarFileName: fname });
                             showToast(tr('प्रोफ़ाइल फ़ोटो कैप्चर की गई!', 'پروفائل تصویر لی گئی!', 'Profile photo captured!'), 'success');
                         } else if (pendingTarget === 'aadhaarFront') {
-                            setAadhaarFrontUri(asset.uri);
+                            setAadhaarFrontUri(finalUri);
                             setAadhaarFrontFileName(fname);
+                            await saveDraftState(undefined, { aadhaarFrontUri: finalUri, aadhaarFrontFileName: fname });
                             showToast(tr('आधार सामने का भाग कैप्चर किया गया!', 'آدھار سامنے کا حصہ لیا گیا!', 'Aadhaar front captured!'), 'success');
                         } else if (pendingTarget === 'aadhaarBack') {
-                            setAadhaarBackUri(asset.uri);
+                            setAadhaarBackUri(finalUri);
                             setAadhaarBackFileName(fname);
+                            await saveDraftState(undefined, { aadhaarBackUri: finalUri, aadhaarBackFileName: fname });
                             showToast(tr('आधार पीछे का भाग कैप्चर किया गया!', 'آدھار پیچھے کا حصہ لیا گیا!', 'Aadhaar back captured!'), 'success');
                         } else if (pendingTarget === 'screenshot') {
-                            setScreenshotUri(asset.uri);
+                            setScreenshotUri(finalUri);
                             setScreenshotFileName(fname);
+                            await saveDraftState(undefined, { screenshotUri: finalUri, screenshotFileName: fname });
                             showToast(tr('रसीद कैप्चर की गई!', 'رسید لی گئی!', 'Receipt captured!'), 'success');
                         }
                     }
@@ -377,22 +407,27 @@ export default function SignUpScreen() {
                                 ? 'aadhaar_back.jpg'
                                 : 'payment_receipt.jpg';
                     const fname = asset.fileName || defaultName;
+                    const finalUri = await persistAssetUri(asset.uri, target);
 
                     if (target === 'avatar') {
-                        setAvatarUri(asset.uri);
+                        setAvatarUri(finalUri);
                         setAvatarFileName(fname);
+                        await saveDraftState(undefined, { avatarUri: finalUri, avatarFileName: fname });
                         showToast(tr('प्रोफ़ाइल फ़ोटो कैप्चर की गई!', 'پروفائل تصویر لی گئی!', 'Profile photo captured!'), 'success');
                     } else if (target === 'aadhaarFront') {
-                        setAadhaarFrontUri(asset.uri);
+                        setAadhaarFrontUri(finalUri);
                         setAadhaarFrontFileName(fname);
+                        await saveDraftState(undefined, { aadhaarFrontUri: finalUri, aadhaarFrontFileName: fname });
                         showToast(tr('आधार सामने का भाग कैप्चर किया गया!', 'آدھار سامنے کا حصہ لیا گیا!', 'Aadhaar front captured!'), 'success');
                     } else if (target === 'aadhaarBack') {
-                        setAadhaarBackUri(asset.uri);
+                        setAadhaarBackUri(finalUri);
                         setAadhaarBackFileName(fname);
+                        await saveDraftState(undefined, { aadhaarBackUri: finalUri, aadhaarBackFileName: fname });
                         showToast(tr('आधार पीछे का भाग कैप्चर किया गया!', 'آدھار پیچھے کا حصہ لیا گیا!', 'Aadhaar back captured!'), 'success');
                     } else if (target === 'screenshot') {
-                        setScreenshotUri(asset.uri);
+                        setScreenshotUri(finalUri);
                         setScreenshotFileName(fname);
+                        await saveDraftState(undefined, { screenshotUri: finalUri, screenshotFileName: fname });
                         showToast(tr('रसीद कैप्चर की गई!', 'رسید لی گئی!', 'Receipt captured!'), 'success');
                     }
                 }
@@ -426,22 +461,27 @@ export default function SignUpScreen() {
                                 ? 'aadhaar_back.jpg'
                                 : 'payment_receipt.jpg';
                     const fname = asset.fileName || defaultName;
+                    const finalUri = await persistAssetUri(asset.uri, target);
 
                     if (target === 'avatar') {
-                        setAvatarUri(asset.uri);
+                        setAvatarUri(finalUri);
                         setAvatarFileName(fname);
+                        await saveDraftState(undefined, { avatarUri: finalUri, avatarFileName: fname });
                         showToast(tr('प्रोफ़ाइल फ़ोटो चुनी गई!', 'پروفائل تصویر منتخب کی گئی!', 'Profile photo selected!'), 'success');
                     } else if (target === 'aadhaarFront') {
-                        setAadhaarFrontUri(asset.uri);
+                        setAadhaarFrontUri(finalUri);
                         setAadhaarFrontFileName(fname);
+                        await saveDraftState(undefined, { aadhaarFrontUri: finalUri, aadhaarFrontFileName: fname });
                         showToast(tr('आधार सामने का भाग संलग्न किया गया!', 'آدھار سامنے کا حصہ منسلک کیا گیا!', 'Aadhaar front attached!'), 'success');
                     } else if (target === 'aadhaarBack') {
-                        setAadhaarBackUri(asset.uri);
+                        setAadhaarBackUri(finalUri);
                         setAadhaarBackFileName(fname);
+                        await saveDraftState(undefined, { aadhaarBackUri: finalUri, aadhaarBackFileName: fname });
                         showToast(tr('आधार पीछे का भाग संलग्न किया गया!', 'آدھار پیچھے کا حصہ منسلک کیا گیا!', 'Aadhaar back attached!'), 'success');
                     } else if (target === 'screenshot') {
-                        setScreenshotUri(asset.uri);
+                        setScreenshotUri(finalUri);
                         setScreenshotFileName(fname);
+                        await saveDraftState(undefined, { screenshotUri: finalUri, screenshotFileName: fname });
                         showToast(tr('भुगतान स्क्रीनशॉट संलग्न किया गया!', 'ادائیگی کی رسید منسلک کی گئی!', 'Payment screenshot attached!'), 'success');
                     }
                 }
@@ -483,11 +523,6 @@ export default function SignUpScreen() {
         if (!fatherName.trim()) missingFields.push(tr('पिता का नाम', 'والد کا نام', "Father's Name"));
         if (!phone.trim()) missingFields.push(tr('मोबाइल नंबर', 'موبائل نمبر', 'Mobile Number'));
         if (!password) missingFields.push(tr('पासवर्ड', 'پاس ورڈ', 'Password'));
-        if (!houseNo.trim()) missingFields.push(tr('मकान संख्या (H.No.)', 'مکان نمبر (H.No.)', 'House No. (H.No.)'));
-        if (!villageTown.trim()) missingFields.push(tr('गाँव / कस्बा (Village / Town)', 'گاؤں / قصبہ (Village / Town)', 'Village / Town'));
-        if (!postOffice.trim()) missingFields.push(tr('डाकघर (Post Office)', 'پوسٹ آفس (Post Office)', 'Post Office'));
-        if (!block.trim()) missingFields.push(tr('ब्लॉक (Block)', 'بلاک (Block)', 'Block'));
-        if (!tehsil.trim()) missingFields.push(tr('तहसील (Tehsil)', 'تحصیل (Tehsil)', 'Tehsil'));
         if (!district.trim()) missingFields.push(tr('ज़िला (District)', 'ضلع (District)', 'District'));
         if (!state.trim()) missingFields.push(tr('राज्य (State)', 'ریاست (State)', 'State'));
         if (!religion) missingFields.push(tr('धर्म', 'مذہب', 'Religion'));
@@ -623,7 +658,8 @@ export default function SignUpScreen() {
                 block ? `Block: ${block.trim()}` : '',
                 tehsil ? `Tehsil: ${tehsil.trim()}` : '',
                 district ? `Dist: ${district.trim()}` : '',
-                state ? `State: ${state.trim()}` : ''
+                state ? `State: ${state.trim()}` : '',
+                pincode ? `PIN: ${pincode.trim()}` : '',
             ].filter(Boolean).join(', ');
 
             const newMember: User = {
@@ -644,6 +680,8 @@ export default function SignUpScreen() {
                 post_office: postOffice.trim(),
                 block: block.trim(),
                 tehsil: tehsil.trim(),
+                pincode: pincode.trim() || undefined,
+                pin_code: pincode.trim() || undefined,
                 district: district.trim(),
                 role: 'member',
                 avatar: uploadedAvatar || avatarUri,
@@ -917,7 +955,7 @@ export default function SignUpScreen() {
                         {/* House No */}
                         <View className="gap-1.5">
                             <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {tr('मकान संख्या (H.No.) *', 'مکان نمبر (H.No.) *', 'House No. (H.No.) *')}
+                                {tr('मकान संख्या (H.No.)', 'مکان نمبر (H.No.)', 'House No. (H.No.)')}
                             </Text>
                             <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
                                 <Home color={placeholderColor} size={18} />
@@ -934,7 +972,7 @@ export default function SignUpScreen() {
                         {/* Village / Town */}
                         <View className="gap-1.5">
                             <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {tr('गाँव / कस्बा (Village / Town) *', 'گاؤں / قصبہ (Village / Town) *', 'Village / Town *')}
+                                {tr('गाँव / कस्बा (Village / Town)', 'گاؤں / قصبہ (Village / Town)', 'Village / Town')}
                             </Text>
                             <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
                                 <Building2 color={placeholderColor} size={18} />
@@ -951,7 +989,7 @@ export default function SignUpScreen() {
                         {/* Post Office */}
                         <View className="gap-1.5">
                             <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {tr('डाकघर (Post Office) *', 'پوسٹ آفس (Post Office) *', 'Post Office *')}
+                                {tr('डाकघर (Post Office)', 'پوسٹ آفس (Post Office)', 'Post Office')}
                             </Text>
                             <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
                                 <Mail color={placeholderColor} size={18} />
@@ -968,7 +1006,7 @@ export default function SignUpScreen() {
                         {/* Block */}
                         <View className="gap-1.5">
                             <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {tr('ब्लॉक / प्रखंड (Block) *', 'بلاک (Block) *', 'Block *')}
+                                {tr('ब्लॉक / प्रखंड (Block)', 'بلاک (Block)', 'Block')}
                             </Text>
                             <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
                                 <Building color={placeholderColor} size={18} />
@@ -985,7 +1023,7 @@ export default function SignUpScreen() {
                         {/* Tehsil */}
                         <View className="gap-1.5">
                             <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {tr('तहसील (Tehsil) *', 'تحصیل (Tehsil) *', 'Tehsil *')}
+                                {tr('तहसील (Tehsil)', 'تحصیل (Tehsil)', 'Tehsil')}
                             </Text>
                             <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
                                 <Landmark color={placeholderColor} size={18} />
@@ -995,6 +1033,25 @@ export default function SignUpScreen() {
                                     placeholderTextColor={placeholderColor}
                                     value={tehsil}
                                     onChangeText={setTehsil}
+                                />
+                            </View>
+                        </View>
+
+                        {/* PIN Code */}
+                        <View className="gap-1.5">
+                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {tr('पिन कोड (PIN Code)', 'پن کوڈ (PIN Code)', 'PIN Code')}
+                            </Text>
+                            <View className="flex-row items-center rounded-xl border border-slate-200 bg-white px-3.5 dark:border-slate-800 dark:bg-slate-800">
+                                <MapPin color={placeholderColor} size={18} />
+                                <TextInput
+                                    className={`flex-1 px-2 py-3 text-sm ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
+                                    placeholder={tr('उदा. 243001', 'مثال: 243001', 'e.g. 243001')}
+                                    placeholderTextColor={placeholderColor}
+                                    keyboardType="numeric"
+                                    maxLength={6}
+                                    value={pincode}
+                                    onChangeText={(val) => setPincode(val.replace(/\D/g, '').slice(0, 6))}
                                 />
                             </View>
                         </View>
@@ -1225,7 +1282,7 @@ export default function SignUpScreen() {
                             </Text>
                             {avatarUri ? (
                                 <View className="flex-row items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-600 dark:bg-emerald-950">
-                                    <Image source={{ uri: avatarUri }} className="h-[50px] w-[50px] rounded-full bg-slate-300" />
+                                    <Image key={avatarUri} source={{ uri: avatarUri }} style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: '#cbd5e1' }} resizeMode="cover" />
                                     <View className="flex-1 gap-1">
                                         <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`} numberOfLines={1}>
                                             {avatarFileName || 'profile_photo.jpg'}
@@ -1248,6 +1305,7 @@ export default function SignUpScreen() {
                                             onPress={() => {
                                                 setAvatarUri('');
                                                 setAvatarFileName('');
+                                                void saveDraftState(undefined, { avatarUri: '', avatarFileName: '' });
                                             }}
                                             className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-red-200 bg-red-50"
                                         >
@@ -1281,7 +1339,7 @@ export default function SignUpScreen() {
                             </Text>
                             {aadhaarFrontUri ? (
                                 <View className="flex-row items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-600 dark:bg-emerald-950">
-                                    <Image source={{ uri: aadhaarFrontUri }} className="h-[50px] w-[50px] rounded-[10px] bg-slate-300" />
+                                    <Image key={aadhaarFrontUri} source={{ uri: aadhaarFrontUri }} style={{ width: 50, height: 50, borderRadius: 10, backgroundColor: '#cbd5e1' }} resizeMode="cover" />
                                     <View className="flex-1 gap-1">
                                         <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`} numberOfLines={1}>
                                             {aadhaarFrontFileName || 'aadhaar_front.jpg'}
@@ -1304,6 +1362,7 @@ export default function SignUpScreen() {
                                             onPress={() => {
                                                 setAadhaarFrontUri('');
                                                 setAadhaarFrontFileName('');
+                                                void saveDraftState(undefined, { aadhaarFrontUri: '', aadhaarFrontFileName: '' });
                                             }}
                                             className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-red-200 bg-red-50"
                                         >
@@ -1337,7 +1396,7 @@ export default function SignUpScreen() {
                             </Text>
                             {aadhaarBackUri ? (
                                 <View className="flex-row items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-600 dark:bg-emerald-950">
-                                    <Image source={{ uri: aadhaarBackUri }} className="h-[50px] w-[50px] rounded-[10px] bg-slate-300" />
+                                    <Image key={aadhaarBackUri} source={{ uri: aadhaarBackUri }} style={{ width: 50, height: 50, borderRadius: 10, backgroundColor: '#cbd5e1' }} resizeMode="cover" />
                                     <View className="flex-1 gap-1">
                                         <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`} numberOfLines={1}>
                                             {aadhaarBackFileName || 'aadhaar_back.jpg'}
@@ -1360,6 +1419,7 @@ export default function SignUpScreen() {
                                             onPress={() => {
                                                 setAadhaarBackUri('');
                                                 setAadhaarBackFileName('');
+                                                void saveDraftState(undefined, { aadhaarBackUri: '', aadhaarBackFileName: '' });
                                             }}
                                             className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-red-200 bg-red-50"
                                         >
@@ -1540,7 +1600,7 @@ export default function SignUpScreen() {
                             </Text>
                             {screenshotUri ? (
                                 <View className="flex-row items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-600 dark:bg-emerald-950">
-                                    <Image source={{ uri: screenshotUri }} className="h-[50px] w-[50px] rounded-[10px] bg-slate-300" />
+                                    <Image key={screenshotUri} source={{ uri: screenshotUri }} style={{ width: 50, height: 50, borderRadius: 10, backgroundColor: '#cbd5e1' }} resizeMode="cover" />
                                     <View className="flex-1 gap-1">
                                         <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`} numberOfLines={1}>
                                             {screenshotFileName || 'payment_receipt.jpg'}
@@ -1563,6 +1623,7 @@ export default function SignUpScreen() {
                                             onPress={() => {
                                                 setScreenshotUri('');
                                                 setScreenshotFileName('');
+                                                void saveDraftState(undefined, { screenshotUri: '', screenshotFileName: '' });
                                             }}
                                             className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-red-200 bg-red-50"
                                         >
