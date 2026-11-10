@@ -262,7 +262,7 @@ export default function MyDonationsScreen() {
               const isVerified = don.status === 'verified';
               const isPending = don.status === 'pending_verification';
               const isRejected = don.status === 'rejected';
-              const rejectionReason = don.rejectionReason || (don as any).rejection_reason;
+              const rejectionReason = (don as any).rejectionReason || (don as any).rejection_reason;
               const isReasonExpanded = expandedReasonId === don.id;
 
               // Clean display date

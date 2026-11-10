@@ -115,6 +115,8 @@ function mapRow(row: Record<string, unknown>): User {
     post_office: (row.post_office || row.postOffice) as string | undefined,
     block: (row.block as string) || undefined,
     tehsil: (row.tehsil as string) || undefined,
+    pincode: (row.pincode || row.pin_code || row.pinCode) as string | undefined,
+    pin_code: (row.pincode || row.pin_code || row.pinCode) as string | undefined,
     districtRole: (row.district_role || row.districtRole) as string | undefined,
     district_role: (row.district_role || row.districtRole) as string | undefined,
     passwordHash: (row.password || row.password_hash || row.passwordHash) as string | undefined,
@@ -183,13 +185,14 @@ export async function getUserByMembershipId(membershipId: string): Promise<User 
   return mapRow(data);
 }
 
-export async function getUsers(district?: string): Promise<User[]> {
+export async function getUsers(communityIdOrDistrict?: string, district?: string): Promise<User[]> {
+  const target = district || communityIdOrDistrict;
   let query = supabase.from('users').select('*').order('created_at', { ascending: false });
-  if (district && district !== 'all') {
-    if (district.startsWith('comm_')) {
-      query = query.eq('community_id', district);
+  if (target && target !== 'all') {
+    if (target.startsWith('comm_')) {
+      query = query.eq('community_id', target);
     } else {
-      query = query.eq('city', district);
+      query = query.eq('city', target);
     }
   }
   const { data, error } = await query;
@@ -302,6 +305,8 @@ export async function createUser(user: User & { kycDocumentUrl?: string; aadhaar
     post_office: user.postOffice || user.post_office || null,
     block: user.block || null,
     tehsil: user.tehsil || null,
+    pincode: user.pincode || user.pin_code || null,
+    pin_code: user.pincode || user.pin_code || null,
     religion: user.religion || null,
     is_malik_e_nisab: user.isMalikENisab !== undefined ? user.isMalikENisab : null,
     help_type: user.helpType || null,
@@ -406,6 +411,16 @@ export async function updateUser(
   if (updates.districtRole !== undefined) payload.district_role = updates.districtRole;
   else if (updates.district_role !== undefined) payload.district_role = updates.district_role;
   if (updates.state !== undefined) payload.state = updates.state.trim();
+  if (updates.address !== undefined) payload.address = updates.address;
+  if (updates.houseNo !== undefined || updates.house_no !== undefined) payload.house_no = updates.houseNo || updates.house_no || null;
+  if (updates.villageTown !== undefined || updates.village_town !== undefined) payload.village_town = updates.villageTown || updates.village_town || null;
+  if (updates.postOffice !== undefined || updates.post_office !== undefined) payload.post_office = updates.postOffice || updates.post_office || null;
+  if (updates.block !== undefined) payload.block = updates.block || null;
+  if (updates.tehsil !== undefined) payload.tehsil = updates.tehsil || null;
+  if (updates.pincode !== undefined || updates.pin_code !== undefined) {
+    payload.pincode = updates.pincode || updates.pin_code || null;
+    payload.pin_code = updates.pincode || updates.pin_code || null;
+  }
   if (updates.avatar !== undefined) payload.avatar = updates.avatar;
   if (updates.communityId !== undefined) payload.community_id = updates.communityId;
   if (updates.communityName !== undefined) payload.community_name = updates.communityName;

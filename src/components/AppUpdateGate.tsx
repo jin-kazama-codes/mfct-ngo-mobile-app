@@ -1,4 +1,3 @@
-
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
@@ -9,7 +8,9 @@ import {
     Text,
     View,
 } from "react-native";
+import * as Application from "expo-application";
 import Constants from "expo-constants";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import appConfig from "../../app.json";
 import { supabase } from "../lib/supabase";
 
@@ -20,19 +21,29 @@ type VersionInfo = {
 
 type UpdateStatus = "checking" | "current" | "update" | "error";
 
+const UPDATE_VERIFIED_KEY = "@app_update_last_verified";
+const COOLDOWN_PERIOD_MS = 6 * 60 * 60 * 1000; // 6 hours cooldown between background checks
+
 function getInstalledVersion(): string {
-    const version =
+    const rawVersion =
+        Application.nativeApplicationVersion ??
         Constants.expoConfig?.version ??
         (Constants as any).nativeAppVersion ??
-        (Constants as any).manifest2?.extra?.expoClient?.version ??
-        appConfig?.expo?.version;
+        (appConfig as any)?.expo?.version ??
+        (appConfig as any)?.default?.expo?.version;
 
-    return version ? String(version) : "1.0.0";
+    return rawVersion ? String(rawVersion).trim() : "1.0.2";
+}
+
+function parseVersionNumbers(v: string): number[] {
+    const clean = String(v).replace(/[^0-9.]/g, "").trim();
+    if (!clean) return [0];
+    return clean.split(".").map((n) => Number(n) || 0);
 }
 
 function isNewerVersion(latest: string, current: string): boolean {
-    const a = latest.split(".").map(Number);
-    const b = current.split(".").map(Number);
+    const a = parseVersionNumbers(latest);
+    const b = parseVersionNumbers(current);
 
     for (let i = 0; i < Math.max(a.length, b.length); i++) {
         const x = a[i] ?? 0;
@@ -50,22 +61,39 @@ export default function AppUpdateGate({
 }: {
     children: React.ReactNode;
 }) {
-    const [status, setStatus] = useState<UpdateStatus>("checking");
+    // Default to "current" so the app mounts immediately without blank screens or disrupting active forms
+    const [status, setStatus] = useState<UpdateStatus>("current");
     const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
-    const hasCheckedInitial = useRef(false);
-    const lastCheckTime = useRef<number>(0);
+    const statusRef = useRef<UpdateStatus>("current");
+    statusRef.current = status;
+    const isCheckingRef = useRef<boolean>(false);
+    const lastCheckTime = useRef<number>(Date.now());
 
     const checkVersion = useCallback(async (isSilent = false) => {
-        // Never unmount children or reset to "checking" if app is already active/current
-        if (!isSilent && !hasCheckedInitial.current) {
-            setStatus("checking");
-        }
+        if (isCheckingRef.current) return;
+        isCheckingRef.current = true;
 
         try {
             if (Platform.OS !== "android") {
                 setStatus("current");
-                hasCheckedInitial.current = true;
                 return;
+            }
+
+            // Check if verified recently to avoid unnecessary network queries when switching apps/camera
+            if (isSilent) {
+                try {
+                    const cachedStr = await AsyncStorage.getItem(UPDATE_VERIFIED_KEY);
+                    if (cachedStr) {
+                        const cached = JSON.parse(cachedStr);
+                        if (
+                            cached &&
+                            cached.timestamp &&
+                            Date.now() - cached.timestamp < COOLDOWN_PERIOD_MS
+                        ) {
+                            return;
+                        }
+                    }
+                } catch { }
             }
 
             const installedVersion = getInstalledVersion();
@@ -77,29 +105,27 @@ export default function AppUpdateGate({
 
             const fetchPromise = supabase
                 .from("app_updates")
-                .select("*");
+                .select("*")
+                .order("id", { ascending: false })
+                .limit(5);
 
             const { data, error } = (await Promise.race([fetchPromise, timeoutPromise])) as any;
 
             if (error || !data || data.length === 0) {
-                if (!hasCheckedInitial.current) {
-                    setStatus("current");
-                }
+                // If query fails or times out, never trap the user
                 return;
             }
 
-            // Find matching Android row or default to the latest row
-            let targetRow = data[data.length - 1];
-            if (data.length > 1) {
-                const androidRow = data.find(
-                    (r: any) =>
-                        r.platform === "android" ||
-                        r.os === "android" ||
-                        r.platform_name === "android"
-                );
-                if (androidRow) {
-                    targetRow = androidRow;
-                }
+            // Find matching Android row or default to the most recent row
+            let targetRow = data[0];
+            const androidRow = data.find(
+                (r: any) =>
+                    r.platform === "android" ||
+                    r.os === "android" ||
+                    r.platform_name === "android"
+            );
+            if (androidRow) {
+                targetRow = androidRow;
             }
 
             const latestVersion =
@@ -117,45 +143,43 @@ export default function AppUpdateGate({
                 targetRow?.link;
 
             if (!latestVersion || !playStoreUrl) {
-                if (!hasCheckedInitial.current) {
-                    setStatus("current");
-                }
                 return;
             }
 
             const info: VersionInfo = {
-                latest_version: String(latestVersion),
-                play_store_url: String(playStoreUrl),
+                latest_version: String(latestVersion).trim(),
+                play_store_url: String(playStoreUrl).trim(),
             };
 
             if (isNewerVersion(info.latest_version, installedVersion)) {
                 setVersionInfo(info);
                 setStatus("update");
-            } else if (!hasCheckedInitial.current || status !== "update") {
+            } else {
                 setVersionInfo(null);
                 setStatus("current");
+                void AsyncStorage.setItem(
+                    UPDATE_VERIFIED_KEY,
+                    JSON.stringify({ version: installedVersion, timestamp: Date.now() })
+                );
             }
         } catch (error) {
             console.warn("[AppUpdateGate] Update check failed gracefully:", error);
-            if (!hasCheckedInitial.current) {
-                setStatus("current");
-            }
         } finally {
-            hasCheckedInitial.current = true;
+            isCheckingRef.current = false;
             lastCheckTime.current = Date.now();
         }
-    }, [status]);
+    }, []);
 
     useEffect(() => {
-        // Initial check on app startup
-        void checkVersion(false);
+        // Run initial check on app startup in silent mode so children stay rendered
+        void checkVersion(true);
 
         const subscription = AppState.addEventListener("change", (state) => {
-            // Only re-check in background if app comes to foreground AND at least 30 minutes elapsed.
-            // This prevents image-picker, crop, camera, or permissions modals from re-triggering checks.
+            // Only re-check if app comes to foreground AND cooldown elapsed.
+            // This guarantees camera, gallery, crop, or permissions modals NEVER re-trigger update checks.
             if (state === "active") {
                 const now = Date.now();
-                if (now - lastCheckTime.current > 30 * 60 * 1000) {
+                if (now - lastCheckTime.current > COOLDOWN_PERIOD_MS) {
                     void checkVersion(true);
                 }
             }
@@ -174,30 +198,22 @@ export default function AppUpdateGate({
         }
     };
 
-    if (status === "current") {
+    if (status === "current" || status === "checking") {
         return <>{children}</>;
     }
 
     return (
         <View className="flex-1 items-center justify-center bg-white px-6">
-            {status === "checking" && (
-                <ActivityIndicator size="large" color="#c2185b" />
-            )}
-
             <Text className="mt-5 text-center text-2xl font-bold text-gray-900">
                 {status === "update"
                     ? "MFCT Update Required"
-                    : status === "error"
-                        ? "Unable to Verify Update"
-                        : "Checking for Updates"}
+                    : "Unable to Verify Update"}
             </Text>
 
             <Text className="mb-6 mt-3 text-center text-base leading-6 text-gray-600">
                 {status === "update"
                     ? `Version ${versionInfo?.latest_version} is available. Please update MFCT to continue.`
-                    : status === "error"
-                        ? "We could not verify your app version. Check your internet connection and try again."
-                        : "Please wait while we check your app version."}
+                    : "We could not verify your app version. Check your internet connection and try again."}
             </Text>
 
             {status === "update" && (
@@ -213,7 +229,7 @@ export default function AppUpdateGate({
 
             {status === "error" && (
                 <Pressable
-                    onPress={() => void checkVersion()}
+                    onPress={() => void checkVersion(false)}
                     className="rounded-lg bg-pink-700 px-8 py-4 active:bg-pink-800"
                 >
                     <Text className="text-base font-bold text-white">

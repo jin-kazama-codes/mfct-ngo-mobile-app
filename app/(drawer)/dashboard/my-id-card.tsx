@@ -562,7 +562,7 @@ export default function MyIdCardScreen() {
             <View style={{ marginBottom: 14, height: 1, backgroundColor: 'rgba(252, 211, 77, 0.3)' }} />
 
             {/* Member portrait & details */}
-            <View style={{ marginBottom: 14, flexDirection: 'row', alignItems: 'start', gap: 14 }}>
+            <View style={{ marginBottom: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
               {/* Photo Column */}
               <View
                 style={{
