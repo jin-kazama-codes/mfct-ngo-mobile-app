@@ -43,7 +43,8 @@
         }
       ],
       "expo-sharing",
-      "expo-web-browser"
+      "expo-web-browser",
+      "./plugins/withRazorpay"
     ],
     "experiments": {
       "typedRoutes": true

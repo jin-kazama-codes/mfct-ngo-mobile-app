@@ -15,6 +15,11 @@ import { getAccountDetails } from '../../src/services/adminService';
 import { createUser } from '../../src/services/userService';
 import { uploadImageToSupabase } from '../../src/services/storageService';
 import { hashPassword } from '../../src/lib/auth';
+import {
+    startMobileRazorpayPayment,
+    RazorpayCancelledError,
+    VerifiedMobileRazorpayPayment,
+} from '../../src/services/razorpayService';
 import { useColorScheme } from 'nativewind';
 import { useTranslation } from 'react-i18next';
 import {
@@ -22,7 +27,7 @@ import {
     Upload, ChevronDown, Check, Copy, Camera, Image as ImageIcon,
     Trash2, FileText, CheckCircle2, AlertCircle, X, Globe, ShieldCheck, HeartHandshake,
     HandHeart, Building2, MapPin, Mail, Phone, Lock, User as UserIcon,
-    Home, Building, Landmark
+    Home, Building, Landmark, CreditCard
 } from 'lucide-react-native';
 
 export default function SignUpScreen() {
@@ -80,7 +85,8 @@ export default function SignUpScreen() {
     const [aadhaarBackUri, setAadhaarBackUri] = useState<string>('');
     const [aadhaarBackFileName, setAadhaarBackFileName] = useState<string>('');
 
-    const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Bank Transfer'>('UPI');
+    const [paymentMethod, setPaymentMethod] = useState<'Razorpay' | 'UPI' | 'Bank Transfer'>('Razorpay');
+    const [verifiedRazorpay, setVerifiedRazorpay] = useState<VerifiedMobileRazorpayPayment | null>(null);
     const [utrNumber, setUtrNumber] = useState('');
     const [screenshotUri, setScreenshotUri] = useState<string>('');
     const [screenshotFileName, setScreenshotFileName] = useState<string>('');
@@ -146,6 +152,7 @@ export default function SignUpScreen() {
                 monthlyPayment,
                 selectedCommunityId,
                 paymentMethod,
+                verifiedRazorpay,
                 utrNumber,
                 isFeePaid,
                 avatarUri,
@@ -196,6 +203,7 @@ export default function SignUpScreen() {
                     if (d.monthlyPayment === 'yes' || d.monthlyPayment === 'no') setMonthlyPayment(d.monthlyPayment);
                     if (d.selectedCommunityId) setSelectedCommunityId(d.selectedCommunityId);
                     if (d.paymentMethod) setPaymentMethod(d.paymentMethod);
+                    if (d.verifiedRazorpay) setVerifiedRazorpay(d.verifiedRazorpay);
                     if (d.utrNumber) setUtrNumber(d.utrNumber);
                     if (d.isFeePaid !== undefined) setIsFeePaid(d.isFeePaid);
                     if (d.avatarUri) setAvatarUri(d.avatarUri);
@@ -608,34 +616,36 @@ export default function SignUpScreen() {
 
     const handleFinishRegistration = async () => {
         if (!activeCommunity) return;
-        if (!utrNumber.trim()) {
-            showToast(
-                tr(
-                    'कृपया 12 अंकों का UTR नंबर दर्ज करें।',
-                    'براہ کرم 12 ہندسوں کا UTR نمبر درج کریں۔',
-                    'Please enter 12-digit Bank UTR / Reference number.'
-                ),
-                'error'
-            );
-            return;
-        }
-        if (!screenshotUri) {
-            showToast(
-                tr(
-                    'कृपया भुगतान स्क्रीनशॉट अपलोड करें।',
-                    'براہ کرم ادائیگی کی رسید اپلوڈ کریں۔',
-                    'Please upload payment screenshot.'
-                ),
-                'error'
-            );
-            return;
+        if (paymentMethod !== 'Razorpay') {
+            if (!utrNumber.trim()) {
+                showToast(
+                    tr(
+                        'कृपया 12 अंकों का UTR नंबर दर्ज करें।',
+                        'براہ کرم 12 ہندسوں کا UTR نمبر درج کریں۔',
+                        'Please enter 12-digit Bank UTR / Reference number.'
+                    ),
+                    'error'
+                );
+                return;
+            }
+            if (!screenshotUri) {
+                showToast(
+                    tr(
+                        'कृपया भुगतान स्क्रीनशॉट अपलोड करें।',
+                        'براہ کرم ادائیگی کی رسید اپلوڈ کریں۔',
+                        'Please upload payment screenshot.'
+                    ),
+                    'error'
+                );
+                return;
+            }
         }
         if (!isFeePaid) {
             showToast(
                 tr(
                     'कृपया भुगतान और दिशानिर्देशों की पुष्टि करें।',
                     'براہ کرم ادائیگی کی تصدیق کریں۔',
-                    'Please confirm payment and guidelines agreement.'
+                    'Please confirm guidelines agreement to proceed.'
                 ),
                 'error'
             );
@@ -644,10 +654,34 @@ export default function SignUpScreen() {
 
         setSubmitting(true);
         try {
+            let paymentProof = verifiedRazorpay;
+            if (paymentMethod === 'Razorpay' && !paymentProof) {
+                await saveDraftState(undefined, { step: 2, paymentMethod: 'Razorpay', isFeePaid: true });
+                paymentProof = await startMobileRazorpayPayment({
+                    amountINR: 100,
+                    purpose: 'membership',
+                    description: 'MFCT Annual Membership Solidarity Fee (₹100)',
+                    notes: {
+                        memberName: fullName.trim(),
+                        phone: phone.trim(),
+                        communityId: activeCommunity.id,
+                    },
+                    prefill: {
+                        name: fullName.trim(),
+                        contact: phone.trim(),
+                        email: email.trim().toLowerCase(),
+                    },
+                });
+                setVerifiedRazorpay(paymentProof);
+                await saveDraftState(undefined, { verifiedRazorpay: paymentProof });
+            }
+
             // Upload local images to Supabase storage IMAGES bucket so they get public HTTPS URLs
             const [uploadedAvatar, uploadedScreenshot, uploadedAadhaarFront, uploadedAadhaarBack] = await Promise.all([
                 avatarUri ? uploadImageToSupabase(avatarUri, 'users') : Promise.resolve(''),
-                screenshotUri ? uploadImageToSupabase(screenshotUri, 'receipts') : Promise.resolve(''),
+                paymentMethod !== 'Razorpay' && screenshotUri
+                    ? uploadImageToSupabase(screenshotUri, 'receipts')
+                    : Promise.resolve(''),
                 aadhaarFrontUri ? uploadImageToSupabase(aadhaarFrontUri, 'kyc') : Promise.resolve(''),
                 aadhaarBackUri ? uploadImageToSupabase(aadhaarBackUri, 'kyc') : Promise.resolve(''),
             ]);
@@ -696,9 +730,9 @@ export default function SignUpScreen() {
                 isVerified: false,
                 joinDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
                 passwordHash: hashedPassword,
-                paymentMethod: paymentMethod,
-                paymentUtr: utrNumber.trim() || undefined,
-                paymentScreenshotUrl: uploadedScreenshot || screenshotUri || undefined,
+                paymentMethod: verifiedRazorpay ? verifiedRazorpay.paymentMethodLabel : paymentMethod,
+                paymentUtr: verifiedRazorpay ? verifiedRazorpay.paymentId : (utrNumber.trim() || undefined),
+                paymentScreenshotUrl: paymentMethod !== 'Razorpay' ? (uploadedScreenshot || screenshotUri || undefined) : undefined,
                 aadhaarFrontUrl: uploadedAadhaarFront || aadhaarFrontUri || undefined,
                 aadhaarBackUrl: uploadedAadhaarBack || aadhaarBackUri || undefined,
                 religion: religion || undefined,
@@ -734,7 +768,12 @@ export default function SignUpScreen() {
             }, 3000);
         } catch (err: any) {
             console.error('Registration error:', err);
-            if (err?.code === '23505' && (err?.message?.includes('users_email_key') || err?.details?.includes('email'))) {
+            if (err instanceof RazorpayCancelledError) {
+                showToast(
+                    tr('भुगतान रद्द किया गया। आप पुनः प्रयास कर सकते हैं।', 'ادائیگی منسوخ کر دی گئی۔ آپ دوبارہ کوشش کر سکتے ہیں۔', 'Payment cancelled. You can try again.'),
+                    'error'
+                );
+            } else if (err?.code === '23505' && (err?.message?.includes('users_email_key') || err?.details?.includes('email'))) {
                 showToast(
                     tr('यह ईमेल पता पहले से पंजीकृत है। कृपया दूसरा ईमेल दर्ज करें।', 'یہ ای میل ایڈریس پہلے سے رجسٹرڈ ہے۔ براہ کرم دوسرا ای میل درج کریں۔', 'This email is already registered. Please use another email.'),
                     'error'
@@ -746,6 +785,7 @@ export default function SignUpScreen() {
                 );
             } else {
                 showToast(
+                    err?.message ||
                     tr('पंजीकरण विफल रहा। कृपया पुनः प्रयास करें।', 'رجسٹریشن ناکام رہی۔ دوبارہ کوشش کریں۔', 'Registration failed. Please try again.'),
                     'error'
                 );
@@ -1514,42 +1554,90 @@ export default function SignUpScreen() {
                         {/* Payment Tabs */}
                         <View className="flex-row rounded-2xl bg-slate-200 p-1 dark:bg-slate-800">
                             <TouchableOpacity
+                                onPress={() => setPaymentMethod('Razorpay')}
+                                className="flex-1 flex-row items-center justify-center gap-1 rounded-xl py-2.5 px-1"
+                                style={{
+                                    backgroundColor: paymentMethod === 'Razorpay' ? (isDark ? '#0f172a' : '#ffffff') : 'transparent',
+                                    elevation: paymentMethod === 'Razorpay' ? 2 : 0,
+                                }}
+                            >
+                                <CreditCard color={paymentMethod === 'Razorpay' ? '#0f3322' : (isDark ? '#94a3b8' : '#64748b')} size={13} />
+                                <Text
+                                    className="text-[11px] font-bold"
+                                    style={{ color: paymentMethod === 'Razorpay' ? '#0f3322' : (isDark ? '#94a3b8' : '#64748b') }}
+                                    numberOfLines={1}
+                                >
+                                    {tr('Razorpay', 'Razorpay', 'Razorpay')}
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
                                 onPress={() => setPaymentMethod('UPI')}
-                                className="flex-1 items-center rounded-xl py-2.5"
+                                className="flex-1 items-center justify-center rounded-xl py-2.5 px-1"
                                 style={{
                                     backgroundColor: paymentMethod === 'UPI' ? (isDark ? '#0f172a' : '#ffffff') : 'transparent',
-                                    shadowColor: '#000000',
-                                    shadowOpacity: paymentMethod === 'UPI' ? 0.08 : 0,
-                                    shadowRadius: paymentMethod === 'UPI' ? 4 : 0,
                                     elevation: paymentMethod === 'UPI' ? 2 : 0,
                                 }}
                             >
                                 <Text
-                                    className="text-xs font-bold"
+                                    className="text-[11px] font-bold"
                                     style={{ color: paymentMethod === 'UPI' ? '#0f3322' : (isDark ? '#94a3b8' : '#64748b') }}
+                                    numberOfLines={1}
                                 >
-                                    {tr('UPI / QR स्कैन', 'UPI / QR اسکین', 'Instant UPI / QR')}
+                                    {tr('UPI / QR', 'UPI / QR', 'UPI / QR')}
                                 </Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={() => setPaymentMethod('Bank Transfer')}
-                                className="flex-1 items-center rounded-xl py-2.5"
+                                className="flex-1 items-center justify-center rounded-xl py-2.5 px-1"
                                 style={{
                                     backgroundColor: paymentMethod === 'Bank Transfer' ? (isDark ? '#0f172a' : '#ffffff') : 'transparent',
-                                    shadowColor: '#000000',
-                                    shadowOpacity: paymentMethod === 'Bank Transfer' ? 0.08 : 0,
-                                    shadowRadius: paymentMethod === 'Bank Transfer' ? 4 : 0,
                                     elevation: paymentMethod === 'Bank Transfer' ? 2 : 0,
                                 }}
                             >
                                 <Text
-                                    className="text-xs font-bold"
+                                    className="text-[11px] font-bold"
                                     style={{ color: paymentMethod === 'Bank Transfer' ? '#0f3322' : (isDark ? '#94a3b8' : '#64748b') }}
+                                    numberOfLines={1}
                                 >
-                                    {tr('बैंक ट्रांसफर (NEFT)', 'بینک ٹرانسفر (NEFT)', 'Bank Transfer (NEFT)')}
+                                    {tr('बैंक NEFT', 'بینک NEFT', 'Bank')}
                                 </Text>
                             </TouchableOpacity>
                         </View>
+
+                        {/* Razorpay Panel */}
+                        {paymentMethod === 'Razorpay' && (
+                            <View className="items-center gap-3 rounded-[20px] border border-amber-500/30 bg-[#0f3322] p-5">
+                                <View className="flex-row items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-3 py-1">
+                                    <ShieldCheck color="#34d399" size={14} />
+                                    <Text className="text-[11px] font-bold text-emerald-300">
+                                        {tr('तुरंत ऑनलाइन भुगतान', 'فوری آن لائن ادائیگی', 'Instant Verified Payment')}
+                                    </Text>
+                                </View>
+                                <Text className="text-3xl font-black text-white">₹100</Text>
+                                <Text className="text-center text-xs leading-5 text-slate-300">
+                                    {tr(
+                                        'UPI (GPay, PhonePe, Paytm), डेबिट/क्रेडिट कार्ड या नेटबैंकिंग द्वारा भुगतान करें।',
+                                        'UPI (GPay, PhonePe, Paytm)، کارڈ یا نیٹ بینکنگ کے ذریعے ادائیگی کریں۔',
+                                        'Pay securely via UPI (GPay, PhonePe, Paytm), Cards, or NetBanking.'
+                                    )}
+                                </Text>
+                                {verifiedRazorpay ? (
+                                    <View className="w-full rounded-xl border border-emerald-400/40 bg-emerald-500/20 p-3">
+                                        <Text className="text-center text-xs font-bold text-emerald-200">
+                                            ✓ {tr('₹100 भुगतान सत्यापित:', '₹100 ادائیگی تصدیق شدہ:', '₹100 Verified:')} {verifiedRazorpay.paymentId}
+                                        </Text>
+                                    </View>
+                                ) : (
+                                    <Text className="text-center text-[11px] text-emerald-300/90">
+                                        {tr(
+                                            'भुगतान के बाद किसी UTR नंबर या स्क्रीनशॉट की आवश्यकता नहीं है।',
+                                            'ادائیگی کے بعد UTR یا اسکرین شاٹ کی ضرورت نہیں ہے۔',
+                                            'No manual UTR or receipt screenshot required.'
+                                        )}
+                                    </Text>
+                                )}
+                            </View>
+                        )}
 
                         {/* UPI Panel */}
                         {paymentMethod === 'UPI' && (
@@ -1617,76 +1705,80 @@ export default function SignUpScreen() {
                             </View>
                         )}
 
-                        {/* UTR Input */}
-                        <View className="gap-1.5">
-                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {tr('12 अंकों का बैंक UTR / संदर्भ संख्या *', '12 ہندسوں کا UTR / ریفرنس نمبر *', '12-Digit Bank UTR / Transaction Ref No *')}
-                            </Text>
-                            <TextInput
-                                className={`rounded-xl border border-slate-200 bg-white px-4 py-3 font-mono text-sm dark:border-slate-800 dark:bg-slate-800 ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
-                                placeholder={tr('उदा. 420199381029', 'مثال: 420199381029', 'e.g. 420199381029')}
-                                placeholderTextColor={placeholderColor}
-                                value={utrNumber}
-                                onChangeText={setUtrNumber}
-                            />
-                        </View>
+                        {paymentMethod !== 'Razorpay' && (
+                            <>
+                                {/* UTR Input */}
+                                <View className="gap-1.5">
+                                    <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                        {tr('12 अंकों का बैंक UTR / संदर्भ संख्या *', '12 ہندسوں کا UTR / ریفرنس نمبر *', '12-Digit Bank UTR / Transaction Ref No *')}
+                                    </Text>
+                                    <TextInput
+                                        className={`rounded-xl border border-slate-200 bg-white px-4 py-3 font-mono text-sm dark:border-slate-800 dark:bg-slate-800 ${isDark ? 'text-slate-50' : 'text-slate-900'}`}
+                                        placeholder={tr('उदा. 420199381029', 'مثال: 420199381029', 'e.g. 420199381029')}
+                                        placeholderTextColor={placeholderColor}
+                                        value={utrNumber}
+                                        onChangeText={setUtrNumber}
+                                    />
+                                </View>
 
-                        {/* Screenshot Upload */}
-                        <View className="gap-1.5">
-                            <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {tr('भुगतान रसीद / स्क्रीनशॉट *', 'ادائیگی کی رسید / اسکرین شاٹ *', 'Payment Screenshot / Receipt *')}
-                            </Text>
-                            {screenshotUri ? (
-                                <View className="flex-row items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-600 dark:bg-emerald-950">
-                                    <Image key={screenshotUri} source={{ uri: screenshotUri }} style={{ width: 50, height: 50, borderRadius: 10, backgroundColor: '#cbd5e1' }} resizeMode="cover" />
-                                    <View className="flex-1 gap-1">
-                                        <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`} numberOfLines={1}>
-                                            {screenshotFileName || 'payment_receipt.jpg'}
-                                        </Text>
-                                        <View className="flex-row items-center gap-1">
-                                            <CheckCircle2 color="#059669" size={12} />
-                                            <Text className="text-[11px] font-semibold text-emerald-600">
-                                                {tr('भुगतान रसीद संलग्न है', 'رسید منسلک ہے', 'Payment Receipt Attached')}
-                                            </Text>
+                                {/* Screenshot Upload */}
+                                <View className="gap-1.5">
+                                    <Text className={`text-[11px] font-bold uppercase tracking-[0.6px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                        {tr('भुगतान रसीद / स्क्रीनशॉट *', 'ادائیگی کی رسید / اسکرین شاٹ *', 'Payment Screenshot / Receipt *')}
+                                    </Text>
+                                    {screenshotUri ? (
+                                        <View className="flex-row items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-600 dark:bg-emerald-950">
+                                            <Image key={screenshotUri} source={{ uri: screenshotUri }} style={{ width: 50, height: 50, borderRadius: 10, backgroundColor: '#cbd5e1' }} resizeMode="cover" />
+                                            <View className="flex-1 gap-1">
+                                                <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`} numberOfLines={1}>
+                                                    {screenshotFileName || 'payment_receipt.jpg'}
+                                                </Text>
+                                                <View className="flex-row items-center gap-1">
+                                                    <CheckCircle2 color="#059669" size={12} />
+                                                    <Text className="text-[11px] font-semibold text-emerald-600">
+                                                        {tr('भुगतान रसीद संलग्न है', 'رسید منسلک ہے', 'Payment Receipt Attached')}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                            <View className="flex-row items-center gap-2">
+                                                <TouchableOpacity
+                                                    onPress={() => setPickerTarget('screenshot')}
+                                                    className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-emerald-200 bg-white dark:bg-slate-900"
+                                                >
+                                                    <Upload color="#059669" size={16} />
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    onPress={() => {
+                                                        setScreenshotUri('');
+                                                        setScreenshotFileName('');
+                                                        void saveDraftState(undefined, { screenshotUri: '', screenshotFileName: '' });
+                                                    }}
+                                                    className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-red-200 bg-red-50"
+                                                >
+                                                    <Trash2 color="#ef4444" size={16} />
+                                                </TouchableOpacity>
+                                            </View>
                                         </View>
-                                    </View>
-                                    <View className="flex-row items-center gap-2">
+                                    ) : (
                                         <TouchableOpacity
                                             onPress={() => setPickerTarget('screenshot')}
-                                            className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-emerald-200 bg-white dark:bg-slate-900"
+                                            className="items-center justify-center rounded-2xl border-[1.5px] border-dashed border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-800"
+                                            activeOpacity={0.7}
                                         >
-                                            <Upload color="#059669" size={16} />
+                                            <View className="mb-1.5 h-[42px] w-[42px] items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950">
+                                                <Upload color="#059669" size={20} />
+                                            </View>
+                                            <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
+                                                {tr('भुगतान रसीद अपलोड करने के लिए क्लिक करें *', 'ادائیگی کی رسید اپلوڈ کریں *', 'Click to upload payment receipt *')}
+                                            </Text>
+                                            <Text className={`mt-0.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                                {tr('गैलरी या कैमरे से रसीद संलग्न करें', 'گیلری یا کیمرے سے رسید منسلک کریں', 'Attach receipt from gallery or camera')}
+                                            </Text>
                                         </TouchableOpacity>
-                                        <TouchableOpacity
-                                            onPress={() => {
-                                                setScreenshotUri('');
-                                                setScreenshotFileName('');
-                                                void saveDraftState(undefined, { screenshotUri: '', screenshotFileName: '' });
-                                            }}
-                                            className="h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-red-200 bg-red-50"
-                                        >
-                                            <Trash2 color="#ef4444" size={16} />
-                                        </TouchableOpacity>
-                                    </View>
+                                    )}
                                 </View>
-                            ) : (
-                                <TouchableOpacity
-                                    onPress={() => setPickerTarget('screenshot')}
-                                    className="items-center justify-center rounded-2xl border-[1.5px] border-dashed border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-800"
-                                    activeOpacity={0.7}
-                                >
-                                    <View className="mb-1.5 h-[42px] w-[42px] items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950">
-                                        <Upload color="#059669" size={20} />
-                                    </View>
-                                    <Text className={`text-[13px] font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
-                                        {tr('भुगतान रसीद अपलोड करने के लिए क्लिक करें *', 'ادائیگی کی رسید اپلوڈ کریں *', 'Click to upload payment receipt *')}
-                                    </Text>
-                                    <Text className={`mt-0.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                        {tr('गैलरी या कैमरे से रसीद संलग्न करें', 'گیلری یا کیمرے سے رسید منسلک کریں', 'Attach receipt from gallery or camera')}
-                                    </Text>
-                                </TouchableOpacity>
-                            )}
-                        </View>
+                            </>
+                        )}
 
                         {/* Agreement */}
                         <TouchableOpacity
@@ -1698,11 +1790,17 @@ export default function SignUpScreen() {
                                 {isFeePaid && <Check color="#fff" size={14} />}
                             </View>
                             <Text className={`flex-1 text-xs font-medium leading-[18px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {tr(
-                                    'मैंने ₹100 का भुगतान पूरा कर लिया है और MFCT सामुदायिक दिशानिर्देशों से सहमत हूँ।',
-                                    'میں نے ₹100 کی ادائیگی مکمل کر لی ہے اور MFCT اصولوں سے متفق ہوں۔',
-                                    'I have completed the ₹100 payment and agree to MFCT community guidelines.'
-                                )}
+                                {paymentMethod === 'Razorpay'
+                                    ? tr(
+                                        'मैं MFCT सामुदायिक दिशानिर्देशों से सहमत हूँ और ₹100 सदस्यता शुल्क का ऑनलाइन भुगतान करने के लिए तैयार हूँ।',
+                                        'میں MFCT کمیونٹی اصولوں سے متفق ہوں اور ₹100 فیس کی آن لائن ادائیگی کے لیے تیار ہوں۔',
+                                        'I agree to MFCT community guidelines and authorize the ₹100 membership fee payment.'
+                                    )
+                                    : tr(
+                                        'मैंने ₹100 का भुगतान पूरा कर लिया है और MFCT सामुदायिक दिशानिर्देशों से सहमत हूँ।',
+                                        'میں نے ₹100 کی ادائیگی مکمل کر لی ہے اور MFCT اصولوں سے متفق ہوں۔',
+                                        'I have completed the ₹100 payment and agree to MFCT community guidelines.'
+                                    )}
                             </Text>
                         </TouchableOpacity>
 
@@ -1725,7 +1823,9 @@ export default function SignUpScreen() {
                                     ? <ActivityIndicator color="#f0c868" size="small" />
                                     : <View className="flex-row items-center justify-center gap-1.5">
                                         <Text className="text-sm font-extrabold text-[#f0c868]">
-                                            {tr('सदस्यता पंजीकरण पूर्ण करें', 'ممبرشپ رجسٹریشن مکمل کریں', 'Complete Registration')}
+                                            {paymentMethod === 'Razorpay' && !verifiedRazorpay
+                                                ? tr('₹100 भुगतान करें व पंजीकरण करें', '₹100 ادا کریں اور رجسٹریشن کریں', 'Pay ₹100 & Register')
+                                                : tr('सदस्यता पंजीकरण पूर्ण करें', 'ممبرشپ رجسٹریشن مکمل کریں', 'Complete Registration')}
                                         </Text>
                                         <ArrowRight color="#f0c868" size={16} />
                                     </View>

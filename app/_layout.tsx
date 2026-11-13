@@ -140,6 +140,7 @@ export default function RootLayout() {
               <Stack.Screen name="(auth)" options={{ headerShown: false }} />
               <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
               <Stack.Screen name="(stacks)" options={{ headerShown: false }} />
+              <Stack.Screen name="razorpay-callback" options={{ headerShown: false }} />
             </Stack>
           </AppUpdateGate>
         </AppStateProvider>

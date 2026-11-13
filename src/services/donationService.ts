@@ -107,28 +107,50 @@ export async function getRecentDonations(limit = 10): Promise<Donation[]> {
   }
 }
 
-export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Donation> {
+export interface CreateDonationInput extends Omit<Donation, 'id'> {
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  razorpaySignature?: string;
+}
+
+export async function createDonation(donation: CreateDonationInput): Promise<Donation> {
   if (!donation.donorName.trim()) {
     throw new Error('Donor name is required');
   }
   if (!Number.isFinite(donation.amountINR) || donation.amountINR <= 0) {
     throw new Error('Donation amount must be greater than zero');
   }
-  if (donation.utrNumber && donation.utrNumber.trim() && !/^\d{12}$/.test(donation.utrNumber.trim())) {
+  const trimmedUtr = donation.utrNumber?.trim() || '';
+  const isRazorpayPaymentId = /^pay_[A-Za-z0-9]+$/.test(trimmedUtr) || Boolean(donation.razorpayPaymentId);
+  if (trimmedUtr && !isRazorpayPaymentId && !/^\d{12}$/.test(trimmedUtr)) {
     throw new Error('If provided, a valid 12-digit UTR is required');
   }
   if (donation.paymentScreenshotUrl && donation.paymentScreenshotUrl.trim() && !donation.paymentScreenshotUrl.trim().startsWith('http')) {
     throw new Error('Payment screenshot must be a valid URL');
   }
 
+  // Idempotency guard for verified Razorpay retries
+  if (isRazorpayPaymentId && trimmedUtr) {
+    const { data: existing } = await supabase
+      .from('donations')
+      .select('*')
+      .eq('utr_number', trimmedUtr)
+      .limit(1)
+      .maybeSingle();
+    if (existing) {
+      return mapRow(existing);
+    }
+  }
+
   const campaignId = (!donation.campaignId || donation.campaignId === 'general') ? null : donation.campaignId;
   const donorId = (!donation.donorId || donation.donorId === 'anonymous') ? null : donation.donorId;
   const breakdown = donation.monthlyBreakdown ?? donation.monthly_breakdown;
+  const isVerifiedRazorpay = Boolean(donation.razorpayPaymentId && donation.razorpayOrderId && donation.razorpaySignature);
 
   const payload: Record<string, any> = {
     id: `don_${Date.now()}`,
-    transaction_id: donation.transactionId || `TXN${Math.floor(100000000 + Math.random() * 900000000)}`,
-    utr_number: donation.utrNumber?.trim() || null,
+    transaction_id: donation.razorpayOrderId || donation.transactionId || `TXN${Math.floor(100000000 + Math.random() * 900000000)}`,
+    utr_number: donation.razorpayPaymentId || trimmedUtr || null,
     donor_name: donation.donorName.trim(),
     donor_id: donorId,
     donor_role: donation.donorRole || 'member',
@@ -140,7 +162,7 @@ export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Do
     is_outside_community: Boolean(donation.isOutsideCommunity),
     payment_method: donation.paymentMethod || 'UPI',
     payment_screenshot_url: donation.paymentScreenshotUrl || null,
-    status: donation.status || 'pending_verification',
+    status: isVerifiedRazorpay ? 'verified' : (donation.status || 'pending_verification'),
     date: donation.date || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
     receipt_number: donation.receiptNumber || `RCP-${Date.now().toString().slice(-6)}`,
     district: donation.district || null,
@@ -211,6 +233,11 @@ export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Do
       console.error('Failed to insert donation after retries:', error);
       throw error;
     }
+
+    if (isVerifiedRazorpay && donation.campaignId && donation.campaignId !== 'general') {
+      await updateCampaignRaised(donation.campaignId, Number(donation.amountINR || 0));
+    }
+
     return mapRow(data);
   } catch (err) {
     console.warn('createDonation error:', err);

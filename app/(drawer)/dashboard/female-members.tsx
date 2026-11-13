@@ -43,6 +43,11 @@ import {
 import { uploadImageToSupabase } from '../../../src/services/storageService';
 import { getAccountDetails } from '../../../src/services/adminService';
 import { downloadFemaleMemberSlipPdf } from '../../../src/services/receiptPdfService';
+import {
+  startMobileRazorpayPayment,
+  RazorpayCancelledError,
+  VerifiedMobileRazorpayPayment,
+} from '../../../src/services/razorpayService';
 import { FemaleMemberCardSkeleton } from '../../../src/components/SkeletonLoader';
 import { getLanguageCode } from '../../../src/lib/translateEntity';
 import {
@@ -121,7 +126,8 @@ export default function FemaleMembersScreen() {
   const [donations, setDonations] = useState<Donation[]>([]);
   const [monthlyPayment, setMonthlyPayment] = useState<'yes' | 'no'>('no');
   const [updatingMonthlyId, setUpdatingMonthlyId] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Bank Transfer'>('UPI');
+  const [paymentMethod, setPaymentMethod] = useState<'Razorpay' | 'UPI' | 'Bank Transfer'>('Razorpay');
+  const [verifiedRazorpay, setVerifiedRazorpay] = useState<VerifiedMobileRazorpayPayment | null>(null);
   const [paymentUtr, setPaymentUtr] = useState('');
   const [screenshotUri, setScreenshotUri] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -197,7 +203,8 @@ export default function FemaleMembersScreen() {
     setAadhaarFrontUri(null);
     setAadhaarBackUri(null);
     setMonthlyPayment('no');
-    setPaymentMethod('UPI');
+    setPaymentMethod('Razorpay');
+    setVerifiedRazorpay(null);
     setPaymentUtr('');
     setScreenshotUri(null);
     setErrorMsg('');
@@ -218,6 +225,7 @@ export default function FemaleMembersScreen() {
     setAadhaarBackUri(item.aadhaar_back_url || null);
     setMonthlyPayment(item.monthly_payment === 'yes' ? 'yes' : 'no');
     setPaymentMethod((item.payment_method as any) || 'UPI');
+    setVerifiedRazorpay(null);
     setPaymentUtr(item.payment_utr || '');
     setScreenshotUri(item.payment_screenshot_url || null);
     setErrorMsg('');
@@ -326,14 +334,14 @@ export default function FemaleMembersScreen() {
       return;
     }
 
-    if (!editingMember && !paymentUtr.trim()) {
+    if (!editingMember && paymentMethod !== 'Razorpay' && !paymentUtr.trim()) {
       setErrorMsg(
         tr('कृपया ₹50 शुल्क का 12-अंकों का बैंक UTR नंबर दर्ज करें', '₹50 فیس کا UTR نمبر درج کریں', 'Please enter 12-digit UTR reference for ₹50 fee')
       );
       return;
     }
 
-    if (!editingMember && !screenshotUri) {
+    if (!editingMember && paymentMethod !== 'Razorpay' && !screenshotUri) {
       setErrorMsg(
         tr(
           'कृपया ₹50 भुगतान रसीद का स्क्रीनशॉट संलग्न करें (अनिवार्य)।',
@@ -348,6 +356,26 @@ export default function FemaleMembersScreen() {
     setErrorMsg('');
 
     try {
+      let paymentProof = verifiedRazorpay;
+      if (!editingMember && paymentMethod === 'Razorpay' && !paymentProof) {
+        paymentProof = await startMobileRazorpayPayment({
+          amountINR: feeAmount,
+          purpose: 'female_member',
+          description: `MFCT Female Member Registration (${name.trim()}) - ₹50`,
+          notes: {
+            memberName: name.trim(),
+            relation: relation.trim(),
+            parentUserId: activeUser?.id || '',
+          },
+          prefill: {
+            name: activeUser?.name || '',
+            contact: phone.trim() || activeUser?.phone || '',
+            email: activeUser?.email || '',
+          },
+        });
+        setVerifiedRazorpay(paymentProof);
+      }
+
       let finalPhotoUrl = photoUri || '';
       let finalAadhaarFrontUrl = aadhaarFrontUri || '';
       let finalAadhaarBackUrl = aadhaarBackUri || '';
@@ -366,7 +394,7 @@ export default function FemaleMembersScreen() {
         finalAadhaarBackUrl = await uploadImageToSupabase(aadhaarBackUri, 'users');
       }
 
-      if (screenshotUri && !screenshotUri.startsWith('http')) {
+      if (paymentMethod !== 'Razorpay' && screenshotUri && !screenshotUri.startsWith('http')) {
         finalScreenshotUrl = await uploadImageToSupabase(screenshotUri, 'receipts');
       }
 
@@ -402,9 +430,9 @@ export default function FemaleMembersScreen() {
           aadhaar_back_url: finalAadhaarBackUrl,
           fee_amount: feeAmount,
           monthly_payment: monthlyPayment,
-          payment_method: paymentMethod,
-          payment_utr: paymentUtr.trim(),
-          payment_screenshot_url: finalScreenshotUrl,
+          payment_method: paymentProof ? paymentProof.paymentMethodLabel : paymentMethod,
+          payment_utr: paymentProof ? paymentProof.paymentId : paymentUtr.trim(),
+          payment_screenshot_url: paymentProof ? '' : finalScreenshotUrl,
           status: 'pending',
         });
       }
@@ -414,7 +442,13 @@ export default function FemaleMembersScreen() {
       await loadData();
     } catch (err: any) {
       console.error('Save female member error:', err);
-      setErrorMsg(err.message || 'Failed to save female member');
+      if (err instanceof RazorpayCancelledError) {
+        setErrorMsg(
+          tr('भुगतान रद्द किया गया। आप पुनः प्रयास कर सकते हैं।', 'ادائیگی منسوخ کر دی گئی۔ آپ دوبارہ کوشش کر سکتے ہیں۔', 'Payment cancelled. You can try again.')
+        );
+      } else {
+        setErrorMsg(err.message || 'Failed to save female member');
+      }
     } finally {
       setSaving(false);
       setUploadingImage(false);
@@ -1232,12 +1266,23 @@ export default function FemaleMembersScreen() {
 
               {/* Payment Method Switch */}
               <View style={[s.switchRow, { backgroundColor: isDark ? '#0f172a' : '#f1f5f9' }]}>
+                {!editingMember && (
+                  <TouchableOpacity
+                    style={[s.switchBtn, paymentMethod === 'Razorpay' && s.switchBtnActive]}
+                    onPress={() => setPaymentMethod('Razorpay')}
+                  >
+                    <Text style={[s.switchText, paymentMethod === 'Razorpay' && s.switchTextActive]}>
+                      Razorpay
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
                   style={[s.switchBtn, paymentMethod === 'UPI' && s.switchBtnActive]}
                   onPress={() => setPaymentMethod('UPI')}
                 >
                   <Text style={[s.switchText, paymentMethod === 'UPI' && s.switchTextActive]}>
-                    UPI / QR Code
+                    UPI / QR
                   </Text>
                 </TouchableOpacity>
 
@@ -1251,8 +1296,29 @@ export default function FemaleMembersScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* QR / Bank Info Box */}
-              {paymentMethod === 'UPI' ? (
+              {/* Razorpay / QR / Bank Info Box */}
+              {!editingMember && paymentMethod === 'Razorpay' ? (
+                <View style={s.qrBox}>
+                  <Text style={{ fontSize: 26, fontWeight: '900', color: '#ffffff', marginBottom: 4 }}>
+                    ₹{feeAmount}
+                  </Text>
+                  <Text style={s.qrTitle}>
+                    {tr('₹50 शुल्क का ऑनलाइन भुगतान करें', '₹50 فیس آن لائن ادا کریں', 'Pay ₹50 Registration Fee Online')}
+                  </Text>
+                  <Text style={[s.qrSub, { textAlign: 'center', marginTop: 4 }]}>
+                    {tr(
+                      'UPI, कार्ड या नेटबैंकिंग से भुगतान करें — किसी UTR या स्क्रीनशॉट की आवश्यकता नहीं।',
+                      'UPI، کارڈ یا نیٹ بینکنگ سے ادا کریں — UTR یا اسکرین شاٹ کی ضرورت نہیں۔',
+                      'Pay via UPI, Card, or NetBanking — no UTR or screenshot required.'
+                    )}
+                  </Text>
+                  {verifiedRazorpay && (
+                    <Text style={{ color: '#34d399', fontSize: 11, fontWeight: '800', marginTop: 8 }}>
+                      ✓ {tr('भुगतान सत्यापित:', 'ادائیگی تصدیق شدہ:', 'Verified:')} {verifiedRazorpay.paymentId}
+                    </Text>
+                  )}
+                </View>
+              ) : paymentMethod === 'UPI' ? (
                 <View style={s.qrBox}>
                   {accountDetails?.qr_code_url ? (
                     <View style={{ width: 140, height: 140, backgroundColor: '#ffffff', borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
@@ -1279,43 +1345,47 @@ export default function FemaleMembersScreen() {
                 </View>
               )}
 
-              {/* 12-Digit UTR */}
-              <Text style={[s.inputLabel, { color: textPri }]}>
-                {tr('12 अंकों का बैंक UTR / संदर्भ संख्या *', '12 ہندسوں کا UTR نمبر *', '12-Digit Bank UTR / Reference No *')}
-              </Text>
-              <TextInput
-                style={[s.input, { backgroundColor: isDark ? '#0f172a' : '#f8fafc', color: textPri, borderColor: borderCol, fontWeight: '800' }]}
-                placeholder={tr('उदा. 420199381029', 'مثال: 420199381029', 'e.g. 420199381029')}
-                placeholderTextColor={textSec}
-                keyboardType="numeric"
-                value={paymentUtr}
-                onChangeText={setPaymentUtr}
-              />
+              {!(!editingMember && paymentMethod === 'Razorpay') && (
+                <>
+                  {/* 12-Digit UTR */}
+                  <Text style={[s.inputLabel, { color: textPri }]}>
+                    {tr('12 अंकों का बैंक UTR / संदर्भ संख्या *', '12 ہندسوں کا UTR نمبر *', '12-Digit Bank UTR / Reference No *')}
+                  </Text>
+                  <TextInput
+                    style={[s.input, { backgroundColor: isDark ? '#0f172a' : '#f8fafc', color: textPri, borderColor: borderCol, fontWeight: '800' }]}
+                    placeholder={tr('उदा. 420199381029', 'مثال: 420199381029', 'e.g. 420199381029')}
+                    placeholderTextColor={textSec}
+                    keyboardType="numeric"
+                    value={paymentUtr}
+                    onChangeText={setPaymentUtr}
+                  />
 
-              {/* Screenshot Upload */}
-              <Text style={[s.inputLabel, { color: textPri }]}>
-                {tr('भुगतान रसीद / स्क्रीनशॉट (अनिवार्य) *', 'ادائیگی رسید کا ثبوت (لازمی) *', 'Payment Screenshot Proof (Mandatory) *')}
-              </Text>
-              <TouchableOpacity
-                style={[s.uploadBox, { borderColor: borderCol, backgroundColor: isDark ? '#0f172a' : '#f8fafc' }]}
-                onPress={() => pickImage('receipt')}
-              >
-                {screenshotUri ? (
-                  <View style={s.uploadedRow}>
-                    <Image source={{ uri: screenshotUri }} style={s.previewImg} />
-                    <Text style={[s.uploadedText, { color: '#10b981' }]}>
-                      {tr('रसीद चुनी गई (बदलने के लिए टैप करें)', 'رسید منتخب ہو گئی', 'Receipt attached (Tap to change)')}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={s.uploadPrompt}>
-                    <Camera color="#10b981" size={20} />
-                    <Text style={[s.uploadText, { color: textSec }]}>
-                      {tr('स्क्रीनशॉट चुनने के लिए टैप करें', 'اسکرین شاٹ منتخب کریں', 'Tap to select payment screenshot')}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+                  {/* Screenshot Upload */}
+                  <Text style={[s.inputLabel, { color: textPri }]}>
+                    {tr('भुगतान रसीद / स्क्रीनशॉट (अनिवार्य) *', 'ادائیگی رسید کا ثبوت (لازمی) *', 'Payment Screenshot Proof (Mandatory) *')}
+                  </Text>
+                  <TouchableOpacity
+                    style={[s.uploadBox, { borderColor: borderCol, backgroundColor: isDark ? '#0f172a' : '#f8fafc' }]}
+                    onPress={() => pickImage('receipt')}
+                  >
+                    {screenshotUri ? (
+                      <View style={s.uploadedRow}>
+                        <Image source={{ uri: screenshotUri }} style={s.previewImg} />
+                        <Text style={[s.uploadedText, { color: '#10b981' }]}>
+                          {tr('रसीद चुनी गई (बदलने के लिए टैप करें)', 'رسید منتخب ہو گئی', 'Receipt attached (Tap to change)')}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={s.uploadPrompt}>
+                        <Camera color="#10b981" size={20} />
+                        <Text style={[s.uploadText, { color: textSec }]}>
+                          {tr('स्क्रीनशॉट चुनने के लिए टैप करें', 'اسکرین شاٹ منتخب کریں', 'Tap to select payment screenshot')}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </>
+              )}
 
               {/* Submit Buttons */}
               <View style={s.modalActionRow}>
@@ -1337,7 +1407,9 @@ export default function FemaleMembersScreen() {
                     <Text style={s.submitBtnText}>
                       {editingMember
                         ? tr('अपडेट करें', 'اپ ڈیٹ', 'Update')
-                        : tr('महिला सदस्य जोड़ें (₹50)', 'شامل کریں (₹50)', 'Enroll Member (₹50)')}
+                        : paymentMethod === 'Razorpay' && !verifiedRazorpay
+                          ? tr('₹50 भुगतान करें व जोड़ें', '₹50 ادا کریں اور شامل کریں', 'Pay ₹50 & Enroll')
+                          : tr('महिला सदस्य जोड़ें (₹50)', 'شامل کریں (₹50)', 'Enroll Member (₹50)')}
                     </Text>
                   )}
                 </TouchableOpacity>
