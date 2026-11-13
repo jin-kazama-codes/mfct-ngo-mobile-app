@@ -13,12 +13,27 @@ import {
   Platform,
   Alert,
   StyleSheet,
+  DeviceEventEmitter,
+  Switch,
 } from 'react-native';
+import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
 import * as ImagePicker from 'expo-image-picker';
-import { useAppState } from '../../../src/context/AppStateProvider';
-import { FemaleFamilyMember, AccountDetails } from '../../../src/types';
+import {
+  MONTHLY_EVENTS,
+  emitFemaleMembersUpdated,
+  useAppState,
+} from '../../../src/context/AppStateProvider';
+import { AccountDetails, Donation, FemaleFamilyMember } from '../../../src/types';
+import { getDonations } from '../../../src/services/donationService';
+import {
+  FEMALE_MONTHLY_FEE_INR,
+  formatBillingMonthLabel,
+  formatShortDate,
+  getBillingMonthKey,
+  getFemaleMemberMonthlyStatus,
+} from '../../../src/lib/monthlyPaymentUtils';
 import {
   getFemaleFamilyMembers,
   saveFemaleFamilyMember,
@@ -103,6 +118,9 @@ export default function FemaleMembersScreen() {
 
   // Fee payment state (₹50)
   const feeAmount = 50;
+  const [donations, setDonations] = useState<Donation[]>([]);
+  const [monthlyPayment, setMonthlyPayment] = useState<'yes' | 'no'>('no');
+  const [updatingMonthlyId, setUpdatingMonthlyId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Bank Transfer'>('UPI');
   const [paymentUtr, setPaymentUtr] = useState('');
   const [screenshotUri, setScreenshotUri] = useState<string | null>(null);
@@ -119,8 +137,12 @@ export default function FemaleMembersScreen() {
     if (!activeUser?.id) return;
     try {
       const isSuperOrExec = activeUser.role === 'super_admin' || activeUser.role === 'executive_admin';
-      const data = await getFemaleFamilyMembers(isSuperOrExec ? undefined : activeUser.id);
-      setMembers(data);
+      const [data, dons] = await Promise.all([
+        getFemaleFamilyMembers(isSuperOrExec ? undefined : activeUser.id),
+        getDonations(isSuperOrExec ? undefined : activeUser.id),
+      ]);
+      setMembers(data || []);
+      setDonations(dons || []);
     } catch (err: any) {
       console.error('Error loading female members:', err);
     } finally {
@@ -138,6 +160,12 @@ export default function FemaleMembersScreen() {
         }
       })
       .catch(console.error);
+    const sub1 = DeviceEventEmitter.addListener(MONTHLY_EVENTS.DONATIONS_UPDATED, loadData);
+    const sub2 = DeviceEventEmitter.addListener(MONTHLY_EVENTS.FEMALE_MEMBERS_UPDATED, loadData);
+    return () => {
+      sub1.remove();
+      sub2.remove();
+    };
   }, [loadData]);
 
   const onRefresh = () => {
@@ -168,6 +196,7 @@ export default function FemaleMembersScreen() {
     setPhotoUri(null);
     setAadhaarFrontUri(null);
     setAadhaarBackUri(null);
+    setMonthlyPayment('no');
     setPaymentMethod('UPI');
     setPaymentUtr('');
     setScreenshotUri(null);
@@ -187,6 +216,7 @@ export default function FemaleMembersScreen() {
     setPhotoUri(item.photo_url || null);
     setAadhaarFrontUri(item.aadhaar_front_url || null);
     setAadhaarBackUri(item.aadhaar_back_url || null);
+    setMonthlyPayment(item.monthly_payment === 'yes' ? 'yes' : 'no');
     setPaymentMethod((item.payment_method as any) || 'UPI');
     setPaymentUtr(item.payment_utr || '');
     setScreenshotUri(item.payment_screenshot_url || null);
@@ -232,6 +262,7 @@ export default function FemaleMembersScreen() {
     setUpdatingStatusId(id);
     try {
       await updateFemaleFamilyMember(id, { status: newStatus });
+      emitFemaleMembersUpdated();
       Alert.alert(
         tr('सफलता', 'کامیابی', 'Success'),
         newStatus === 'approved'
@@ -351,6 +382,7 @@ export default function FemaleMembersScreen() {
           photo_url: finalPhotoUrl,
           aadhaar_front_url: finalAadhaarFrontUrl,
           aadhaar_back_url: finalAadhaarBackUrl,
+          monthly_payment: monthlyPayment,
           payment_method: paymentMethod,
           payment_utr: paymentUtr.trim(),
           payment_screenshot_url: finalScreenshotUrl,
@@ -369,6 +401,7 @@ export default function FemaleMembersScreen() {
           aadhaar_front_url: finalAadhaarFrontUrl,
           aadhaar_back_url: finalAadhaarBackUrl,
           fee_amount: feeAmount,
+          monthly_payment: monthlyPayment,
           payment_method: paymentMethod,
           payment_utr: paymentUtr.trim(),
           payment_screenshot_url: finalScreenshotUrl,
@@ -377,6 +410,7 @@ export default function FemaleMembersScreen() {
       }
 
       setModalVisible(false);
+      emitFemaleMembersUpdated();
       await loadData();
     } catch (err: any) {
       console.error('Save female member error:', err);
@@ -391,12 +425,30 @@ export default function FemaleMembersScreen() {
     setDeleting(true);
     try {
       await deleteFemaleFamilyMember(id);
+      emitFemaleMembersUpdated();
       setDeleteId(null);
       await loadData();
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to delete female member');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleToggleFemaleMonthly = async (member: FemaleFamilyMember) => {
+    if (updatingMonthlyId) return;
+    const nextVal: 'yes' | 'no' = member.monthly_payment === 'yes' ? 'no' : 'yes';
+    setUpdatingMonthlyId(member.id);
+    try {
+      await updateFemaleFamilyMember(member.id, { monthly_payment: nextVal });
+      setMembers((prev) =>
+        prev.map((m) => (m.id === member.id ? { ...m, monthly_payment: nextVal } : m))
+      );
+      emitFemaleMembersUpdated();
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to update monthly fee setting');
+    } finally {
+      setUpdatingMonthlyId(null);
     }
   };
 
@@ -569,6 +621,9 @@ export default function FemaleMembersScreen() {
             const relLabel = relObj ? (lang === 'hi' ? relObj.labelHi : lang === 'ur' ? relObj.labelUr : relObj.labelEn) : member.relation;
             const isApproved = member.status === 'approved';
             const isRejected = member.status === 'rejected';
+            const monthlySt = getFemaleMemberMonthlyStatus(member, donations);
+            const currentMonthLabel = formatBillingMonthLabel(getBillingMonthKey(), lang);
+            const isOwnMember = !activeUser?.id || member.user_id === activeUser.id;
 
             return (
               <View key={member.id} style={[s.memberCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
@@ -658,6 +713,88 @@ export default function FemaleMembersScreen() {
                     </View>
                   ) : null}
 
+                  <View style={s.detailRow}>
+                    <Text style={[s.detailLabel, { color: textSec }]}>
+                      {tr('मासिक शुल्क (₹50/माह)', 'ماہانہ فیس (₹50/ماہ)', 'Monthly Fee (₹50/mo)')}:
+                    </Text>
+                    {isOwnMember || isSuperOrExec ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text
+                          style={[
+                            s.detailVal,
+                            {
+                              fontWeight: '800',
+                              color: member.monthly_payment === 'yes' ? '#10b981' : textSec,
+                            },
+                          ]}
+                        >
+                          {member.monthly_payment === 'yes'
+                            ? tr('हाँ (Yes)', 'ہاں (Yes)', 'Yes')
+                            : tr('नहीं (No)', 'نہیں (No)', 'No')}
+                        </Text>
+                        <Switch
+                          value={member.monthly_payment === 'yes'}
+                          disabled={updatingMonthlyId === member.id}
+                          onValueChange={() => handleToggleFemaleMonthly(member)}
+                          trackColor={{ false: isDark ? '#334155' : '#cbd5e1', true: '#10b981' }}
+                          thumbColor="#ffffff"
+                        />
+                      </View>
+                    ) : (
+                      <Text style={[s.detailVal, { color: textPri, fontWeight: '700' }]}>
+                        {member.monthly_payment === 'yes' ? tr('हाँ', 'ہاں', 'Yes') : tr('नहीं', 'نہیں', 'No')}
+                      </Text>
+                    )}
+                  </View>
+
+                  {monthlySt.isOptedIn && (
+                    <>
+                      <View style={s.detailRow}>
+                        <Text style={[s.detailLabel, { color: textSec }]}>
+                          {tr('माह स्थिति', 'ماہ کی حیثیت', 'Status')} ({currentMonthLabel}):
+                        </Text>
+                        <Text
+                          style={[
+                            s.detailVal,
+                            {
+                              fontWeight: '800',
+                              color:
+                                monthlySt.status === 'paid'
+                                  ? '#10b981'
+                                  : monthlySt.status === 'pending_verification'
+                                    ? '#d97706'
+                                    : monthlySt.status === 'due'
+                                      ? '#e11d48'
+                                      : textSec,
+                            },
+                          ]}
+                        >
+                          {monthlySt.status === 'paid'
+                            ? tr('जमा (₹50)', 'ادا شدہ (₹50)', 'Paid (₹50)')
+                            : monthlySt.status === 'pending_verification'
+                              ? tr('सत्यापन लंबित', 'تصدیق زیرِ غور', 'Pending Verification')
+                              : monthlySt.status === 'due'
+                                ? tr('बकाया (₹50)', 'باقی (₹50)', 'Due (₹50)')
+                                : monthlySt.status === 'kyc_pending'
+                                  ? tr('KYC लंबित', 'KYC زیرِ غور', 'Awaiting KYC')
+                                  : tr('अस्वीकृत', 'مسترد', 'Rejected')}
+                        </Text>
+                      </View>
+
+                      {monthlySt.latestDate ? (
+                        <View style={s.detailRow}>
+                          <Text style={[s.detailLabel, { color: textSec }]}>
+                            {tr('अंतिम मासिक भुगतान', 'آخری ماہانہ ادائیگی', 'Last Monthly Pay')}:
+                          </Text>
+                          <Text style={[s.detailVal, { color: textPri }]}>
+                            {formatShortDate(monthlySt.latestDate, lang)}
+                            {monthlySt.latestAmount > 0 ? ` • ₹${monthlySt.latestAmount}` : ''}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </>
+                  )}
+
                   {/* Aadhaar Documents Section */}
                   {(member.aadhaar_front_url || member.aadhaar_back_url) && (
                     <View style={[s.docBox, { borderTopColor: isDark ? '#334155' : '#e2e8f0' }]}>
@@ -740,7 +877,7 @@ export default function FemaleMembersScreen() {
                 )}
 
                 {/* Card Actions */}
-                <View style={[s.cardActionsRow, { borderTopColor: borderCol }]}>
+                <View style={[s.cardActionsRow, { borderTopColor: borderCol, flexWrap: 'wrap', gap: 8 }]}>
                   <TouchableOpacity
                     style={s.slipBtn}
                     onPress={() => handleDownloadSlip(member)}
@@ -751,6 +888,39 @@ export default function FemaleMembersScreen() {
                       {tr('रसीद डाउनलोड', 'رسید ڈاؤن لوڈ', 'Download Slip')}
                     </Text>
                   </TouchableOpacity>
+
+                  {isApproved && monthlySt.status === 'due' && isOwnMember && (
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        backgroundColor: '#10b981',
+                        paddingHorizontal: 11,
+                        paddingVertical: 7,
+                        borderRadius: 10,
+                      }}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/(stacks)/donation',
+                          params: {
+                            initialMode: 'monthly_fee',
+                            preselectedIds: member.id,
+                          },
+                        })
+                      }
+                      activeOpacity={0.85}
+                    >
+                      <CreditCard size={14} color="#ffffff" />
+                      <Text style={{ color: '#ffffff', fontSize: 11.5, fontWeight: '800' }}>
+                        {tr(
+                          `मासिक शुल्क जमा (₹${FEMALE_MONTHLY_FEE_INR})`,
+                          `ماہانہ فیس (₹${FEMALE_MONTHLY_FEE_INR})`,
+                          `Pay Monthly (₹${FEMALE_MONTHLY_FEE_INR})`
+                        )}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
 
                   <View style={s.actionIcons}>
                     <TouchableOpacity
@@ -993,6 +1163,62 @@ export default function FemaleMembersScreen() {
                   </View>
                 )}
               </TouchableOpacity>
+
+              {/* Female Member Monthly Fee Toggle (Default: No) */}
+              <View
+                style={{
+                  marginTop: 4,
+                  marginBottom: 14,
+                  padding: 12,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: isDark ? '#831843' : '#fbcfe8',
+                  backgroundColor: isDark ? '#50072430' : '#fdf2f8',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <Text style={{ fontSize: 12.5, fontWeight: '800', color: textPri }}>
+                      {tr('महिला मासिक शुल्क (₹50/माह)', 'خاتون ماہانہ فیس (₹50/ماہ)', 'Female Monthly Fee (₹50/mo)')}
+                    </Text>
+                    <View
+                      style={{
+                        paddingHorizontal: 7,
+                        paddingVertical: 2,
+                        borderRadius: 999,
+                        backgroundColor: monthlyPayment === 'yes' ? '#10b98125' : isDark ? '#334155' : '#e2e8f0',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontWeight: '800',
+                          color: monthlyPayment === 'yes' ? '#10b981' : textSec,
+                        }}
+                      >
+                        {monthlyPayment === 'yes' ? tr('हाँ (Yes)', 'ہاں (Yes)', 'Yes') : tr('नहीं (No)', 'نہیں (No)', 'No')}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 10.5, color: textSec, marginTop: 3 }}>
+                    {tr(
+                      '₹50/माह नियमित मासिक शुल्क चालू करने के लिए इसे ऑन करें (डिफ़ॉल्ट: नहीं)।',
+                      '₹50 ماہانہ فیس آن کرنے کے لیے اسے چالو کریں (ڈیفالٹ: نہیں)۔',
+                      'Enable ₹50/month welfare fee tracking for this member (Default: No).'
+                    )}
+                  </Text>
+                </View>
+                <Switch
+                  value={monthlyPayment === 'yes'}
+                  onValueChange={(v) => setMonthlyPayment(v ? 'yes' : 'no')}
+                  trackColor={{ false: isDark ? '#334155' : '#cbd5e1', true: '#10b981' }}
+                  thumbColor="#ffffff"
+                />
+              </View>
 
               {/* Section 2: Fee Payment (₹50) */}
               <View style={s.feeHeaderRow}>

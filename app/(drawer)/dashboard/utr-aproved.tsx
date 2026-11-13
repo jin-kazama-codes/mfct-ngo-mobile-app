@@ -12,9 +12,14 @@ import {
   RefreshControl,
   Dimensions,
 } from 'react-native';
-import { useAppState } from '../../../src/context/AppStateProvider';
+import { emitDonationsUpdated, useAppState } from '../../../src/context/AppStateProvider';
 import { getDonations, updateDonationStatus } from '../../../src/services/donationService';
 import { Donation } from '../../../src/types';
+import {
+  formatBillingMonthLabel,
+  isMonthlyFeeRecord,
+  parseMonthlyBreakdown,
+} from '../../../src/lib/monthlyPaymentUtils';
 import {
   Search,
   CheckCircle2,
@@ -32,6 +37,7 @@ import {
   Image as ImageIcon,
   Tag,
   ShieldCheck,
+  CalendarCheck2,
 } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useTranslation } from 'react-i18next';
@@ -153,6 +159,7 @@ export default function UtrApprovedScreen() {
     try {
       const newStatus = type === 'verify' ? 'verified' : 'rejected';
       await updateDonationStatus(id, newStatus);
+      emitDonationsUpdated();
 
       setDonations((prev) =>
         prev.map((d) => (d.id === id ? { ...d, status: newStatus } : d))
@@ -533,6 +540,34 @@ export default function UtrApprovedScreen() {
                       </Text>
                     </View>
                   )}
+
+                  {isMonthlyFeeRecord(donation) && (() => {
+                    const bm = (donation.billingMonth || donation.billing_month || '').trim();
+                    const breakdown = parseMonthlyBreakdown(
+                      donation.monthlyBreakdown ?? donation.monthly_breakdown
+                    );
+                    const labelParts = [
+                      lang === 'hi' ? 'मासिक शुल्क' : lang === 'ur' ? 'ماہانہ فیس' : 'Monthly Fee',
+                      bm ? formatBillingMonthLabel(bm, lang) : '',
+                      breakdown?.length
+                        ? breakdown.map((b) => `${b.targetName} (₹${b.amountINR})`).join(', ')
+                        : donation.femaleMemberName || '',
+                    ].filter(Boolean);
+
+                    return (
+                      <View
+                        style={[
+                          s.badgeChip,
+                          { backgroundColor: isDark ? 'rgba(99,102,241,0.18)' : '#eef2ff' },
+                        ]}
+                      >
+                        <CalendarCheck2 color="#6366f1" size={12} />
+                        <Text style={[s.badgeChipText, { color: isDark ? '#a5b4fc' : '#4338ca' }]} numberOfLines={1}>
+                          {labelParts.join(' • ')}
+                        </Text>
+                      </View>
+                    );
+                  })()}
                 </View>
 
                 {/* Actions Footer */}
@@ -658,6 +693,49 @@ export default function UtrApprovedScreen() {
                       Category: {translateCategory(selectedDonation.category || 'General', lang)}
                     </Text>
                   </View>
+
+                  {isMonthlyFeeRecord(selectedDonation) && (() => {
+                    const bm = (selectedDonation.billingMonth || selectedDonation.billing_month || '').trim();
+                    const breakdown = parseMonthlyBreakdown(
+                      selectedDonation.monthlyBreakdown ?? selectedDonation.monthly_breakdown
+                    );
+                    return (
+                      <View
+                        style={[
+                          s.modalGridItemFull,
+                          {
+                            backgroundColor: isDark ? 'rgba(79,70,229,0.12)' : '#eef2ff',
+                            borderColor: isDark ? '#4338ca' : '#c7d2fe',
+                          },
+                        ]}
+                      >
+                        <Text style={[s.gridLabel, { color: isDark ? '#a5b4fc' : '#4338ca' }]}>
+                          MONTHLY FEE COVERAGE {bm ? `(${formatBillingMonthLabel(bm, lang)})` : ''}
+                        </Text>
+                        {breakdown && breakdown.length > 0 ? (
+                          <View style={{ marginTop: 6, gap: 4 }}>
+                            {breakdown.map((item, idx) => (
+                              <View
+                                key={`${item.targetId}-${idx}`}
+                                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                              >
+                                <Text style={[s.gridValue, { fontSize: 12, color: theme.textMain }]}>
+                                  • {item.targetName} ({item.relation || (item.targetType === 'primary' ? 'Primary' : 'Female')})
+                                </Text>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#10b981' }}>
+                                  ₹{Number(item.amountINR || 0).toLocaleString('en-IN')}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        ) : selectedDonation.femaleMemberName ? (
+                          <Text style={[s.gridValue, { fontSize: 12, color: theme.textMain, marginTop: 4 }]}>
+                            Covered Female Member(s): {selectedDonation.femaleMemberName}
+                          </Text>
+                        ) : null}
+                      </View>
+                    );
+                  })()}
 
                   {selectedDonation.communityName && (
                     <View style={[s.modalGridItemFull, { backgroundColor: isDark ? '#131d2e' : '#f8fafc', borderColor: theme.cardBorder }]}>

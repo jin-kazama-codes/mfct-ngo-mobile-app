@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, ScrollView,
     ActivityIndicator, KeyboardAvoidingView, Platform,
-    Image, Modal, Alert
+    Image, Modal, Alert, Switch
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -61,6 +61,7 @@ export default function SignUpScreen() {
     const [isMalikENisab, setIsMalikENisab] = useState<boolean | null>(null);
     const [helpType, setHelpType] = useState<'Zakat' | 'Sadaka' | 'Fitra' | 'Other' | ''>('');
     const [helpDetails, setHelpDetails] = useState('');
+    const [monthlyPayment, setMonthlyPayment] = useState<'yes' | 'no'>('no');
     const [communities, setCommunities] = useState<Community[]>([]);
     const [accountDetails, setAccountDetails] = useState<AccountDetails | null>(null);
     const [accountDetailsLoading, setAccountDetailsLoading] = useState(true);
@@ -142,6 +143,7 @@ export default function SignUpScreen() {
                 isMalikENisab,
                 helpType,
                 helpDetails,
+                monthlyPayment,
                 selectedCommunityId,
                 paymentMethod,
                 utrNumber,
@@ -191,6 +193,7 @@ export default function SignUpScreen() {
                     if (d.isMalikENisab !== undefined) setIsMalikENisab(d.isMalikENisab);
                     if (d.helpType) setHelpType(d.helpType);
                     if (d.helpDetails) setHelpDetails(d.helpDetails);
+                    if (d.monthlyPayment === 'yes' || d.monthlyPayment === 'no') setMonthlyPayment(d.monthlyPayment);
                     if (d.selectedCommunityId) setSelectedCommunityId(d.selectedCommunityId);
                     if (d.paymentMethod) setPaymentMethod(d.paymentMethod);
                     if (d.utrNumber) setUtrNumber(d.utrNumber);
@@ -705,6 +708,8 @@ export default function SignUpScreen() {
                 help_type: religion === 'Muslim' && isMalikENisab === false ? helpType || undefined : undefined,
                 helpDetails: religion === 'Muslim' && isMalikENisab === false && helpType === 'Other' ? helpDetails.trim() || undefined : undefined,
                 help_details: religion === 'Muslim' && isMalikENisab === false && helpType === 'Other' ? helpDetails.trim() || undefined : undefined,
+                monthlyPayment,
+                monthly_payment: monthlyPayment,
             };
 
             const created = await createUser({ ...newMember });
@@ -1444,6 +1449,39 @@ export default function SignUpScreen() {
                                     </Text>
                                 </TouchableOpacity>
                             )}
+                        </View>
+
+                        {/* Monthly Payment Opt-In Toggle (Default: No) */}
+                        <View className={`rounded-2xl border p-4 flex-row items-center justify-between gap-3 ${isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'}`}>
+                            <View className="flex-1">
+                                <View className="flex-row items-center gap-2 flex-wrap">
+                                    <Text className={`text-[13px] font-extrabold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
+                                        {tr('मासिक ट्रस्ट सहयोग (₹100/माह)', 'ماہانہ ٹرسٹ تعاون (₹100/ماہ)', 'Monthly Trust Fee (₹100/mo)')}
+                                    </Text>
+                                    <View className={`px-2 py-0.5 rounded-full ${monthlyPayment === 'yes' ? 'bg-emerald-100 dark:bg-emerald-950' : 'bg-slate-200 dark:bg-slate-800'}`}>
+                                        <Text className={`text-[10px] font-bold ${monthlyPayment === 'yes' ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-300'}`}>
+                                            {monthlyPayment === 'yes' ? tr('हाँ (Yes)', 'ہاں (Yes)', 'Yes') : tr('नहीं (No)', 'نہیں (No)', 'No')}
+                                        </Text>
+                                    </View>
+                                </View>
+                                <Text className={`text-[11px] mt-1 leading-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                    {tr(
+                                        'नियमित ₹100 मासिक योगदान के लिए इसे चालू करें (वैकल्पिक, डिफ़ॉल्ट: नहीं)।',
+                                        'باقاعدہ ₹100 ماہانہ تعاون کے لیے اسے آن کریں (اختیاری، ڈیفالٹ: نہیں)۔',
+                                        'Enable optional ₹100/month fee tracking (Default: No).'
+                                    )}
+                                </Text>
+                            </View>
+                            <Switch
+                                value={monthlyPayment === 'yes'}
+                                onValueChange={(v) => {
+                                    const next = v ? 'yes' : 'no';
+                                    setMonthlyPayment(next);
+                                    void saveDraftState(undefined, { monthlyPayment: next });
+                                }}
+                                trackColor={{ false: isDark ? '#334155' : '#cbd5e1', true: '#10b981' }}
+                                thumbColor="#ffffff"
+                            />
                         </View>
 
                         <TouchableOpacity onPress={handleNextStep1} className="mt-1.5 flex-row items-center justify-center gap-2 rounded-2xl bg-[#0f3322] py-4 shadow-md">

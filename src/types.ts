@@ -169,6 +169,14 @@ export interface Campaign {
   status: 'active' | 'pending' | 'completed' | 'rejected' | 'pending_approval';
 }
 
+export interface MonthlyPaymentBreakdownItem {
+  targetType: 'primary' | 'female';
+  targetId: string;
+  targetName: string;
+  relation?: string;
+  amountINR: number;
+}
+
 export interface Donation {
   id: string;
   transactionId: string;
@@ -187,9 +195,20 @@ export interface Donation {
   paymentScreenshotUrl?: string;
   status: 'verified' | 'pending_verification' | 'rejected';
   date: string;
+  created_at?: string;
   receiptNumber: string;
   district?: string;
   wakalahInformation?: WakalahInformation[];
+  paymentType?: 'donation' | 'member_monthly' | 'female_monthly' | 'combined_monthly' | string;
+  payment_type?: string;
+  femaleMemberId?: string;
+  female_member_id?: string;
+  femaleMemberName?: string;
+  female_member_name?: string;
+  billingMonth?: string;
+  billing_month?: string;
+  monthlyBreakdown?: MonthlyPaymentBreakdownItem[];
+  monthly_breakdown?: MonthlyPaymentBreakdownItem[];
 }
 
 export interface WakalahInformation {
@@ -324,6 +343,10 @@ export interface FemaleFamilyMember {
   payment_screenshot_url?: string;
   status: 'pending' | 'approved' | 'rejected';
   rejection_reason?: string;
+  monthly_payment?: 'yes' | 'no' | string;
+  monthly_payment_date?: string;
+  monthly_payment_amount?: number;
+  last_monthly_utr?: string;
   created_at?: string;
   updated_at?: string;
 }

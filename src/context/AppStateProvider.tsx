@@ -1,9 +1,28 @@
 import React, { useState, useEffect, useContext, createContext, ReactNode, useCallback } from 'react';
+import { DeviceEventEmitter } from 'react-native';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserRole, User, Campaign, Donation } from '../types';
 import { getCampaigns } from '../services/campaignService';
 import { authenticateUser, getUserById } from '../services/userService';
+
+export const MONTHLY_EVENTS = {
+  DONATIONS_UPDATED: 'mfct:donations-updated',
+  FEMALE_MEMBERS_UPDATED: 'mfct:female-members-updated',
+  USER_UPDATED: 'mfct:user-updated',
+} as const;
+
+export function emitDonationsUpdated(payload?: unknown) {
+  DeviceEventEmitter.emit(MONTHLY_EVENTS.DONATIONS_UPDATED, payload);
+}
+
+export function emitFemaleMembersUpdated(payload?: unknown) {
+  DeviceEventEmitter.emit(MONTHLY_EVENTS.FEMALE_MEMBERS_UPDATED, payload);
+}
+
+export function emitUserUpdated(payload?: unknown) {
+  DeviceEventEmitter.emit(MONTHLY_EVENTS.USER_UPDATED, payload);
+}
 
 interface AppStateContextType {
   isInitialized: boolean;
@@ -197,6 +216,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         ...c, raisedINR: c.raisedINR + newDonation.amountINR, donorsCount: c.donorsCount + 1
       } : c)
     );
+    emitDonationsUpdated(newDonation);
   };
 
   return (
