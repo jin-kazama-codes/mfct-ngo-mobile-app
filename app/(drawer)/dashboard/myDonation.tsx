@@ -8,11 +8,17 @@ import {
   Modal,
   RefreshControl,
   Alert,
+  DeviceEventEmitter,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
-import { useAppState } from '../../../src/context/AppStateProvider';
+import { MONTHLY_EVENTS, useAppState } from '../../../src/context/AppStateProvider';
+import {
+  formatBillingMonthLabel,
+  isMonthlyFeeRecord,
+  parseMonthlyBreakdown,
+} from '../../../src/lib/monthlyPaymentUtils';
 import { getDonations } from '../../../src/services/donationService';
 import { Donation, Language } from '../../../src/types';
 import { MyDonationsListSkeleton } from '../../../src/components/SkeletonLoader';
@@ -31,6 +37,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  CalendarCheck2,
 } from 'lucide-react-native';
 import {
   getLanguageCode,
@@ -83,6 +90,8 @@ export default function MyDonationsScreen() {
 
   useEffect(() => {
     loadData();
+    const sub = DeviceEventEmitter.addListener(MONTHLY_EVENTS.DONATIONS_UPDATED, loadData);
+    return () => sub.remove();
   }, [loadData]);
 
   const onRefresh = () => {
@@ -264,6 +273,14 @@ export default function MyDonationsScreen() {
               const isRejected = don.status === 'rejected';
               const rejectionReason = (don as any).rejectionReason || (don as any).rejection_reason;
               const isReasonExpanded = expandedReasonId === don.id;
+              const isMonthlyFee = isMonthlyFeeRecord(don);
+              const monthlyBreakdown = parseMonthlyBreakdown(
+                don.monthlyBreakdown ?? don.monthly_breakdown
+              );
+              const rawBillingMonth = (don.billingMonth || don.billing_month || '').trim();
+              const billingMonthLabel = rawBillingMonth
+                ? formatBillingMonthLabel(rawBillingMonth, lang)
+                : '';
 
               // Clean display date
               let displayDate = don.date || 'Recent';
@@ -324,6 +341,27 @@ export default function MyDonationsScreen() {
                         <Text className="text-[10.5px] font-mono text-slate-400 dark:text-slate-500 mt-0.5">
                           {displayDate} {don.utrNumber ? `• UTR: ${don.utrNumber}` : ''}
                         </Text>
+                        {isMonthlyFee && (
+                          <View className="flex-row flex-wrap items-center gap-1.5 mt-1.5">
+                            <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800">
+                              <CalendarCheck2 size={10} color="#4f46e5" />
+                              <Text className="text-[10px] font-extrabold text-indigo-700 dark:text-indigo-300">
+                                {lang === 'hi' ? 'मासिक शुल्क' : lang === 'ur' ? 'ماہانہ فیس' : 'Monthly Fee'}
+                                {billingMonthLabel ? ` • ${billingMonthLabel}` : ''}
+                              </Text>
+                            </View>
+                            {monthlyBreakdown?.map((item, idx) => (
+                              <View
+                                key={`${item.targetId}-${idx}`}
+                                className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                              >
+                                <Text className="text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                                  {item.targetName} (₹{item.amountINR})
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
                       </View>
                     </View>
 
@@ -547,6 +585,43 @@ export default function MyDonationsScreen() {
                         {displayCat}
                       </Text>
                     </View>
+
+                    {(() => {
+                      const breakdown = parseMonthlyBreakdown(don.monthlyBreakdown ?? don.monthly_breakdown);
+                      const bm = (don.billingMonth || don.billing_month || '').trim();
+                      if (!isMonthlyFeeRecord(don) && !breakdown?.length) return null;
+                      return (
+                        <View className="py-1.5 border-b border-slate-200/60 dark:border-slate-700/40 space-y-1">
+                          {bm ? (
+                            <View className="flex-row justify-between">
+                              <Text className="text-xs text-slate-500 dark:text-slate-400">
+                                {lang === 'hi' ? 'बिलिंग माह:' : lang === 'ur' ? 'بلنگ مہینہ:' : 'Billing Month:'}
+                              </Text>
+                              <Text className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                                {formatBillingMonthLabel(bm, lang)}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {breakdown && breakdown.length > 0 ? (
+                            <View className="pt-1 space-y-1">
+                              <Text className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                                {lang === 'hi' ? 'कवर किए गए सदस्य:' : lang === 'ur' ? 'شامل اراکین:' : 'Members Covered:'}
+                              </Text>
+                              {breakdown.map((b, i) => (
+                                <View key={`${b.targetId}-${i}`} className="flex-row justify-between pl-2">
+                                  <Text className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                    • {b.targetName} ({b.relation || (b.targetType === 'primary' ? 'Primary' : 'Female')})
+                                  </Text>
+                                  <Text className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                    ₹{Number(b.amountINR || 0).toLocaleString('en-IN')}
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    })()}
 
                     {don.utrNumber ? (
                       <View className="flex-row justify-between py-1 border-b border-slate-200/60 dark:border-slate-700/40">

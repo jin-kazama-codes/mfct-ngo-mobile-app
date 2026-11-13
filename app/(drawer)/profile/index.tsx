@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, Platform, Switch, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, Platform, ActivityIndicator, Modal } from 'react-native';
 import { useAppState } from '../../../src/context/AppStateProvider';
 import {
   UserCircle,
@@ -28,9 +28,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { uploadImageToSupabase } from '../../../src/services/storageService';
 import { KycUpdateModal } from '../../../src/components/KycUpdateModal';
 import { ChangePasswordModal } from '../../../src/components/ChangePasswordModal';
-import { MonthlyPaymentToggle } from '../../../src/components/MonthlyPaymentToggle';
-import { Donation } from '../../../src/types';
-import { getDonations } from '../../../src/services/donationService';
+import { MonthlyPaymentStatusCard } from '../../../src/components/MonthlyPaymentStatusCard';
 import { updateUser } from '../../../src/services/userService';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from 'nativewind';
@@ -149,119 +147,6 @@ export default function ProfileScreen() {
       console.warn('Avatar pick error:', e);
     }
   };
-
-  // Monthly Payment state & donation history
-  const isMonthly = Boolean(
-    activeUser?.monthlyPayment === 'yes' ||
-    activeUser?.monthly_payment === 'yes' ||
-    activeUser?.monthlyPayment === true ||
-    activeUser?.monthly_payment === true
-  );
-  const [updatingMonthly, setUpdatingMonthly] = React.useState(false);
-  const [donations, setDonations] = React.useState<Donation[]>([]);
-  const [loadingDonations, setLoadingDonations] = React.useState(false);
-
-  React.useEffect(() => {
-    let isMounted = true;
-    if (activeUser?.id) {
-      setLoadingDonations(true);
-      getDonations(activeUser.id)
-        .then((data) => {
-          if (isMounted) setDonations(data || []);
-        })
-        .catch((err) => {
-          console.warn('Error fetching donations for mobile profile:', err);
-        })
-        .finally(() => {
-          if (isMounted) setLoadingDonations(false);
-        });
-    }
-    return () => {
-      isMounted = false;
-    };
-  }, [activeUser?.id]);
-
-  const handleToggleMonthlyPayment = async (val: boolean) => {
-    if (!activeUser?.id || updatingMonthly) return;
-    const nextStr = val ? 'yes' : 'no';
-    setUpdatingMonthly(true);
-    try {
-      const updatedUser = {
-        ...activeUser,
-        monthlyPayment: nextStr,
-        monthly_payment: nextStr,
-      };
-      await handleUpdateActiveUser(updatedUser);
-      await updateUser(activeUser.id, {
-        monthlyPayment: nextStr,
-        monthly_payment: nextStr,
-      });
-    } catch (err) {
-      console.warn('Failed to update monthly payment:', err);
-    } finally {
-      setUpdatingMonthly(false);
-    }
-  };
-
-  const getMonthName = (monthIdx: number, lang: string) => {
-    const enMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    const hiMonths = ['जनवरी', 'फ़रवरी', 'मार्च', 'अप्रैल', 'मई', 'जून', 'जुलाई', 'अगस्त', 'सितम्बर', 'अक्टूबर', 'नवम्बर', 'दिसम्बर'];
-    const urMonths = ['جنوری', 'فروری', 'مارچ', 'اپریل', 'مئی', 'جون', 'جولائی', 'اگست', 'ستمبر', 'اکتوبر', 'نومبر', 'دسمبر'];
-    if (lang === 'hi') return hiMonths[monthIdx];
-    if (lang === 'ur') return urMonths[monthIdx];
-    return enMonths[monthIdx];
-  };
-
-  const now = new Date();
-  const currentMonthIdx = now.getMonth();
-  const currentYear = now.getFullYear();
-  const lastMonthIdx = currentMonthIdx === 0 ? 11 : currentMonthIdx - 1;
-  const lastMonthYear = currentMonthIdx === 0 ? currentYear - 1 : currentYear;
-  const currentMonthName = getMonthName(currentMonthIdx, currentLang);
-  const lastMonthName = getMonthName(lastMonthIdx, currentLang);
-
-  const validDonations = donations.filter((d) => d.status !== 'rejected');
-  const latestDonation = validDonations.length > 0 ? validDonations[0] : null;
-
-  let latestPaymentDate: Date | null = null;
-  let latestPaymentAmount = 0;
-
-  if (latestDonation) {
-    if (latestDonation.date) {
-      const t = new Date(latestDonation.date).getTime();
-      if (!isNaN(t) && t > 0) latestPaymentDate = new Date(t);
-    }
-    latestPaymentAmount = latestDonation.amountINR || 0;
-  } else if (activeUser?.monthly_payment_date || activeUser?.monthlyPaymentDate) {
-    const dStr = (activeUser.monthly_payment_date || activeUser.monthlyPaymentDate) as string;
-    const parsed = new Date(dStr);
-    if (!isNaN(parsed.getTime())) latestPaymentDate = parsed;
-    latestPaymentAmount = activeUser.monthly_payment_amount || activeUser.monthlyPaymentAmount || 0;
-  } else if (activeUser?.paymentUtr && (activeUser?.joinDate || (activeUser as any)?.created_at)) {
-    const parsed = new Date(activeUser.joinDate || (activeUser as any)?.created_at);
-    if (!isNaN(parsed.getTime())) latestPaymentDate = parsed;
-    latestPaymentAmount = activeUser.membershipFee || 0;
-  }
-
-  const isPaidThisMonth = Boolean(
-    latestPaymentDate &&
-    latestPaymentDate.getMonth() === currentMonthIdx &&
-    latestPaymentDate.getFullYear() === currentYear
-  );
-
-  const isPaidLastMonth = Boolean(
-    latestPaymentDate &&
-    latestPaymentDate.getMonth() === lastMonthIdx &&
-    latestPaymentDate.getFullYear() === lastMonthYear
-  );
-
-  const formattedPaymentDate = latestPaymentDate
-    ? latestPaymentDate.toLocaleDateString(currentLang === 'hi' ? 'hi-IN' : 'en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      })
-    : '';
 
   const userStatus = activeUser?.status || (activeUser?.isVerified ? 'approved' : 'pending');
   const isApproved = userStatus === 'approved';
@@ -542,10 +427,12 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Monthly Payment Toggle & Status */}
-          <View className="py-3 border-t border-slate-100 dark:border-slate-800">
-            <MonthlyPaymentToggle user={activeUser} />
-          </View>
+          {/* Monthly Payment & Female Family Members Status */}
+          {activeUser && (
+            <View className="py-3 border-t border-slate-100 dark:border-slate-800">
+              <MonthlyPaymentStatusCard user={activeUser} variant="compact" />
+            </View>
+          )}
         </View>
 
         {/* Actions */}

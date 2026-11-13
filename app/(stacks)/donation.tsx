@@ -21,9 +21,25 @@ import { useTranslation } from 'react-i18next';
 import { useAppState } from '../../src/context/AppStateProvider';
 import { getCampaigns, getCampaignById } from '../../src/services/campaignService';
 import { getAccountDetails } from '../../src/services/adminService';
-import { createDonation } from '../../src/services/donationService';
+import { createDonation, getDonations } from '../../src/services/donationService';
+import { getFemaleFamilyMembers } from '../../src/services/memberService';
 import { uploadImageToSupabase } from '../../src/services/storageService';
-import { Campaign, DonationCategory, AccountDetails, Donation, UserRole } from '../../src/types';
+import {
+  Campaign,
+  DonationCategory,
+  AccountDetails,
+  Donation,
+  UserRole,
+  FemaleFamilyMember,
+  MonthlyPaymentBreakdownItem,
+} from '../../src/types';
+import {
+  PRIMARY_MONTHLY_FEE_INR,
+  FEMALE_MONTHLY_FEE_INR,
+  getBillingMonthKey,
+  formatBillingMonthLabel,
+  getMonthlySummary,
+} from '../../src/lib/monthlyPaymentUtils';
 import {
   getLanguageCode,
   translateCategory,
@@ -51,6 +67,9 @@ import {
   UserCheck,
   Phone,
   MapPin,
+  CalendarCheck2,
+  Users,
+  Clock,
 } from 'lucide-react-native';
 
 const PRESET_AMOUNTS = [500, 1000, 2500, 5000, 10000];
@@ -148,8 +167,13 @@ export default function DonationScreen() {
   const { t, i18n } = useTranslation();
   const lang = getLanguageCode(i18n.language);
   // router is imported as static module from expo-router (avoids NavigationContainer context errors)
-  const { activeUser } = useAppState();
-  const params = useGlobalSearchParams<{ campaignId?: string; initialCategory?: string }>();
+  const { activeUser, handleDonationSuccess } = useAppState();
+  const params = useGlobalSearchParams<{
+    campaignId?: string;
+    initialCategory?: string;
+    initialMode?: string;
+    preselectedIds?: string;
+  }>();
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Translation helper function (plain function - no hooks needed)
@@ -167,6 +191,26 @@ export default function DonationScreen() {
   const isLoggedIn = Boolean(
     activeUser && activeUser.id && activeUser.name && activeUser.name !== 'No User'
   );
+
+  // Payment mode: regular donation vs monthly fee (for logged-in users)
+  const [paymentMode, setPaymentMode] = useState<'donation' | 'monthly_fee'>(
+    params.initialMode === 'monthly_fee' && isLoggedIn ? 'monthly_fee' : 'donation'
+  );
+  const [monthlyBillingMonth, setMonthlyBillingMonth] = useState<string>(() => getBillingMonthKey());
+  const [userDonations, setUserDonations] = useState<Donation[]>([]);
+  const [femaleMembers, setFemaleMembers] = useState<FemaleFamilyMember[]>([]);
+  const [selectedMonthlyTargets, setSelectedMonthlyTargets] = useState<Record<string, boolean>>({});
+  const [monthlyAmounts, setMonthlyAmounts] = useState<Record<string, number>>({
+    primary: PRIMARY_MONTHLY_FEE_INR,
+  });
+  const [monthlySelectionInitialized, setMonthlySelectionInitialized] = useState(false);
+
+  const billingMonthOptions = useMemo(() => {
+    const now = new Date();
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    return [getBillingMonthKey(prev), getBillingMonthKey(now), getBillingMonthKey(next)];
+  }, []);
 
   // Form states
   const [amount, setAmount] = useState<number>(2500);
@@ -300,6 +344,150 @@ export default function DonationScreen() {
     }
   }, [amount, selectedCategory, lang]);
 
+  // Load user donations + female family members for Monthly Fee mode
+  useEffect(() => {
+    let active = true;
+    if (!isLoggedIn || !activeUser?.id) {
+      setUserDonations([]);
+      setFemaleMembers([]);
+      return;
+    }
+    Promise.all([getDonations(activeUser.id), getFemaleFamilyMembers(activeUser.id)])
+      .then(([dons, fems]) => {
+        if (!active) return;
+        setUserDonations(dons || []);
+        setFemaleMembers(fems || []);
+        setMonthlyAmounts((prev) => {
+          const next = { ...prev };
+          if (!next.primary) next.primary = PRIMARY_MONTHLY_FEE_INR;
+          for (const fm of fems || []) {
+            if (!next[fm.id]) next[fm.id] = FEMALE_MONTHLY_FEE_INR;
+          }
+          return next;
+        });
+      })
+      .catch((err) => {
+        console.warn('Monthly data fetch warning in donation screen:', err);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isLoggedIn, activeUser?.id]);
+
+  // Sync params if navigated via Monthly Fee Pay button
+  useEffect(() => {
+    if (params.initialMode === 'monthly_fee' && isLoggedIn && !params.campaignId) {
+      setPaymentMode('monthly_fee');
+      setStep(1);
+    } else if (params.campaignId) {
+      setPaymentMode('donation');
+    }
+  }, [params.initialMode, params.campaignId, isLoggedIn]);
+
+  const monthlySummary = useMemo(() => {
+    if (!isLoggedIn || !activeUser) return null;
+    return getMonthlySummary(activeUser, femaleMembers, userDonations);
+  }, [isLoggedIn, activeUser, femaleMembers, userDonations]);
+
+  const isPrimaryOptedIn = Boolean(monthlySummary?.primary.isOptedIn);
+  const optedInFemaleStatuses = useMemo(
+    () => (monthlySummary?.femaleStatuses || []).filter((fs) => fs.isOptedIn),
+    [monthlySummary?.femaleStatuses]
+  );
+  const hasOptedInMonthlyTarget =
+    isPrimaryOptedIn ||
+    optedInFemaleStatuses.some((fs) => fs.member.status === 'approved');
+
+  // Initialize preselected monthly targets from route params or due statuses (ONLY opted-in 'yes' targets)
+  useEffect(() => {
+    if (!isLoggedIn || !activeUser) return;
+    const paramIds = (params.preselectedIds || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (paramIds.length > 0 && monthlySummary) {
+      const next: Record<string, boolean> = {};
+      for (const id of paramIds) {
+        if (id === 'primary' && !isPrimaryOptedIn) continue;
+        if (id !== 'primary') {
+          const matchFem = optedInFemaleStatuses.find((fs) => fs.member.id === id);
+          if (!matchFem || matchFem.member.status !== 'approved') continue;
+        }
+        next[id] = true;
+      }
+      setSelectedMonthlyTargets(next);
+      setMonthlySelectionInitialized(true);
+      return;
+    }
+
+    if (!monthlySelectionInitialized && monthlySummary) {
+      const next: Record<string, boolean> = {};
+      for (const id of monthlySummary.dueTargetIds) {
+        next[id] = true;
+      }
+      setSelectedMonthlyTargets(next);
+      setMonthlySelectionInitialized(true);
+    }
+  }, [
+    isLoggedIn,
+    activeUser,
+    params.preselectedIds,
+    monthlySummary,
+    monthlySelectionInitialized,
+    isPrimaryOptedIn,
+    optedInFemaleStatuses,
+  ]);
+
+  const monthlyBreakdown = useMemo((): MonthlyPaymentBreakdownItem[] => {
+    if (!isLoggedIn || !activeUser) return [];
+    const items: MonthlyPaymentBreakdownItem[] = [];
+    if (isPrimaryOptedIn && selectedMonthlyTargets.primary) {
+      items.push({
+        targetType: 'primary',
+        targetId: activeUser.id,
+        targetName: activeUser.name || 'Primary Member',
+        relation: 'Primary Member',
+        amountINR: Number(monthlyAmounts.primary) || PRIMARY_MONTHLY_FEE_INR,
+      });
+    }
+    for (const fs of optedInFemaleStatuses) {
+      const fm = fs.member;
+      if (fm.status === 'approved' && selectedMonthlyTargets[fm.id]) {
+        items.push({
+          targetType: 'female',
+          targetId: fm.id,
+          targetName: fm.name,
+          relation: fm.relation,
+          amountINR: Number(monthlyAmounts[fm.id]) || FEMALE_MONTHLY_FEE_INR,
+        });
+      }
+    }
+    return items;
+  }, [isLoggedIn, activeUser, isPrimaryOptedIn, optedInFemaleStatuses, selectedMonthlyTargets, monthlyAmounts]);
+
+  const monthlyTotalINR = useMemo(
+    () => monthlyBreakdown.reduce((sum, item) => sum + Number(item.amountINR || 0), 0),
+    [monthlyBreakdown]
+  );
+
+  const effectiveAmount = paymentMode === 'monthly_fee' ? monthlyTotalINR : amount;
+
+  const toggleMonthlyTarget = (targetId: string) => {
+    setSelectedMonthlyTargets((prev) => ({
+      ...prev,
+      [targetId]: !prev[targetId],
+    }));
+  };
+
+  const handleMonthlyAmountChange = (targetId: string, rawVal: string) => {
+    const parsed = parseInt(rawVal.replace(/[^\d]/g, ''), 10);
+    setMonthlyAmounts((prev) => ({
+      ...prev,
+      [targetId]: isNaN(parsed) ? 0 : parsed,
+    }));
+  };
+
   // Filter campaigns for Zakat eligibility
   const isZakatSelected = selectedCategory === 'Zakat';
   const filteredCampaigns = useMemo(() => {
@@ -368,6 +556,22 @@ export default function DonationScreen() {
   };
 
   const handleProceedToPayment = () => {
+    if (paymentMode === 'monthly_fee') {
+      if (monthlyBreakdown.length === 0 || monthlyTotalINR <= 0) {
+        Alert.alert(
+          tr('सदस्य चुनें', 'ممبر منتخب کریں', 'Select Member'),
+          tr(
+            'कृपया मासिक शुल्क भुगतान के लिए कम से कम एक सदस्य और वैध राशि चुनें।',
+            'براہ کرم ماہانہ فیس کی ادائیگی کے لیے کم از کم ایک رکن اور درست رقم منتخب کریں۔',
+            'Please select at least one member with a valid fee amount to continue.'
+          )
+        );
+        return;
+      }
+      setStep(2);
+      return;
+    }
+
     if (selectedCategory === 'Zakat') {
       if (!donorName.trim()) {
         Alert.alert(
@@ -470,9 +674,11 @@ export default function DonationScreen() {
     try {
       const finalUtr = utrNumber.trim();
       const finalDonorName = donorName.trim();
+      const isMonthlyFeeMode = paymentMode === 'monthly_fee';
       const isOutside = Boolean(
-        isOutsideCommunity ||
-        (registeredCity && campaign && !isMatchUserCity(campaign))
+        !isMonthlyFeeMode &&
+        (isOutsideCommunity ||
+        (registeredCity && campaign && !isMatchUserCity(campaign)))
       );
 
       // Upload payment screenshot to Supabase storage IMAGES bucket
@@ -480,18 +686,39 @@ export default function DonationScreen() {
         ? await uploadImageToSupabase(screenshotUri, 'receipts')
         : '';
 
+      const hasPrimaryTarget = monthlyBreakdown.some((b) => b.targetType === 'primary');
+      const femaleTargets = monthlyBreakdown.filter((b) => b.targetType === 'female');
+      const computedPaymentType = isMonthlyFeeMode
+        ? hasPrimaryTarget && femaleTargets.length > 0
+          ? 'combined_monthly'
+          : hasPrimaryTarget
+            ? 'member_monthly'
+            : 'female_monthly'
+        : 'donation';
+
+      const monthlyLabelNames = monthlyBreakdown
+        .map((b) => (b.targetType === 'primary' ? 'Primary' : b.targetName))
+        .join(', ');
+      const monthTitle = formatBillingMonthLabel(monthlyBillingMonth, 'en');
+
       const donationData: Omit<Donation, 'id'> = {
         transactionId: `TXN${Math.floor(100000000 + Math.random() * 900000000)}`,
         utrNumber: finalUtr,
         donorName: finalDonorName,
         donorId: (isLoggedIn && activeUser?.id) ? activeUser.id : 'anonymous',
         donorRole: (isLoggedIn && activeUser) ? ((activeUser?.districtRole?.trim() || activeUser?.district_role?.trim() || activeUser?.role || 'member') as UserRole) : 'member',
-        // When outside community: do NOT link to any specific campaign
-        campaignId: isOutside ? 'general' : (campaign?.id || 'general'),
-        campaignTitle: isOutside ? `${selectedCategory} General Fund (MFCT)` : (campaign?.title || `${selectedCategory} General Fund`),
-        communityName: isOutside ? 'Mohammad Faeem Charitable Trust (MFCT)' : (campaign?.communityName || 'Mohammad Faeem Charitable Trust (MFCT)'),
-        amountINR: amount,
-        category: selectedCategory,
+        // When outside community or monthly fee: do NOT link to any specific campaign
+        campaignId: isMonthlyFeeMode || isOutside ? 'general' : (campaign?.id || 'general'),
+        campaignTitle: isMonthlyFeeMode
+          ? `Monthly Fee - ${monthTitle} (${monthlyLabelNames || 'Member'})`
+          : isOutside
+            ? `${selectedCategory} General Fund (MFCT)`
+            : (campaign?.title || `${selectedCategory} General Fund`),
+        communityName: isMonthlyFeeMode || isOutside
+          ? (activeUser?.communityName || 'Mohammad Faeem Charitable Trust (MFCT)')
+          : (campaign?.communityName || 'Mohammad Faeem Charitable Trust (MFCT)'),
+        amountINR: effectiveAmount,
+        category: isMonthlyFeeMode ? 'General' : selectedCategory,
         isOutsideCommunity: isOutside,
         paymentMethod,
         paymentScreenshotUrl: uploadedScreenshotUrl || undefined,
@@ -499,7 +726,16 @@ export default function DonationScreen() {
         date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
         receiptNumber: `RCP-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
         district: (isLoggedIn ? (activeUser?.district || activeUser?.city) : donorCity.trim()) || (campaign as any)?.district || campaign?.city || 'General',
-        wakalahInformation: selectedCategory === 'Zakat' ? [
+        paymentType: computedPaymentType,
+        billingMonth: isMonthlyFeeMode ? monthlyBillingMonth : undefined,
+        femaleMemberId: isMonthlyFeeMode && femaleTargets.length > 0
+          ? femaleTargets.map((f) => f.targetId).join(',')
+          : undefined,
+        femaleMemberName: isMonthlyFeeMode && femaleTargets.length > 0
+          ? femaleTargets.map((f) => f.targetName).join(', ')
+          : undefined,
+        monthlyBreakdown: isMonthlyFeeMode ? monthlyBreakdown : undefined,
+        wakalahInformation: !isMonthlyFeeMode && selectedCategory === 'Zakat' ? [
           {
             donorName: finalDonorName,
             guardianName: zakatGuardianName.trim(),
@@ -518,6 +754,7 @@ export default function DonationScreen() {
       };
 
       const saved = await createDonation(donationData);
+      handleDonationSuccess(saved);
 
       setCreatedDonation(saved);
       setStep(3);
@@ -541,12 +778,19 @@ export default function DonationScreen() {
   const handleShareReceipt = async () => {
     if (!createdDonation) return;
     try {
+      const breakdownLines =
+        createdDonation.monthlyBreakdown && createdDonation.monthlyBreakdown.length > 0
+          ? `\nBilling Month: ${formatBillingMonthLabel(createdDonation.billingMonth || monthlyBillingMonth, 'en')}\nMembers Covered:\n${createdDonation.monthlyBreakdown
+              .map((b) => `- ${b.targetName} (${b.relation || (b.targetType === 'primary' ? 'Primary Member' : 'Female Member')}): ₹${b.amountINR}`)
+              .join('\n')}\n`
+          : '';
       const message = `*MOHAMMAD FAEEM CHARITABLE TRUST (MFCT)*\n` +
         `Donation Receipt: ${createdDonation.receiptNumber}\n` +
         `Donor: ${createdDonation.donorName}\n` +
         `Amount: ₹${createdDonation.amountINR.toLocaleString('en-IN')}\n` +
         `Category: ${createdDonation.category}\n` +
-        `Campaign: ${createdDonation.campaignTitle}\n` +
+        `Purpose: ${createdDonation.campaignTitle}\n` +
+        breakdownLines +
         (createdDonation.utrNumber ? `UTR Ref: ${createdDonation.utrNumber}\n` : '') +
         `Date: ${createdDonation.date}\n` +
         `Status: ${createdDonation.status}\n` +
@@ -653,6 +897,287 @@ export default function DonationScreen() {
                 </View>
               )}
 
+              {/* Payment Mode Switcher (show Monthly Fee option only if user/female member opted in) */}
+              {isLoggedIn && !params.campaignId && (hasOptedInMonthlyTarget || paymentMode === 'monthly_fee') && (
+                <View className="flex-row bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 gap-1.5">
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => setPaymentMode('donation')}
+                    className={`flex-1 py-2.5 px-3 rounded-xl flex-row items-center justify-center gap-1.5 ${
+                      paymentMode === 'donation'
+                        ? 'bg-emerald-600'
+                        : 'bg-transparent'
+                    }`}
+                  >
+                    <Heart color={paymentMode === 'donation' ? '#ffffff' : '#64748b'} size={14} />
+                    <Text
+                      className={`text-xs font-extrabold ${
+                        paymentMode === 'donation'
+                          ? 'text-white'
+                          : 'text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      {tr('दान / अभियान', 'عطیہ / مہم', 'Donation')}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => setPaymentMode('monthly_fee')}
+                    className={`flex-1 py-2.5 px-3 rounded-xl flex-row items-center justify-center gap-1.5 ${
+                      paymentMode === 'monthly_fee'
+                        ? 'bg-emerald-600'
+                        : 'bg-transparent'
+                    }`}
+                  >
+                    <CalendarCheck2
+                      color={paymentMode === 'monthly_fee' ? '#ffffff' : '#64748b'}
+                      size={14}
+                    />
+                    <Text
+                      className={`text-xs font-extrabold ${
+                        paymentMode === 'monthly_fee'
+                          ? 'text-white'
+                          : 'text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      {tr('मासिक शुल्क', 'ماہانہ فیس', 'Monthly Fee')}
+                    </Text>
+                    {(monthlySummary?.totalDueCount || 0) > 0 && (
+                      <View
+                        className={`px-1.5 py-0.5 rounded-full ${
+                          paymentMode === 'monthly_fee' ? 'bg-white/25' : 'bg-rose-500'
+                        }`}
+                      >
+                        <Text className="text-[9px] font-black text-white">
+                          {monthlySummary?.totalDueCount}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* MONTHLY FEE PAYMENT CHECKLIST */}
+              {paymentMode === 'monthly_fee' && isLoggedIn && (
+                <View className="space-y-3">
+                  {/* Billing Month Picker */}
+                  <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                    <Text className="text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider mb-2.5">
+                      {tr('1. माह चुनें', '1. مہینہ منتخب کریں', '1. Select Billing Month')}
+                    </Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                      {billingMonthOptions.map((mKey) => {
+                        const isSel = monthlyBillingMonth === mKey;
+                        return (
+                          <TouchableOpacity
+                            key={mKey}
+                            onPress={() => setMonthlyBillingMonth(mKey)}
+                            className={`px-3.5 py-2 rounded-xl border ${
+                              isSel
+                                ? 'bg-emerald-600 border-emerald-600'
+                                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            <Text
+                              className={`text-xs font-bold ${
+                                isSel ? 'text-white' : 'text-slate-700 dark:text-slate-300'
+                              }`}
+                            >
+                              {formatBillingMonthLabel(mKey, lang)}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+
+                  {/* Members Checklist */}
+                  <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5">
+                    <View className="flex-row items-center justify-between mb-1">
+                      <Text className="text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">
+                        {tr('2. सदस्य व शुल्क चुनें', '2. اراکین اور فیس منتخب کریں', '2. Select Members & Fee')}
+                      </Text>
+                      <Text className="text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400">
+                        ₹{monthlyTotalINR.toLocaleString('en-IN')}
+                      </Text>
+                    </View>
+
+                    {!hasOptedInMonthlyTarget ? (
+                      <View className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
+                        <Text className="text-xs font-extrabold text-slate-900 dark:text-white">
+                          {tr(
+                            'मासिक शुल्क योगदान वर्तमान में बंद (नहीं) है',
+                            'ماہانہ فیس تعاون فی الحال بند (نہیں) ہے',
+                            'Monthly Fee Contribution is OFF (No)'
+                          )}
+                        </Text>
+                        <Text className="text-[11px] text-slate-500 dark:text-slate-400 leading-4">
+                          {tr(
+                            'जब तक आप या कोई महिला सदस्य प्रोफ़ाइल / महिला सदस्य पृष्ठ से मासिक शुल्क टॉगल चालू नहीं करते, मासिक शुल्क नहीं दिखाया या लिया जाएगा।',
+                            'جب تک آپ یا کوئی خاتون رکن ماہانہ فیس ٹوگل آن نہیں کرتے، ماہانہ فیس نہیں لی جائے گی۔',
+                            'No monthly fee dues are shown or charged while set to No. You can enable it anytime in Profile or Female Members.'
+                          )}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => setPaymentMode('donation')}
+                          className="self-start px-3 py-1.5 rounded-lg bg-emerald-600"
+                        >
+                          <Text className="text-[11px] font-bold text-white">
+                            {tr('सामान्य दान पर जाएं', 'عام عطیہ پر جائیں', 'Switch to Donation')}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <>
+                    {/* Primary Member Row (ONLY when opted in = 'yes') */}
+                    {isPrimaryOptedIn && (() => {
+                      const isChecked = Boolean(selectedMonthlyTargets.primary);
+                      const pStatus = monthlySummary?.primary.status || 'due';
+                      return (
+                        <View
+                          className={`p-3 rounded-xl border ${
+                            isChecked
+                              ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-500'
+                              : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700'
+                          }`}
+                        >
+                          <TouchableOpacity
+                            activeOpacity={0.75}
+                            onPress={() => toggleMonthlyTarget('primary')}
+                            className="flex-row items-center justify-between"
+                          >
+                            <View className="flex-row items-center gap-2.5 flex-1 pr-2">
+                              <View
+                                className={`w-5 h-5 rounded-md border items-center justify-center ${
+                                  isChecked
+                                    ? 'bg-emerald-600 border-emerald-600'
+                                    : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900'
+                                }`}
+                              >
+                                {isChecked && <Check color="#ffffff" size={13} />}
+                              </View>
+                              <View className="flex-1">
+                                <Text className="text-xs font-extrabold text-slate-900 dark:text-white" numberOfLines={1}>
+                                  {activeUser?.name} ({tr('मुख्य सदस्य', 'بنیادی رکن', 'Primary')})
+                                </Text>
+                                <Text className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                                  {pStatus === 'paid'
+                                    ? tr('इस माह पूर्ण', 'اس ماہ مکمل', 'Paid this month')
+                                    : pStatus === 'pending_verification'
+                                      ? tr('सत्यापन लंबित', 'تصدیق زیرِ غور', 'Pending verification')
+                                      : tr('शुल्क बकाया', 'فیس باقی', 'Fee Due')}{' '}
+                                  • ₹{PRIMARY_MONTHLY_FEE_INR}/mo
+                                </Text>
+                              </View>
+                            </View>
+                            <View className="flex-row items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1">
+                              <Text className="text-[11px] font-bold text-emerald-600 mr-1">₹</Text>
+                              <TextInput
+                                value={String(monthlyAmounts.primary ?? PRIMARY_MONTHLY_FEE_INR)}
+                                onChangeText={(v) => handleMonthlyAmountChange('primary', v)}
+                                keyboardType="numeric"
+                                className="w-12 text-xs font-extrabold text-slate-900 dark:text-white text-right p-0"
+                              />
+                            </View>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })()}
+
+                    {/* Female Family Members (ONLY opted-in 'yes' female members) */}
+                    {optedInFemaleStatuses.map((fs) => {
+                      const m = fs.member;
+                      const isApprovedFemale = m.status === 'approved';
+                      const isChecked = Boolean(selectedMonthlyTargets[m.id]);
+                      return (
+                        <View
+                          key={m.id}
+                          className={`p-3 rounded-xl border ${
+                            !isApprovedFemale
+                              ? 'bg-slate-50/70 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 opacity-70'
+                              : isChecked
+                                ? 'bg-pink-50/60 dark:bg-pink-950/20 border-pink-500'
+                                : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700'
+                          }`}
+                        >
+                          <TouchableOpacity
+                            activeOpacity={isApprovedFemale ? 0.75 : 1}
+                            disabled={!isApprovedFemale}
+                            onPress={() => isApprovedFemale && toggleMonthlyTarget(m.id)}
+                            className="flex-row items-center justify-between"
+                          >
+                            <View className="flex-row items-center gap-2.5 flex-1 pr-2">
+                              <View
+                                className={`w-5 h-5 rounded-md border items-center justify-center ${
+                                  isChecked && isApprovedFemale
+                                    ? 'bg-pink-600 border-pink-600'
+                                    : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900'
+                                }`}
+                              >
+                                {isChecked && isApprovedFemale && <Check color="#ffffff" size={13} />}
+                              </View>
+                              <View className="flex-1">
+                                <DynamicText
+                                  text={`${m.name} (${m.relation})`}
+                                  className="text-xs font-extrabold text-slate-900 dark:text-white"
+                                  numberOfLines={1}
+                                />
+                                <Text className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                                  {fs.status === 'paid'
+                                    ? tr('इस माह पूर्ण', 'اس ماہ مکمل', 'Paid this month')
+                                    : fs.status === 'pending_verification'
+                                      ? tr('सत्यापन लंबित', 'تصدیق زیرِ غور', 'Pending verification')
+                                      : fs.status === 'kyc_pending'
+                                        ? tr('KYC अनुमोदन लंबित', 'KYC منظوری زیرِ غور', 'Awaiting KYC approval')
+                                        : fs.status === 'rejected'
+                                          ? tr('अस्वीकृत', 'مسترد', 'Rejected')
+                                          : tr('शुल्क बकाया', 'فیس باقی', 'Fee Due')}{' '}
+                                  • ₹{FEMALE_MONTHLY_FEE_INR}/mo
+                                </Text>
+                              </View>
+                            </View>
+                            {isApprovedFemale && (
+                              <View className="flex-row items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1">
+                                <Text className="text-[11px] font-bold text-pink-600 mr-1">₹</Text>
+                                <TextInput
+                                  value={String(monthlyAmounts[m.id] ?? FEMALE_MONTHLY_FEE_INR)}
+                                  onChangeText={(v) => handleMonthlyAmountChange(m.id, v)}
+                                  keyboardType="numeric"
+                                  className="w-12 text-xs font-extrabold text-slate-900 dark:text-white text-right p-0"
+                                />
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+
+                    {optedInFemaleStatuses.length === 0 && (
+                      <TouchableOpacity
+                        onPress={() => router.push('/(drawer)/dashboard/female-members')}
+                        className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-dashed border-slate-300 dark:border-slate-700 flex-row items-center justify-between"
+                      >
+                        <View className="flex-row items-center gap-2 flex-1">
+                          <Users color="#64748b" size={14} />
+                          <Text className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 flex-1">
+                            {tr(
+                              'महिला परिवार सदस्यों के लिए मासिक शुल्क (₹50/माह) जोड़ने या चालू करने के लिए यहाँ टैप करें',
+                              'خواتین اہل خانہ کے لیے ماہانہ فیس (₹50/ماہ) شامل یا آن کرنے کے لیے یہاں ٹیپ کریں',
+                              'Tap here to add or enable Female Family Members (₹50/mo)'
+                            )}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                      </>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {paymentMode === 'donation' && (
+                <>
               {/* Outside Community Assistance Toggle */}
               {campaigns.length > 0 && (
                 <View
@@ -1248,16 +1773,20 @@ export default function DonationScreen() {
                   )}
                 </View>
               )}
+                </>
+              )}
 
               {/* Proceed to Payment Button */}
-              <TouchableOpacity
-                onPress={handleProceedToPayment}
-                className="w-full py-4 bg-emerald-600 rounded-2xl items-center justify-center shadow-md flex-row mt-2"
-              >
-                <Text className="text-white font-black text-sm">
-                  {t('donation.proceed_to_pay', tr('भुगतान हेतु आगे बढ़ें', 'ادائیگی کے لیے آگے بڑھیں', 'Proceed to Payment'))} (₹{amount.toLocaleString('en-IN')})
-                </Text>
-              </TouchableOpacity>
+              {(paymentMode === 'donation' || hasOptedInMonthlyTarget) && (
+                <TouchableOpacity
+                  onPress={handleProceedToPayment}
+                  className="w-full py-4 bg-emerald-600 rounded-2xl items-center justify-center shadow-md flex-row mt-2"
+                >
+                  <Text className="text-white font-black text-sm">
+                    {t('donation.proceed_to_pay', tr('भुगतान हेतु आगे बढ़ें', 'ادائیگی کے لیے آگے بڑھیں', 'Proceed to Payment'))} (₹{effectiveAmount.toLocaleString('en-IN')})
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -1268,14 +1797,25 @@ export default function DonationScreen() {
               <View className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex-row items-center justify-between">
                 <View className="flex-1 mr-3">
                   <Text className="text-xs text-slate-400">
-                    {t('donation.selected_campaign', tr('चयनित अभियान:', 'منتخب مہم:', 'Selected Campaign:'))}
+                    {paymentMode === 'monthly_fee'
+                      ? tr('मासिक शुल्क विवरण:', 'ماہانہ فیس کی تفصیل:', 'Monthly Fee Purpose:')
+                      : t('donation.selected_campaign', tr('चयनित अभियान:', 'منتخب مہم:', 'Selected Campaign:'))}
                   </Text>
                   <DynamicText
-                    text={campaign?.title || `${selectedCategory} General Fund`}
+                    text={
+                      paymentMode === 'monthly_fee'
+                        ? `Monthly Fee - ${formatBillingMonthLabel(monthlyBillingMonth, lang)}`
+                        : (campaign?.title || `${selectedCategory} General Fund`)
+                    }
                     className="font-bold text-sm text-slate-900 dark:text-white mt-0.5"
                     numberOfLines={1}
                   />
-                  {isOutsideCommunity && (
+                  {paymentMode === 'monthly_fee' && monthlyBreakdown.length > 0 && (
+                    <Text className="text-[10.5px] font-semibold text-emerald-700 dark:text-emerald-300 mt-1">
+                      {monthlyBreakdown.map((b) => `${b.targetName} (₹${b.amountINR})`).join(' • ')}
+                    </Text>
+                  )}
+                  {isOutsideCommunity && paymentMode === 'donation' && (
                     <View className="px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 self-start mt-1">
                       <Text className="text-[9px] font-extrabold text-emerald-800 dark:text-emerald-200">
                         {tr('बाहरी समुदाय सहायता', 'بیرونی کمیونٹی امداد', 'Outside Community Relief')}
@@ -1288,11 +1828,13 @@ export default function DonationScreen() {
                     {t('donation.total_amount', tr('कुल राशि:', 'کل رقم:', 'Total Amount:'))}
                   </Text>
                   <Text className="text-lg font-black text-emerald-600 dark:text-emerald-400">
-                    ₹{amount.toLocaleString('en-IN')}
+                    ₹{effectiveAmount.toLocaleString('en-IN')}
                   </Text>
                   <View className="bg-emerald-50 dark:bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 mt-1">
                     <Text className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase">
-                      {translateCategory(selectedCategory, lang)}
+                      {paymentMode === 'monthly_fee'
+                        ? tr('मासिक शुल्क', 'ماہانہ فیس', 'Monthly Fee')
+                        : translateCategory(selectedCategory, lang)}
                     </Text>
                   </View>
                 </View>
@@ -1756,9 +2298,9 @@ export default function DonationScreen() {
               </Text>
               <Text className="text-xs text-slate-500 dark:text-slate-400 text-center px-4 leading-5">
                 {tr(
-                  `आपकी ₹${(createdDonation?.amountINR || amount).toLocaleString('en-IN')} की दान राशि एस्क्रो के तहत दर्ज कर ली गई है और कर-छूट रसीद तैयार कर दी गई है।`,
-                  `آپ کا ₹${(createdDonation?.amountINR || amount).toLocaleString('en-IN')} کا عطیہ موصول ہو گیا ہے اور ٹیکس چھوٹ رسید تیار کر دی گئی ہے۔`,
-                  `Your donation of ₹${(createdDonation?.amountINR || amount).toLocaleString('en-IN')} has been submitted under escrow and a tax-exempt receipt has been generated.`
+                  `आपकी ₹${(createdDonation?.amountINR || effectiveAmount).toLocaleString('en-IN')} की भुगतान राशि एस्क्रो के तहत दर्ज कर ली गई है और रसीद तैयार कर दी गई है।`,
+                  `آپ کا ₹${(createdDonation?.amountINR || effectiveAmount).toLocaleString('en-IN')} کا ادائیگی ریکارڈ موصول ہو گیا ہے اور رسید تیار کر دی گئی ہے۔`,
+                  `Your payment of ₹${(createdDonation?.amountINR || effectiveAmount).toLocaleString('en-IN')} has been submitted under escrow and an official receipt has been generated.`
                 )}
               </Text>
 
@@ -1795,9 +2337,36 @@ export default function DonationScreen() {
                     {t('donation.amount_paid', tr('भुगतान की गई राशि', 'ادا کردہ رقم', 'Amount Paid'))}
                   </Text>
                   <Text className="text-base font-black text-emerald-600 dark:text-emerald-400">
-                    ₹{createdDonation?.amountINR?.toLocaleString('en-IN') || amount.toLocaleString('en-IN')}
+                    ₹{createdDonation?.amountINR?.toLocaleString('en-IN') || effectiveAmount.toLocaleString('en-IN')}
                   </Text>
                 </View>
+
+                {/* Monthly Fee Breakdown */}
+                {createdDonation?.monthlyBreakdown && createdDonation.monthlyBreakdown.length > 0 && (
+                  <View className="border-b border-slate-100 dark:border-slate-800 pb-2 space-y-1">
+                    <View className="flex-row justify-between">
+                      <Text className="text-xs text-slate-400">
+                        {tr('बिलिंग माह', 'بلنگ مہینہ', 'Billing Month')}
+                      </Text>
+                      <Text className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        {formatBillingMonthLabel(createdDonation.billingMonth || monthlyBillingMonth, lang)}
+                      </Text>
+                    </View>
+                    <Text className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mt-1">
+                      {tr('शामिल सदस्य:', 'شامل اراکین:', 'Members Covered:')}
+                    </Text>
+                    {createdDonation.monthlyBreakdown.map((item, idx) => (
+                      <View key={`${item.targetId}-${idx}`} className="flex-row justify-between pl-2">
+                        <Text className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                          • {item.targetName} ({item.relation || (item.targetType === 'primary' ? 'Primary' : 'Female')})
+                        </Text>
+                        <Text className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                          ₹{Number(item.amountINR || 0).toLocaleString('en-IN')}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
 
                 {/* Category */}
                 <View className="flex-row justify-between border-b border-slate-100 dark:border-slate-800 pb-2">

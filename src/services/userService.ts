@@ -129,8 +129,8 @@ function mapRow(row: Record<string, unknown>): User {
     isMalikENisab: (row.is_malik_e_nisab ?? row.isMalikENisab) as boolean | undefined,
     helpType: (row.help_type || row.helpType) as string | undefined,
     helpDetails: (row.help_details || row.helpDetails) as string | undefined,
-    monthlyPayment: (row.monthly_payment ?? row.monthlyPayment) as string | undefined,
-    monthly_payment: (row.monthly_payment ?? row.monthlyPayment) as string | undefined,
+    monthlyPayment: (row.monthly_payment ?? row.monthlyPayment ?? 'no') as string,
+    monthly_payment: (row.monthly_payment ?? row.monthlyPayment ?? 'no') as string,
     monthlyPaymentDate: (row.monthly_payment_date ?? row.monthlyPaymentDate) as string | undefined,
     monthly_payment_date: (row.monthly_payment_date ?? row.monthlyPaymentDate) as string | undefined,
     monthlyPaymentAmount: (row.monthly_payment_amount ?? row.monthlyPaymentAmount) as number | undefined,
@@ -311,6 +311,7 @@ export async function createUser(user: User & { kycDocumentUrl?: string; aadhaar
     is_malik_e_nisab: user.isMalikENisab !== undefined ? user.isMalikENisab : null,
     help_type: user.helpType || null,
     help_details: user.helpDetails || null,
+    monthly_payment: user.monthlyPayment ?? user.monthly_payment ?? 'no',
   };
 
   let currentPayload = { ...payload };

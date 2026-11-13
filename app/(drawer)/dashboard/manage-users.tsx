@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity,
-  ActivityIndicator, Image, Modal
+  ActivityIndicator, Image, Modal, Switch
 } from 'react-native';
 import {
   getUsers,
@@ -11,14 +11,22 @@ import {
 } from '../../../src/services/userService';
 import { getCommunities } from '../../../src/services/communityService';
 import { uploadImageToSupabase } from '../../../src/services/storageService';
-import { getMemberNominees, getMemberBankDetails } from '../../../src/services/memberService';
+import { getMemberNominees, getMemberBankDetails, getFemaleFamilyMembers } from '../../../src/services/memberService';
+import { getDonations } from '../../../src/services/donationService';
 import { useAppState } from '../../../src/context/AppStateProvider';
-import { User, UserRole, Community, MemberNominee, MemberBankDetails } from '../../../src/types';
+import { User, UserRole, Community, MemberNominee, MemberBankDetails, FemaleFamilyMember, Donation } from '../../../src/types';
+import {
+  PRIMARY_MONTHLY_FEE_INR,
+  FEMALE_MONTHLY_FEE_INR,
+  formatBillingMonthLabel,
+  formatShortDate,
+  getMonthlySummary,
+} from '../../../src/lib/monthlyPaymentUtils';
 import {
   Users as UsersIcon, ShieldCheck, PlusCircle, Trash2, CheckCircle2,
   Eye, EyeOff, Edit3, Search, Upload, X, MapPin, Mail,
   Phone, Building2, Building, CreditCard, Lock, RefreshCw, AlertCircle,
-  Sparkles, ArrowLeft, Camera, FileText, Award, UserCheck
+  Sparkles, ArrowLeft, Camera, FileText, Award, UserCheck, CalendarCheck2, Heart
 } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useTranslation } from 'react-i18next';
@@ -228,6 +236,8 @@ export default function ManageUsersScreen() {
   const [viewUser, setViewUser] = useState<User | null>(null);
   const [viewNominees, setViewNominees] = useState<MemberNominee[]>([]);
   const [viewBankDetails, setViewBankDetails] = useState<MemberBankDetails[]>([]);
+  const [viewFemaleMembers, setViewFemaleMembers] = useState<FemaleFamilyMember[]>([]);
+  const [viewDonations, setViewDonations] = useState<Donation[]>([]);
   const [loadingExtra, setLoadingExtra] = useState(false);
 
   useEffect(() => {
@@ -236,10 +246,14 @@ export default function ManageUsersScreen() {
       Promise.all([
         getMemberNominees(viewUser.id),
         getMemberBankDetails(viewUser.id),
+        getFemaleFamilyMembers(viewUser.id),
+        getDonations(viewUser.id),
       ])
-        .then(([noms, banks]) => {
+        .then(([noms, banks, fems, dons]) => {
           setViewNominees(noms);
           setViewBankDetails(banks);
+          setViewFemaleMembers(fems);
+          setViewDonations(dons);
         })
         .finally(() => {
           setLoadingExtra(false);
@@ -247,8 +261,15 @@ export default function ManageUsersScreen() {
     } else {
       setViewNominees([]);
       setViewBankDetails([]);
+      setViewFemaleMembers([]);
+      setViewDonations([]);
     }
   }, [viewUser?.id]);
+
+  const viewMonthlySummary = useMemo(() => {
+    if (!viewUser) return null;
+    return getMonthlySummary(viewUser, viewFemaleMembers, viewDonations);
+  }, [viewUser, viewFemaleMembers, viewDonations]);
 
   // Assign Role modal state (only 2 fields: district and role)
   const [assignRoleUser, setAssignRoleUser] = useState<User | null>(null);
@@ -327,6 +348,7 @@ export default function ManageUsersScreen() {
   const [state, setState] = useState('');
   const [selectedCommunityId, setSelectedCommunityId] = useState('');
   const [paymentUtr, setPaymentUtr] = useState('');
+  const [monthlyPayment, setMonthlyPayment] = useState<'yes' | 'no'>('no');
   const [roleFilter, setRoleFilter] = useState('all');
 
   // Media states
@@ -438,6 +460,7 @@ export default function ManageUsersScreen() {
     setState('');
     setSelectedCommunityId('');
     setPaymentUtr('');
+    setMonthlyPayment('no');
     setAvatar('');
     setDocumentUrl('');
     setPaymentScreenshotUrl('');
@@ -465,6 +488,7 @@ export default function ManageUsersScreen() {
     setState(user.state || '');
     setSelectedCommunityId(user.communityId || '');
     setPaymentUtr(user.paymentUtr || '');
+    setMonthlyPayment(user.monthly_payment === 'yes' || user.monthlyPayment === 'yes' ? 'yes' : 'no');
     setAvatar(user.avatar || '');
     setDocumentUrl(user.documentUrl || '');
     setPaymentScreenshotUrl(user.paymentScreenshotUrl || '');
@@ -521,6 +545,8 @@ export default function ManageUsersScreen() {
           paymentUtr: paymentUtr.trim() || undefined,
           paymentScreenshotUrl: finalScreenshotUrl,
           plainPassword: plainPassword.trim() || undefined,
+          monthlyPayment,
+          monthly_payment: monthlyPayment,
         });
 
         showToast('User account updated successfully!', 'success');
@@ -548,6 +574,8 @@ export default function ManageUsersScreen() {
           documentUrl: finalDocUrl,
           paymentUtr: paymentUtr.trim() || undefined,
           paymentScreenshotUrl: finalScreenshotUrl,
+          monthlyPayment,
+          monthly_payment: monthlyPayment,
         };
 
         await createUser({
@@ -1194,6 +1222,29 @@ export default function ManageUsersScreen() {
                 />
               </View>
             )}
+
+            {/* User Monthly Fee Opt-In Toggle (Default: No) */}
+            <View className="mt-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex-row items-center justify-between gap-3">
+              <View className="flex-1">
+                <Text className="text-xs font-extrabold text-slate-900 dark:text-white">
+                  Monthly Fee Participation (₹100/mo)
+                </Text>
+                <Text className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Default: No (Turn ON only if user participates in monthly ₹100 fee)
+                </Text>
+              </View>
+              <View className="flex-row items-center gap-2">
+                <Text className={`text-[11px] font-bold ${monthlyPayment === 'yes' ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {monthlyPayment === 'yes' ? 'Yes' : 'No'}
+                </Text>
+                <Switch
+                  value={monthlyPayment === 'yes'}
+                  onValueChange={(v) => setMonthlyPayment(v ? 'yes' : 'no')}
+                  trackColor={{ false: isDark ? '#334155' : '#cbd5e1', true: '#10b981' }}
+                  thumbColor="#ffffff"
+                />
+              </View>
+            </View>
           </View>
 
           {/* Submit Row */}
@@ -1405,6 +1456,139 @@ export default function ManageUsersScreen() {
                     </View>
                   </View>
                 ) : null}
+
+                {/* Monthly Fee & Female Family Members Section */}
+                {viewMonthlySummary && (
+                  <View className="p-3 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200/60 dark:border-indigo-800/40 rounded-xl gap-2.5">
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-row items-center gap-1.5">
+                        <CalendarCheck2 color="#4f46e5" size={14} />
+                        <Text className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                          MONTHLY FEE ({formatBillingMonthLabel(viewMonthlySummary.currentMonthKey, lang)})
+                        </Text>
+                      </View>
+                      <Text className="text-[10px] font-black text-indigo-700 dark:text-indigo-300">
+                        {viewMonthlySummary.totalPaidCount}/{viewMonthlySummary.totalEligibleCount} Paid
+                      </Text>
+                    </View>
+
+                    {/* Primary Member Monthly Row */}
+                    <View className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-indigo-100 dark:border-indigo-900 flex-row items-center justify-between">
+                      <View className="flex-1 pr-2">
+                        <Text className="text-xs font-black text-slate-900 dark:text-white">
+                          Primary Member (₹{PRIMARY_MONTHLY_FEE_INR}/mo)
+                        </Text>
+                        <Text className="text-[10.5px] text-slate-500 mt-0.5">
+                          {viewMonthlySummary.primary.status === 'not_opted_in'
+                            ? 'Opted Out (Monthly Payment = No)'
+                            : viewMonthlySummary.primary.latestDate
+                              ? `Last: ${formatShortDate(viewMonthlySummary.primary.latestDate, lang)}${viewMonthlySummary.primary.latestAmount ? ` • ₹${viewMonthlySummary.primary.latestAmount}` : ''}`
+                              : 'No monthly fee record'}
+                        </Text>
+                      </View>
+                      <View
+                        className={`px-2 py-0.5 rounded-full ${
+                          viewMonthlySummary.primary.status === 'not_opted_in'
+                            ? 'bg-slate-100 dark:bg-slate-800'
+                            : viewMonthlySummary.primary.status === 'paid'
+                              ? 'bg-emerald-100 dark:bg-emerald-950/60'
+                              : viewMonthlySummary.primary.status === 'pending_verification'
+                                ? 'bg-amber-100 dark:bg-amber-950/60'
+                                : 'bg-rose-100 dark:bg-rose-950/60'
+                        }`}
+                      >
+                        <Text
+                          className={`text-[10px] font-extrabold ${
+                            viewMonthlySummary.primary.status === 'not_opted_in'
+                              ? 'text-slate-600 dark:text-slate-400'
+                              : viewMonthlySummary.primary.status === 'paid'
+                                ? 'text-emerald-700 dark:text-emerald-300'
+                                : viewMonthlySummary.primary.status === 'pending_verification'
+                                  ? 'text-amber-700 dark:text-amber-300'
+                                  : 'text-rose-700 dark:text-rose-300'
+                          }`}
+                        >
+                          {viewMonthlySummary.primary.status === 'not_opted_in'
+                            ? 'Off (No)'
+                            : viewMonthlySummary.primary.status === 'paid'
+                              ? 'Paid'
+                              : viewMonthlySummary.primary.status === 'pending_verification'
+                                ? 'Pending'
+                                : 'Due'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Female Family Members Monthly Rows */}
+                    <View className="flex-row items-center gap-1.5 mt-0.5">
+                      <Heart color="#ec4899" size={13} />
+                      <Text className="text-[10px] font-extrabold uppercase tracking-wider text-pink-700 dark:text-pink-300">
+                        FEMALE FAMILY MEMBERS ({viewMonthlySummary.femaleStatuses.length}) • ₹{FEMALE_MONTHLY_FEE_INR}/mo
+                      </Text>
+                    </View>
+                    {loadingExtra ? (
+                      <Text className="text-xs text-slate-400 italic">Loading female members...</Text>
+                    ) : viewMonthlySummary.femaleStatuses.length > 0 ? (
+                      <View className="gap-1.5">
+                        {viewMonthlySummary.femaleStatuses.map((fs) => (
+                          <View
+                            key={fs.member.id}
+                            className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-pink-100 dark:border-pink-900/50 flex-row items-center justify-between"
+                          >
+                            <View className="flex-1 pr-2">
+                              <Text className="text-xs font-black text-slate-900 dark:text-white">
+                                {fs.member.name} ({fs.member.relation})
+                              </Text>
+                              <Text className="text-[10.5px] text-slate-500 mt-0.5">
+                                KYC: {fs.member.status}
+                                {fs.latestDate
+                                  ? ` • Last Pay: ${formatShortDate(fs.latestDate, lang)}${fs.latestAmount ? ` (₹${fs.latestAmount})` : ''}`
+                                  : ''}
+                              </Text>
+                            </View>
+                            <View
+                              className={`px-2 py-0.5 rounded-full ${
+                                fs.status === 'paid'
+                                  ? 'bg-emerald-100 dark:bg-emerald-950/60'
+                                  : fs.status === 'pending_verification'
+                                    ? 'bg-amber-100 dark:bg-amber-950/60'
+                                    : fs.status === 'due'
+                                      ? 'bg-rose-100 dark:bg-rose-950/60'
+                                      : 'bg-slate-100 dark:bg-slate-800'
+                              }`}
+                            >
+                              <Text
+                                className={`text-[10px] font-extrabold ${
+                                  fs.status === 'paid'
+                                    ? 'text-emerald-700 dark:text-emerald-300'
+                                    : fs.status === 'pending_verification'
+                                      ? 'text-amber-700 dark:text-amber-300'
+                                      : fs.status === 'due'
+                                        ? 'text-rose-700 dark:text-rose-300'
+                                        : 'text-slate-600 dark:text-slate-400'
+                                }`}
+                              >
+                                {fs.status === 'not_opted_in'
+                                  ? 'Off (No)'
+                                  : fs.status === 'paid'
+                                    ? 'Paid'
+                                    : fs.status === 'pending_verification'
+                                      ? 'Pending'
+                                      : fs.status === 'due'
+                                        ? 'Due'
+                                        : fs.status === 'kyc_pending'
+                                          ? 'KYC Pending'
+                                          : 'Rejected'}
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <Text className="text-xs text-slate-400 italic">No female family members registered</Text>
+                    )}
+                  </View>
+                )}
 
                 {/* Nominee Details Section */}
                 <View className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/40 rounded-xl">

@@ -488,6 +488,7 @@ export async function saveFemaleFamilyMember(
   const payload: any = {
     ...data,
     fee_amount: data.fee_amount || 50,
+    monthly_payment: data.monthly_payment === 'yes' ? 'yes' : 'no',
     status: data.status || 'pending',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -513,6 +514,9 @@ export async function saveFemaleFamilyMember(
     if (error && (error.code === '42703' || error.message.includes('column'))) {
       delete payload.aadhaar_front_url;
       delete payload.aadhaar_back_url;
+      if (error.message.includes('monthly_payment')) {
+        delete payload.monthly_payment;
+      }
       payload.photo_url = fallbackBundle;
       const retry = await client
         .from('member_female_family')
@@ -625,6 +629,9 @@ export async function updateFemaleFamilyMember(
     if (error && (error.code === '42703' || error.message.includes('column'))) {
       delete payload.aadhaar_front_url;
       delete payload.aadhaar_back_url;
+      if (error.message.includes('monthly_payment')) {
+        delete payload.monthly_payment;
+      }
       if (fallbackBundle) {
         payload.photo_url = fallbackBundle;
       }

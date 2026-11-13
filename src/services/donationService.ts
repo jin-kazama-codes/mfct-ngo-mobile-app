@@ -1,5 +1,18 @@
-import { supabase } from '../lib/supabase';
-import { Donation, DonationCategory, UserRole, WakalahInformation } from '../types';
+import { supabase, supabaseAdmin } from '../lib/supabase';
+import {
+  getDonationTimestamp,
+  parseMonthlyBreakdown,
+  sortDonationsByLatest,
+} from '../lib/monthlyPaymentUtils';
+import {
+  Donation,
+  DonationCategory,
+  MonthlyPaymentBreakdownItem,
+  UserRole,
+  WakalahInformation,
+} from '../types';
+
+export { getDonationTimestamp, sortDonationsByLatest };
 
 function parseWakalahInfo(val: unknown): WakalahInformation[] | undefined {
   if (!val) return undefined;
@@ -17,7 +30,20 @@ function parseWakalahInfo(val: unknown): WakalahInformation[] | undefined {
   return undefined;
 }
 
+function extractMissingColumn(error: { message?: string } | null | undefined): string | null {
+  const msg = error?.message || '';
+  const match =
+    msg.match(/Could not find the '([^']+)' column/) ||
+    msg.match(/column "([^"]+)" of relation/) ||
+    msg.match(/column '([^']+)'/);
+  return match ? match[1] : null;
+}
+
 function mapRow(row: Record<string, unknown>): Donation {
+  const breakdownArray = parseMonthlyBreakdown(
+    row.monthlyBreakdown ?? row.monthly_breakdown
+  );
+
   return {
     id: (row.id as string) || `don_${Date.now()}`,
     transactionId: (row.transactionId || row.transaction_id) as string,
@@ -36,9 +62,20 @@ function mapRow(row: Record<string, unknown>): Donation {
     paymentScreenshotUrl: (row.paymentScreenshotUrl || row.payment_screenshot_url) as string | undefined,
     status: ((row.status as Donation['status']) || 'verified'),
     date: (row.date as string) || '',
+    created_at: (row.created_at as string) || undefined,
     receiptNumber: (row.receiptNumber || row.receipt_number) as string,
     district: (row.district as string) || undefined,
     wakalahInformation: parseWakalahInfo(row.wakalahInformation ?? row.wakalah_information),
+    paymentType: (row.paymentType || row.payment_type) as string | undefined,
+    payment_type: (row.payment_type || row.paymentType) as string | undefined,
+    femaleMemberId: (row.femaleMemberId || row.female_member_id) as string | undefined,
+    female_member_id: (row.female_member_id || row.femaleMemberId) as string | undefined,
+    femaleMemberName: (row.femaleMemberName || row.female_member_name) as string | undefined,
+    female_member_name: (row.female_member_name || row.femaleMemberName) as string | undefined,
+    billingMonth: (row.billingMonth || row.billing_month) as string | undefined,
+    billing_month: (row.billing_month || row.billingMonth) as string | undefined,
+    monthlyBreakdown: breakdownArray,
+    monthly_breakdown: breakdownArray,
   };
 }
 
@@ -48,7 +85,7 @@ export async function getDonations(donorId?: string): Promise<Donation[]> {
     if (donorId) query = query.eq('donor_id', donorId);
     const { data, error } = await query;
     if (error) throw error;
-    return (data ?? []).map(mapRow);
+    return sortDonationsByLatest((data ?? []).map(mapRow));
   } catch (err) {
     console.warn('getDonations warning:', err);
     return [];
@@ -61,9 +98,9 @@ export async function getRecentDonations(limit = 10): Promise<Donation[]> {
       .from('donations')
       .select('*')
       .order('date', { ascending: false })
-      .limit(limit);
+      .limit(Math.max(limit * 3, 50));
     if (error) throw error;
-    return (data ?? []).map(mapRow);
+    return sortDonationsByLatest((data ?? []).map(mapRow)).slice(0, limit);
   } catch (err) {
     console.warn('getRecentDonations warning:', err);
     return [];
@@ -86,6 +123,7 @@ export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Do
 
   const campaignId = (!donation.campaignId || donation.campaignId === 'general') ? null : donation.campaignId;
   const donorId = (!donation.donorId || donation.donorId === 'anonymous') ? null : donation.donorId;
+  const breakdown = donation.monthlyBreakdown ?? donation.monthly_breakdown;
 
   const payload: Record<string, any> = {
     id: `don_${Date.now()}`,
@@ -111,47 +149,62 @@ export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Do
       : null,
   };
 
+  const pType = donation.paymentType || donation.payment_type;
+  if (pType) payload.payment_type = pType;
+  const fId = donation.femaleMemberId || donation.female_member_id;
+  if (fId) payload.female_member_id = fId;
+  const fName = donation.femaleMemberName || donation.female_member_name;
+  if (fName) payload.female_member_name = fName;
+  const bMonth = donation.billingMonth || donation.billing_month;
+  if (bMonth) payload.billing_month = bMonth;
+  if (breakdown && breakdown.length > 0) {
+    payload.monthly_breakdown = JSON.stringify(breakdown);
+  }
+
   try {
-    let { data, error } = await supabase.from('donations').insert(payload).select().single();
+    const currentPayload = { ...payload };
+    let data: any = null;
+    let error: any = null;
 
-    if (error) {
-      console.warn('Supabase donation insert error:', error);
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const res = await supabase.from('donations').insert(currentPayload).select().single();
+      data = res.data;
+      error = res.error;
+      if (!error) break;
 
-      // If foreign key violation on campaign_id, retry with null
-      if (error.message?.includes('donations_campaign_id_fkey') || error.message?.includes('campaign_id')) {
-        payload.campaign_id = null;
-        const retry = await supabase.from('donations').insert(payload).select().single();
-        if (!retry.error) {
-          data = retry.data;
-          error = null;
-        } else {
-          error = retry.error;
-        }
+      console.warn(`Supabase donation insert attempt ${attempt + 1}:`, error.message);
+
+      const missingCol = extractMissingColumn(error);
+      if (missingCol && currentPayload[missingCol] !== undefined) {
+        delete currentPayload[missingCol];
+        continue;
       }
 
-      // If foreign key violation on donor_id, retry with null
-      if (error && (error.message?.includes('donations_donor_id_fkey') || error.message?.includes('donor_id'))) {
-        payload.donor_id = null;
-        const retry = await supabase.from('donations').insert(payload).select().single();
-        if (!retry.error) {
-          data = retry.data;
-          error = null;
-        } else {
-          error = retry.error;
-        }
+      if (
+        currentPayload.campaign_id !== null &&
+        (error.message?.includes('donations_campaign_id_fkey') || error.message?.includes('campaign_id'))
+      ) {
+        currentPayload.campaign_id = null;
+        continue;
       }
 
-      // If utr_number cannot be null, retry with empty string
-      if (error && (error.message?.includes('utr_number') || error.message?.includes('null value in column "utr_number"'))) {
-        payload.utr_number = '';
-        const retry = await supabase.from('donations').insert(payload).select().single();
-        if (!retry.error) {
-          data = retry.data;
-          error = null;
-        } else {
-          error = retry.error;
-        }
+      if (
+        currentPayload.donor_id !== null &&
+        (error.message?.includes('donations_donor_id_fkey') || error.message?.includes('donor_id'))
+      ) {
+        currentPayload.donor_id = null;
+        continue;
       }
+
+      if (
+        currentPayload.utr_number === null &&
+        (error.message?.includes('utr_number') || error.message?.includes('null value in column "utr_number"'))
+      ) {
+        currentPayload.utr_number = '';
+        continue;
+      }
+
+      break;
     }
 
     if (error) {
@@ -159,7 +212,6 @@ export async function createDonation(donation: Omit<Donation, 'id'>): Promise<Do
       throw error;
     }
     return mapRow(data);
-
   } catch (err) {
     console.warn('createDonation error:', err);
     throw err;
@@ -191,6 +243,115 @@ export async function updateCampaignRaised(campaignId: string, addedAmount: numb
   }
 }
 
+async function syncMonthlyFeeSnapshot(row: Record<string, unknown>): Promise<void> {
+  try {
+    const client = supabaseAdmin || supabase;
+    const pType = ((row.payment_type || row.paymentType || '') as string).trim();
+    const breakdown: MonthlyPaymentBreakdownItem[] | undefined = parseMonthlyBreakdown(
+      row.monthly_breakdown ?? row.monthlyBreakdown
+    );
+    const title = ((row.campaign_title || row.campaignTitle || '') as string).toLowerCase();
+
+    const isMonthly =
+      pType === 'member_monthly' ||
+      pType === 'female_monthly' ||
+      pType === 'combined_monthly' ||
+      Boolean(breakdown) ||
+      title.startsWith('monthly fee');
+
+    if (!isMonthly) return;
+
+    const rawDate = (row.date as string) || '';
+    const parsedDate = rawDate ? new Date(rawDate) : null;
+    const paymentIsoDate =
+      parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.toISOString() : new Date().toISOString();
+    const utr = ((row.utr_number || row.utrNumber || '') as string).trim();
+    const donorId = ((row.donor_id || row.donorId || '') as string).trim();
+    const totalAmount = Number(row.amount_inr ?? row.amountINR ?? 0);
+
+    const includesPrimary = breakdown
+      ? breakdown.some((b) => b.targetType === 'primary')
+      : pType === 'member_monthly' ||
+        pType === 'combined_monthly' ||
+        (!pType && (title.includes('primary') || title.includes('self')));
+
+    if (includesPrimary && donorId && donorId !== 'anonymous') {
+      const primaryItem = breakdown?.find((b) => b.targetType === 'primary');
+      const primaryAmt = primaryItem ? Number(primaryItem.amountINR || 100) : totalAmount || 100;
+      const userUpdate: Record<string, unknown> = {
+        monthly_payment: 'yes',
+        monthly_payment_date: paymentIsoDate,
+        monthly_payment_amount: primaryAmt,
+      };
+      for (let i = 0; i < 4; i++) {
+        const { error: uErr } = await client.from('users').update(userUpdate).eq('id', donorId);
+        if (!uErr) break;
+        const missing = extractMissingColumn(uErr);
+        if (missing && userUpdate[missing] !== undefined) {
+          delete userUpdate[missing];
+          continue;
+        }
+        break;
+      }
+    }
+
+    const femaleTargets: Array<{ id: string; amount: number }> = [];
+    if (breakdown) {
+      for (const b of breakdown) {
+        if (b.targetType === 'female' && b.targetId) {
+          femaleTargets.push({ id: b.targetId, amount: Number(b.amountINR || 50) });
+        }
+      }
+    } else {
+      const rawFemaleIds = ((row.female_member_id || row.femaleMemberId || '') as string)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const splitAmt =
+        rawFemaleIds.length > 0 && totalAmount > 0 ? Math.round(totalAmount / rawFemaleIds.length) : 50;
+      for (const fid of rawFemaleIds) {
+        femaleTargets.push({ id: fid, amount: splitAmt });
+      }
+    }
+
+    for (const target of femaleTargets) {
+      const femalePayload: Record<string, unknown> = {
+        monthly_payment: 'yes',
+        monthly_payment_date: paymentIsoDate,
+        monthly_payment_amount: target.amount,
+        last_monthly_utr: utr || null,
+      };
+
+      const tryUpdateFemale = async (dbClient: any) => {
+        const p = { ...femalePayload };
+        for (let i = 0; i < 4; i++) {
+          const { error: fErr } = await dbClient
+            .from('member_female_family')
+            .update(p)
+            .eq('id', target.id);
+          if (!fErr) return true;
+          const missing = extractMissingColumn(fErr);
+          if (missing && p[missing] !== undefined) {
+            delete p[missing];
+            continue;
+          }
+          return false;
+        }
+        return false;
+      };
+
+      const ok = await tryUpdateFemale(client);
+      if (!ok && typeof (client as any).schema === 'function') {
+        try {
+          await tryUpdateFemale((client as any).schema('public'));
+        } catch {}
+      }
+    }
+  } catch (err) {
+    console.warn('syncMonthlyFeeSnapshot warning:', err);
+  }
+}
+
 export async function updateDonationStatus(
   id: string,
   status: Donation['status']
@@ -214,6 +375,7 @@ export async function updateDonationStatus(
       if (campId && amount > 0) {
         await updateCampaignRaised(campId, amount);
       }
+      await syncMonthlyFeeSnapshot(row);
     }
   } catch (err) {
     console.warn('updateDonationStatus exception:', err);

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Image, TextInput, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Image, TextInput, Alert, DeviceEventEmitter } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'nativewind';
-import { useAppState } from '../../../src/context/AppStateProvider';
+import { MONTHLY_EVENTS, useAppState } from '../../../src/context/AppStateProvider';
+import { MonthlyPaymentStatusCard } from '../../../src/components/MonthlyPaymentStatusCard';
 import {
   DashboardHomeSkeleton,
   DistrictPresidentSkeleton,
@@ -297,7 +298,15 @@ export default function DashboardIndex() {
       }
     };
     load();
-  }, [activeUser, userRole]);
+    const sub = DeviceEventEmitter.addListener(MONTHLY_EVENTS.DONATIONS_UPDATED, () => {
+      if (isMember && activeUser?.id) {
+        getDonations(activeUser.id).then(setDonations).catch(console.warn);
+      }
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [activeUser, userRole, isMember]);
 
   const handleBroadcast = async () => {
     if (!announcementText.trim() || !community) return;
@@ -529,6 +538,13 @@ export default function DashboardIndex() {
             <Text className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">{donations.length}</Text>
           </View>
         </View>
+
+        {/* Monthly Fee & Female Family Members Status Section */}
+        {activeUser && (
+          <View className="mb-4">
+            <MonthlyPaymentStatusCard user={activeUser} variant="full" />
+          </View>
+        )}
 
         {/* Quick Action */}
         <TouchableOpacity
